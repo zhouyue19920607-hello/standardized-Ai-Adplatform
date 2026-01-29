@@ -110,6 +110,7 @@ const App: React.FC = () => {
           suggestedIcon: analysis.iconName,
           dimensions: template.dimensions || '1080 x 1920',
           splashText: template.category === '开屏' ? config.splashText : undefined,
+          maskUrl: template.mask_path,
         });
       });
     }

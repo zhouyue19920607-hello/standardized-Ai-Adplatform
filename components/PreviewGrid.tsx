@@ -1,6 +1,4 @@
-
-import React, { useState } from 'react';
-import { AdAsset, AdConfig } from '../types';
+import { getTemplates, ASSETS_URL } from '../services/api';
 
 interface PreviewGridProps {
   assets: AdAsset[];
@@ -21,7 +19,7 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
 
   const handleDownload = (type: 'original' | 'masked') => {
     const link = document.createElement('a');
-    link.href = asset.url; 
+    link.href = asset.url;
     link.download = `${type === 'original' ? 'orig' : 'masked'}_${asset.name}`;
     document.body.appendChild(link);
     link.click();
@@ -31,41 +29,51 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all group">
       <div className="aspect-[16/9] relative bg-slate-100 overflow-hidden">
-        <img 
-          alt={asset.name} 
-          className="w-full h-full object-cover" 
+        <img
+          alt={asset.name}
+          className="w-full h-full object-cover"
           src={asset.url}
         />
-        
+
         {/* Dynamic Overlay Layer - MR Mask */}
         {(asset.category === '焦点视窗' || asset.category === '开屏') && localShowMask && (
-          <div 
-            className="absolute inset-y-0 left-0 w-1/2 flex items-center px-6 transition-all duration-300"
-            style={{ 
-              background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
-              opacity: 0.85
-            }}
-          >
-            <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center animate-in fade-in zoom-in duration-300">
-              <span 
-                className="material-symbols-outlined text-2xl fill"
-                style={{ color: config.smartExtract ? asset.aiExtractedColor : config.iconColor }}
+          <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
+            {asset.maskUrl ? (
+              <img
+                src={`${ASSETS_URL}${asset.maskUrl}`}
+                className="w-full h-full object-contain"
+                alt="mask overlay"
+              />
+            ) : (
+              <div
+                className="absolute inset-y-0 left-0 w-1/2 flex items-center px-6"
+                style={{
+                  background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
+                  opacity: 0.85
+                }}
               >
-                {config.smartExtract ? asset.suggestedIcon : 'star'}
-              </span>
-            </div>
+                <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center animate-in fade-in zoom-in duration-300">
+                  <span
+                    className="material-symbols-outlined text-2xl fill"
+                    style={{ color: config.smartExtract ? asset.aiExtractedColor : config.iconColor }}
+                  >
+                    {config.smartExtract ? asset.suggestedIcon : 'star'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Custom Text for Splash Templates - Only visible when Mask is ON, and No Background Container */}
         {asset.category === '开屏' && localShowMask && (
           <div className="absolute bottom-10 left-0 w-full flex justify-center px-4 pointer-events-none">
-            <div 
+            <div
               className={`transition-all duration-300 flex items-center gap-2 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-white/20 rounded p-1' : ''}`}
               style={{ fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif' }}
             >
               {isEditingText ? (
-                <input 
+                <input
                   autoFocus
                   className="bg-transparent border-none text-white text-[14px] font-bold tracking-wider focus:ring-0 p-0 text-center w-48 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]"
                   value={localSplashText}
@@ -98,7 +106,7 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
           </span>
         </div>
       </div>
-      
+
       <div className="p-4 space-y-4">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -108,10 +116,10 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
                 <span className="text-[10px] text-slate-400 font-medium px-1.5 border border-slate-200 rounded">{asset.size}</span>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100">
               {asset.category === '开屏' && localShowMask && (
-                <button 
+                <button
                   onClick={() => setIsEditingText(!isEditingText)}
                   className={`text-[10px] font-bold px-2 py-1 rounded transition-all flex items-center gap-1 border-r border-slate-200 ${isEditingText ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:text-primary'}`}
                 >
@@ -119,7 +127,7 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
                   文案
                 </button>
               )}
-              <button 
+              <button
                 onClick={() => setLocalShowMask(!localShowMask)}
                 className={`text-[10px] font-bold px-2 py-1 rounded transition-all flex items-center gap-1 ${localShowMask ? 'bg-primary text-white shadow-sm' : 'text-slate-500 hover:text-primary'}`}
               >
@@ -131,18 +139,18 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
 
           <div className="flex items-center justify-between pt-1 border-t border-slate-50">
             <div className="flex items-center gap-1 text-emerald-600 text-[10px] font-bold">
-               <span className="material-symbols-outlined text-sm">check_circle</span>
-               核心资产就绪
+              <span className="material-symbols-outlined text-sm">check_circle</span>
+              核心资产就绪
             </div>
             <div className="flex items-center gap-1">
-              <button 
+              <button
                 onClick={() => handleDownload('original')}
                 className="p-1.5 text-slate-500 hover:text-primary hover:bg-blue-50 rounded-md transition-colors"
                 title="保存原图"
               >
                 <span className="material-symbols-outlined text-sm">download</span>
               </button>
-              <button 
+              <button
                 onClick={() => handleDownload('masked')}
                 className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
                 title="保存MR遮罩图"
@@ -157,12 +165,12 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
   );
 };
 
-const PreviewGrid: React.FC<PreviewGridProps> = ({ 
-  assets, 
-  config, 
-  onClear, 
-  onToggleMask, 
-  isGenerating 
+const PreviewGrid: React.FC<PreviewGridProps> = ({
+  assets,
+  config,
+  onClear,
+  onToggleMask,
+  isGenerating
 }) => {
   return (
     <section className="flex-1 p-6 pt-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
@@ -174,9 +182,9 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({
           <div className="flex items-center gap-3">
             <span className="text-sm font-bold text-slate-700">全局显示MR遮罩</span>
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer" 
+              <input
+                type="checkbox"
+                className="sr-only peer"
                 checked={config.showMask}
                 onChange={onToggleMask}
               />
@@ -186,7 +194,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({
         </div>
         <div className="flex gap-2">
           {assets.length > 0 && (
-            <button 
+            <button
               onClick={onClear}
               className="text-xs text-red-500 font-medium px-3 py-1.5 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5"
             >

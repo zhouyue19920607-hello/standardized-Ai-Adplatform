@@ -5,10 +5,9 @@ export interface AdTemplate {
   app: '美图秀秀' | '美颜' | 'wink';
   category: '开屏' | '焦点视窗' | '信息流' | 'icon/banner' | '弹窗';
   checked: boolean;
-  // 后端“管理库”扩展字段
   dimensions?: string;
-  maskUrl?: string | null;
-  workflowId?: string | null;
+  mask_path?: string | null;
+  workflow_id?: string | null;
 }
 
 export interface AdAsset {
@@ -25,6 +24,7 @@ export interface AdAsset {
   suggestedIcon?: string;
   dimensions: string;
   splashText?: string;
+  maskUrl?: string | null;
 }
 
 export interface AdConfig {
