@@ -26,7 +26,7 @@ const App: React.FC = () => {
   const loadTemplates = async () => {
     try {
       const data = await getTemplates();
-      setTemplates(data.map(t => ({ ...t, checked: false }))); // Reset checked state on load
+      setTemplates(data.map(t => ({ ...t, checked: false })));
     } catch (error) {
       console.error("Failed to load templates", error);
     }
@@ -42,24 +42,6 @@ const App: React.FC = () => {
   const [processedAssets, setProcessedAssets] = useState<AdAsset[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 从后端“管理库”拉取模版列表（含尺寸、遮罩、workflow 绑定等）
-  useEffect(() => {
-    const fetchTemplates = async () => {
-      try {
-        const resp = await fetch('/api/templates');
-        if (!resp.ok) {
-          throw new Error(`fetch templates failed: ${resp.status}`);
-        }
-        const data: AdTemplate[] = await resp.json();
-        setTemplates(data);
-      } catch (e) {
-        console.error('加载模版列表失败，将回退为空列表：', e);
-        setTemplates([]);
-      }
-    };
-    fetchTemplates();
-  }, []);
 
   const handleTemplateToggle = (id: string) => {
     setTemplates(prev => prev.map(t => t.id === id ? { ...t, checked: !t.checked } : t));
