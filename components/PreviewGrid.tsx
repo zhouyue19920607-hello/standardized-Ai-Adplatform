@@ -1,3 +1,5 @@
+import React, { useState } from 'react';
+import { AdAsset, AdConfig } from '../types';
 import { getTemplates, ASSETS_URL } from '../services/api';
 
 interface PreviewGridProps {
@@ -8,7 +10,12 @@ interface PreviewGridProps {
   isGenerating?: boolean;
 }
 
-const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConfig }> = ({ asset, globalShowMask, config }) => {
+const AdCard: React.FC<{
+  asset: AdAsset;
+  globalShowMask: boolean;
+  config: AdConfig;
+  onZoom: (asset: AdAsset) => void;
+}> = ({ asset, globalShowMask, config, onZoom }) => {
   const [localShowMask, setLocalShowMask] = useState(globalShowMask);
   const [isEditingText, setIsEditingText] = useState(false);
   const [localSplashText, setLocalSplashText] = useState(asset.splashText || '跳转至第三方平台');
@@ -28,7 +35,10 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all group">
-      <div className="aspect-[16/9] relative bg-slate-100 overflow-hidden">
+      <div
+        className="aspect-[16/9] relative bg-slate-100 overflow-hidden cursor-zoom-in"
+        onDoubleClick={() => onZoom(asset)}
+      >
         <img
           alt={asset.name}
           className="w-full h-full object-cover"
@@ -65,7 +75,7 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
           </div>
         )}
 
-        {/* Custom Text for Splash Templates - Only visible when Mask is ON, and No Background Container */}
+        {/* Custom Text for Splash Templates */}
         {asset.category === '开屏' && localShowMask && (
           <div className="absolute bottom-10 left-0 w-full flex justify-center px-4 pointer-events-none">
             <div
@@ -104,6 +114,11 @@ const AdCard: React.FC<{ asset: AdAsset; globalShowMask: boolean; config: AdConf
           <span className="bg-white/90 text-[10px] text-slate-900 px-2 py-0.5 rounded border border-slate-200 font-bold shadow-sm">
             {asset.dimensions}
           </span>
+        </div>
+
+        {/* Hint for zoom */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
+          <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity text-3xl">zoom_in</span>
         </div>
       </div>
 
@@ -172,6 +187,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({
   onToggleMask,
   isGenerating
 }) => {
+  const [selectedAsset, setSelectedAsset] = useState<AdAsset | null>(null);
+
   return (
     <section className="flex-1 p-6 pt-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-slate-200 sticky top-0 z-10 shadow-sm">
@@ -217,7 +234,13 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({
           ))
         ) : assets.length > 0 ? (
           assets.map(asset => (
-            <AdCard key={asset.id} asset={asset} globalShowMask={config.showMask} config={config} />
+            <AdCard
+              key={asset.id}
+              asset={asset}
+              globalShowMask={config.showMask}
+              config={config}
+              onZoom={(a) => setSelectedAsset(a)}
+            />
           ))
         ) : (
           <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400">
@@ -229,6 +252,82 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({
           </div>
         )}
       </div>
+
+      {/* Zoom Modal */}
+      {selectedAsset && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-200"
+          onClick={() => setSelectedAsset(null)}
+        >
+          <button
+            className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors"
+            onClick={() => setSelectedAsset(null)}
+          >
+            <span className="material-symbols-outlined text-4xl">close</span>
+          </button>
+
+          <div
+            className="relative max-w-full max-h-full flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={selectedAsset.url}
+              alt="zoomed result"
+              className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-lg"
+            />
+
+            {/* Overlay PNG Mask in Modal */}
+            {config.showMask && selectedAsset.maskUrl && (
+              <img
+                src={`${ASSETS_URL}${selectedAsset.maskUrl}`}
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none rounded-lg"
+                alt="mask overlay zoomed"
+              />
+            )}
+
+            {/* Overlay CSS Mask in Modal if no PNG */}
+            {config.showMask && !selectedAsset.maskUrl && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') && (
+              <div
+                className="absolute inset-y-0 left-0 w-1/2 flex items-center px-12 pointer-events-none rounded-l-lg"
+                style={{
+                  background: `linear-gradient(to right, ${config.smartExtract ? selectedAsset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
+                  opacity: 0.85
+                }}
+              >
+                <div className="w-24 h-24 bg-white rounded-2xl shadow-2xl flex items-center justify-center">
+                  <span
+                    className="material-symbols-outlined text-5xl fill"
+                    style={{ color: config.smartExtract ? selectedAsset.aiExtractedColor : config.iconColor }}
+                  >
+                    {config.smartExtract ? selectedAsset.suggestedIcon : 'star'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="absolute -bottom-16 left-0 w-full flex justify-between items-center px-2">
+              <div className="text-white">
+                <h3 className="text-lg font-bold">{selectedAsset.templateName}</h3>
+                <p className="text-sm text-white/60">{selectedAsset.app} · {selectedAsset.category} · {selectedAsset.dimensions}</p>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedAsset.url;
+                    link.download = `preview_${selectedAsset.name}`;
+                    link.click();
+                  }}
+                  className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  保存图片
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
