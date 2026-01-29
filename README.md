@@ -32,7 +32,7 @@ python3 backend/seed.py
 **终端 1 (后端):**
 ```bash
 source venv/bin/activate
-uvicorn backend.main:app --reload --port 8000
+uvicorn backend.main:app --reload --port 8001
 ```
 
 **终端 2 (前端):**
@@ -42,6 +42,6 @@ npm run dev
 
 ### 3. 使用
 - 访问 **http://localhost:3000** 使用应用。
-- 访问 **http://localhost:8000/docs** 查看 API 文档。
+- 访问 **http://localhost:8001/docs** 查看 API 文档。
 - 点击界面上的**设置图标**打开管理后台。
 - 在管理后台可以管理模版尺寸、上传 Mask 遮罩，以及管理 ComfyUI 工作流。
