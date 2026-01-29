@@ -45,6 +45,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             setNewTemplate({ name: '', app: '美图秀秀', category: '开屏', dimensions: '1080 x 1920' });
         } catch (error) {
             console.error("Failed to create template", error);
+            alert("创建模版失败，请查看控制台日志。");
         }
     };
 
@@ -55,6 +56,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             setTemplates(prev => prev.filter(t => t.id !== id));
         } catch (error) {
             console.error("Failed to delete template", error);
+            alert("删除模版失败。");
         }
     };
 
@@ -64,6 +66,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             setTemplates(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
         } catch (error) {
             console.error(`Failed to update ${field}`, error);
+            alert(`更新 ${field} 失败。`);
         }
     };
 
@@ -73,6 +76,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             setTemplates(prev => prev.map(t => t.id === id ? { ...t, mask_path } : t));
         } catch (error) {
             console.error("Failed to upload mask", error);
+            alert("遮罩上传失败。");
         }
     };
 
@@ -82,6 +86,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             fetchData();
         } catch (error) {
             console.error("Failed to upload workflow", error);
+            alert("工作流上传失败。");
         }
     }
 

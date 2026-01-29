@@ -14,7 +14,7 @@ class AdTemplateBase(BaseModel):
     workflow_id: Optional[str] = None
 
 class AdTemplateCreate(AdTemplateBase):
-    id: str  # Allow setting ID manually or generate it
+    id: Optional[str] = None  # Allow setting ID manually or generate it
 
 class AdTemplateUpdate(BaseModel):
     name: Optional[str] = None
