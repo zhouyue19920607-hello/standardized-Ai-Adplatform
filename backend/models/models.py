@@ -13,6 +13,7 @@ class AdTemplate(Base):
     dimensions = Column(String, nullable=True)
     mask_path = Column(String, nullable=True)
     splash_text = Column(String, nullable=True)
+    workflow_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

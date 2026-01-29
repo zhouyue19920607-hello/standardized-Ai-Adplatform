@@ -13,6 +13,11 @@ export const getTemplates = async (): Promise<AdTemplate[]> => {
     return response.data;
 };
 
+export const createTemplate = async (data: any): Promise<AdTemplate> => {
+    const response = await api.post<AdTemplate>('/templates', data);
+    return response.data;
+};
+
 export const updateTemplate = async (id: string, data: Partial<AdTemplate>): Promise<AdTemplate> => {
     const response = await api.put<AdTemplate>(`/templates/${id}`, data);
     return response.data;

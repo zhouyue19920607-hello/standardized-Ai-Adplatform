@@ -4,6 +4,7 @@ from typing import List
 import shutil
 import os
 import uuid
+import aiofiles
 from ...core.database import get_db
 from ...models.models import AdTemplate as TemplateModel
 from ...schemas.schemas import AdTemplate, AdTemplateCreate, AdTemplateUpdate
@@ -17,7 +18,10 @@ def read_templates(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 
 @router.post("/", response_model=AdTemplate)
 def create_template(template: AdTemplateCreate, db: Session = Depends(get_db)):
-    db_template = TemplateModel(**template.dict())
+    template_data = template.dict()
+    if not template_data.get('id'):
+        template_data['id'] = str(uuid.uuid4())
+    db_template = TemplateModel(**template_data)
     db.add(db_template)
     db.commit()
     db.refresh(db_template)

@@ -11,6 +11,7 @@ class AdTemplateBase(BaseModel):
     dimensions: Optional[str] = None
     mask_path: Optional[str] = None
     splash_text: Optional[str] = None
+    workflow_id: Optional[str] = None
 
 class AdTemplateCreate(AdTemplateBase):
     id: str  # Allow setting ID manually or generate it
@@ -23,6 +24,7 @@ class AdTemplateUpdate(BaseModel):
     dimensions: Optional[str] = None
     mask_path: Optional[str] = None
     splash_text: Optional[str] = None
+    workflow_id: Optional[str] = None
 
 class AdTemplate(AdTemplateBase):
     id: str
