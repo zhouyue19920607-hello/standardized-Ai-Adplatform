@@ -1,0 +1,8 @@
+
+{
+  "name": "Standardized AI Ad Platform",
+  "description": "An AI-powered automation platform for standardized hard advertising assets, featuring smart color extraction and dynamic template overlays.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
