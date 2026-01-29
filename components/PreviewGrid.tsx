@@ -10,6 +10,14 @@ interface PreviewGridProps {
   isGenerating?: boolean;
 }
 
+const parseAspectRatio = (dimensions: string) => {
+  const parts = dimensions.split('x').map(p => parseInt(p.trim()));
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return `${parts[0]} / ${parts[1]}`;
+  }
+  return '16 / 9';
+};
+
 const AdCard: React.FC<{
   asset: AdAsset;
   globalShowMask: boolean;
@@ -19,6 +27,7 @@ const AdCard: React.FC<{
   const [localShowMask, setLocalShowMask] = useState(globalShowMask);
   const [isEditingText, setIsEditingText] = useState(false);
   const [localSplashText, setLocalSplashText] = useState(asset.splashText || '跳转至第三方平台');
+  const aspectRatio = parseAspectRatio(asset.dimensions);
 
   React.useEffect(() => {
     setLocalShowMask(globalShowMask);
@@ -34,9 +43,10 @@ const AdCard: React.FC<{
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all group">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col h-full">
       <div
-        className="aspect-[16/9] relative bg-slate-100 overflow-hidden cursor-zoom-in"
+        className="relative bg-slate-100 overflow-hidden cursor-zoom-in w-full"
+        style={{ aspectRatio }}
         onDoubleClick={() => onZoom(asset)}
       >
         <img
@@ -56,7 +66,7 @@ const AdCard: React.FC<{
               />
             ) : (
               <div
-                className="absolute inset-y-0 left-0 w-1/2 flex items-center px-6"
+                className="absolute inset-0 flex items-center px-6"
                 style={{
                   background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
                   opacity: 0.85
@@ -122,7 +132,7 @@ const AdCard: React.FC<{
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 mt-auto">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
