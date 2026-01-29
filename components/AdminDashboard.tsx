@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AdTemplate, AdAsset } from '../types';
-import { getTemplates, updateTemplate, uploadMask, getWorkflows, uploadWorkflow } from '../services/api';
+import { getTemplates, updateTemplate, uploadMask, getWorkflows, uploadWorkflow, ASSETS_URL } from '../services/api';
 
 interface AdminDashboardProps {
     onClose: () => void;
@@ -115,7 +115,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     <div className="col-span-2">
                                         <div className="flex items-center gap-2">
                                             {t.mask_path ? (
-                                                <img src={`http://localhost:8000${t.mask_path}`} className="w-8 h-8 rounded border bg-chess-pattern" />
+                                                <img src={`${ASSETS_URL}${t.mask_path}`} className="w-8 h-8 rounded border bg-chess-pattern" />
                                             ) : (
                                                 <span className="text-[10px] text-slate-300">无遮罩</span>
                                             )}
