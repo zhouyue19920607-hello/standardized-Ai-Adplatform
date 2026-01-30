@@ -344,10 +344,103 @@ app.post("/api/comfyui/generate", async (req, res) => {
   });
 });
 
+// ---- API: 焦点视窗广告生成 ----
+app.post("/api/focal-window/generate", upload.single("image"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "缺少上传图片" });
+    }
+
+    // 读取上传的图片
+    const imageBuffer = await fs.readFile(file.path);
+    const imageBase64 = imageBuffer.toString('base64');
+
+    // 读取4个PNG图层
+    const iconBgBuffer = await fs.readFile(path.join(__dirname, "templates", "focal_window_icon_bg.png"));
+    const gradientBuffer = await fs.readFile(path.join(__dirname, "templates", "focal_window_gradient.png"));
+    const fixedBg1Buffer = await fs.readFile(path.join(__dirname, "templates", "focal_window_fixed_1.png"));
+    const fixedBg2Buffer = await fs.readFile(path.join(__dirname, "templates", "focal_window_fixed_2.png"));
+
+    const iconBgBase64 = iconBgBuffer.toString('base64');
+    const gradientBase64 = gradientBuffer.toString('base64');
+    const fixedBg1Base64 = fixedBg1Buffer.toString('base64');
+    const fixedBg2Base64 = fixedBg2Buffer.toString('base64');
+
+    // 提取底部颜色 (简化版本,使用Gemini)
+    let extractedColor = "#FF6B6B";
+    if (geminiClient) {
+      try {
+        const colorResponse = await geminiClient.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "image/png",
+                  data: imageBase64
+                }
+              },
+              {
+                text: "Extract the dominant color from the bottom 20% of this image. Return only the hex color code in JSON format."
+              }
+            ]
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                hexColor: { type: Type.STRING }
+              },
+              required: ["hexColor"]
+            }
+          }
+        });
+        const parsed = JSON.parse(colorResponse.text || "{}");
+        extractedColor = parsed.hexColor || extractedColor;
+      } catch (err) {
+        console.error("颜色提取失败,使用默认颜色:", err);
+      }
+    }
+
+    // 读取SVG模版
+    const svgTemplate = await fs.readFile(path.join(__dirname, "templates", "focal_window.svg"), "utf-8");
+
+    // 替换SVG中的占位符
+    const finalSvg = svgTemplate
+      .replace(/{user_image_base64}/g, imageBase64)
+      .replace(/{user_image_height}/g, "800")
+      .replace(/{icon_bg_base64}/g, iconBgBase64)
+      .replace(/{gradient_base64}/g, gradientBase64)
+      .replace(/{fixed_bg_1_base64}/g, fixedBg1Base64)
+      .replace(/{fixed_bg_2_base64}/g, fixedBg2Base64)
+      .replace(/{icon_color}/g, extractedColor)
+      .replace(/{gradient_color}/g, extractedColor);
+
+    // 保存生成的SVG
+    const outputFilename = `focal_window_${Date.now()}.svg`;
+    const outputPath = path.join(STORAGE_DIR, outputFilename);
+    await fs.writeFile(outputPath, finalSvg, "utf-8");
+
+    const svgUrl = `/static/${outputFilename}`;
+
+    res.json({
+      ok: true,
+      svgUrl,
+      extractedColor,
+      message: "焦点视窗广告生成成功"
+    });
+  } catch (err) {
+    console.error("焦点视窗生成失败:", err);
+    res.status(500).json({ error: "生成失败", details: err.message });
+  }
+});
+
+
 // ---- 启动 ----
 ensureDataFiles().then(() => {
   app.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
   });
-});
 

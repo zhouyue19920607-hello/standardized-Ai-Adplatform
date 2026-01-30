@@ -1,0 +1,32 @@
+<svg width="1126" height="2436" viewBox="0 0 1126 2436" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <!-- 用户上传图片 (底层,定位在顶部) -->
+  <image id="user-image" x="0" y="0" width="1126" height="{user_image_height}" xlink:href="data:image/png;base64,{user_image_base64}" preserveAspectRatio="xMidYMin slice"/>
+  
+  <!-- 第1层: 固定背景1 -->
+  <image id="fixed-bg-1" x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{fixed_bg_1_base64}" preserveAspectRatio="xMidYMid meet"/>
+  
+  <!-- 第2层: Icon底图 (动态变色) -->
+  <g id="icon-bg-layer">
+    <image id="icon-bg-original" x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{icon_bg_base64}" preserveAspectRatio="xMidYMid meet" opacity="0"/>
+    <image id="icon-bg-colored" x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{icon_bg_base64}" preserveAspectRatio="xMidYMid meet" style="mix-blend-mode: multiply;"/>
+    <rect x="0" y="0" width="1126" height="2436" fill="{icon_color}" style="mix-blend-mode: screen;"/>
+  </g>
+  
+  <!-- 第3层: 渐变图层 (动态变色) -->
+  <defs>
+    <linearGradient id="dynamicGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:{gradient_color};stop-opacity:1" />
+      <stop offset="100%" style="stop-color:{gradient_color};stop-opacity:0" />
+    </linearGradient>
+  </defs>
+  <g id="gradient-layer">
+    <image id="gradient-mask" x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{gradient_base64}" preserveAspectRatio="xMidYMid meet" opacity="0"/>
+    <rect x="0" y="0" width="1126" height="2436" fill="url(#dynamicGradient)" mask="url(#gradientMask)"/>
+  </g>
+  <mask id="gradientMask">
+    <image x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{gradient_base64}" preserveAspectRatio="xMidYMid meet"/>
+  </mask>
+  
+  <!-- 第4层: 固定背景2 (最顶层) -->
+  <image id="fixed-bg-2" x="0" y="0" width="1126" height="2436" xlink:href="data:image/png;base64,{fixed_bg_2_base64}" preserveAspectRatio="xMidYMid meet"/>
+</svg>
