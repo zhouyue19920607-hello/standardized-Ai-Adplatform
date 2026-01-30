@@ -78,8 +78,8 @@ const AdCard: React.FC<{
         // 1. 绘制底层用户素材
         ctx.drawImage(mainImg, 0, 0, canvas.width, canvas.height);
 
-        // 获取当前应有的颜色
-        const baseColor = (config.smartExtract && asset.aiExtractedColor) ? asset.aiExtractedColor : config.iconColor;
+        // 获取当前应有的颜色 (优先使用 asset 自带的，没有则用 config，再没有出品红色调试)
+        const baseColor = asset.aiExtractedColor || config.iconColor || '#FF00FF';
         const derivedColor = getDerivedGradientColor(baseColor);
 
         // 2. 绘制 fixed_bg_2 (内底) - z-10
@@ -178,8 +178,8 @@ const AdCard: React.FC<{
         {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
             {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (() => {
-              // 强制确保颜色存在
-              const baseColor = asset.aiExtractedColor || config.iconColor || '#2563EB';
+              // 优先使用生成的资产取色，若无则使用当前配置，最后使用品红色兜底
+              const baseColor = asset.aiExtractedColor || config.iconColor || '#FF00FF';
               const derivedGradientColor = getDerivedGradientColor(baseColor);
 
               return (

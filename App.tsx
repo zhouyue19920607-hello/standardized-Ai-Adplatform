@@ -118,140 +118,143 @@ const App: React.FC = () => {
     const hasFocalWindow = activeTemplates.some(t => t.category === '焦点视窗');
     if (hasFocalWindow) {
       handleConfigChange({ showMask: true });
-    }
+      console.log(`[App] Generation complete. Total assets: ${results.length}`);
+      results.forEach((r, idx) => {
+        console.log(`[App] Asset ${idx}: ${r.templateName} (${r.category}) -> Color: ${r.aiExtractedColor}`);
+      });
 
-    setProcessedAssets(results);
-    setIsProcessing(false);
-  };
+      setProcessedAssets(results);
+      setIsProcessing(false);
+    };
 
-  const clearAll = () => {
-    rawFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
-    setRawFiles([]);
-    setProcessedAssets([]);
-  };
+    const clearAll = () => {
+      rawFiles.forEach(f => URL.revokeObjectURL(f.previewUrl));
+      setRawFiles([]);
+      setProcessedAssets([]);
+    };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-brand-bg">
-      <Header />
+    return (
+      <div className="min-h-screen flex flex-col bg-brand-bg">
+        <Header />
 
-      <main className="flex-1 max-w-[1600px] mx-auto w-full flex overflow-hidden">
-        <Sidebar
-          templates={templates}
-          config={config}
-          onTemplateToggle={handleTemplateToggle}
-          onConfigChange={handleConfigChange}
-          activeCount={rawFiles.length}
-          onGenerate={handleGenerate}
-          isProcessing={isProcessing}
+        <main className="flex-1 max-w-[1600px] mx-auto w-full flex overflow-hidden">
+          <Sidebar
+            templates={templates}
+            config={config}
+            onTemplateToggle={handleTemplateToggle}
+            onConfigChange={handleConfigChange}
+            activeCount={rawFiles.length}
+            onGenerate={handleGenerate}
+            isProcessing={isProcessing}
+          />
+
+          <div className="flex-1 flex flex-col bg-slate-50/30 overflow-hidden h-[calc(100vh-73px)] sticky top-[73px]">
+            {/* Raw Assets & Upload Section */}
+            <section className="p-6 shrink-0 bg-white border-b border-slate-200 overflow-y-auto max-h-[40%] custom-scrollbar">
+              {rawFiles.length === 0 ? (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="group relative flex flex-col items-center justify-center border-2 border-dashed border-slate-300 bg-white hover:border-primary hover:bg-blue-50/30 rounded-2xl p-12 transition-all cursor-pointer"
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    multiple
+                    accept=".jpg,.jpeg,.png,.webp,.mp4"
+                    onChange={handleFileUpload}
+                  />
+                  <div className="mb-4 h-14 w-14 bg-blue-50 rounded-full flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                    <span className="material-symbols-outlined text-3xl">cloud_upload</span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-800">上传原始资产素材</h3>
+                  <p className="text-slate-400 text-xs mt-2">支持 JPG, PNG, MP4, WEBP | 无尺寸限制</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-700">待处理素材 ({rawFiles.length})</h3>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[11px] font-bold text-primary hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                      >
+                        + 继续添加
+                      </button>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        multiple
+                        accept=".jpg,.jpeg,.png,.webp,.mp4"
+                        onChange={handleFileUpload}
+                      />
+                    </div>
+                    <button onClick={clearAll} className="text-[11px] text-red-500 font-bold hover:underline">移除全部</button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {rawFiles.map(raw => (
+                      <div key={raw.id} className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shadow-sm hover:ring-2 ring-primary/20 transition-all">
+                        <div className="relative">
+                          {raw.file.type.startsWith('video/') ? (
+                            <div className="w-full h-auto max-h-48 aspect-video flex items-center justify-center bg-slate-900 text-white">
+                              <span className="material-symbols-outlined text-3xl">play_circle</span>
+                            </div>
+                          ) : (
+                            <img
+                              src={raw.previewUrl}
+                              className="w-full h-auto max-h-48 object-contain bg-slate-200"
+                              alt="raw"
+                            />
+                          )}
+                          <button
+                            onClick={() => removeRawFile(raw.id)}
+                            className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                          >
+                            <span className="material-symbols-outlined text-sm">close</span>
+                          </button>
+                        </div>
+                        <div className="p-2 bg-white">
+                          <p className="text-[10px] text-slate-500 truncate font-medium">{raw.file.name}</p>
+                          <p className="text-[9px] text-slate-400 mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Processed Previews Section */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <PreviewGrid
+                assets={processedAssets}
+                config={config}
+                onClear={() => setProcessedAssets([])}
+                onToggleMask={() => handleConfigChange({ showMask: !config.showMask })}
+                isGenerating={isProcessing}
+              />
+            </div>
+          </div>
+        </main>
+
+        <Footer
+          selectedCount={templates.filter(t => t.checked).length}
+          assetCount={processedAssets.length}
         />
 
-        <div className="flex-1 flex flex-col bg-slate-50/30 overflow-hidden h-[calc(100vh-73px)] sticky top-[73px]">
-          {/* Raw Assets & Upload Section */}
-          <section className="p-6 shrink-0 bg-white border-b border-slate-200 overflow-y-auto max-h-[40%] custom-scrollbar">
-            {rawFiles.length === 0 ? (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="group relative flex flex-col items-center justify-center border-2 border-dashed border-slate-300 bg-white hover:border-primary hover:bg-blue-50/30 rounded-2xl p-12 transition-all cursor-pointer"
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  multiple
-                  accept=".jpg,.jpeg,.png,.webp,.mp4"
-                  onChange={handleFileUpload}
-                />
-                <div className="mb-4 h-14 w-14 bg-blue-50 rounded-full flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                  <span className="material-symbols-outlined text-3xl">cloud_upload</span>
-                </div>
-                <h3 className="text-base font-bold text-slate-800">上传原始资产素材</h3>
-                <p className="text-slate-400 text-xs mt-2">支持 JPG, PNG, MP4, WEBP | 无尺寸限制</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-700">待处理素材 ({rawFiles.length})</h3>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] font-bold text-primary hover:bg-blue-50 px-2 py-1 rounded transition-colors"
-                    >
-                      + 继续添加
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      className="hidden"
-                      multiple
-                      accept=".jpg,.jpeg,.png,.webp,.mp4"
-                      onChange={handleFileUpload}
-                    />
-                  </div>
-                  <button onClick={clearAll} className="text-[11px] text-red-500 font-bold hover:underline">移除全部</button>
-                </div>
+        {/* Admin Toggle */}
+        <button
+          onClick={() => setShowAdmin(true)}
+          className="fixed bottom-4 right-4 bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors z-40"
+        >
+          <span className="material-symbols-outlined">settings</span>
+        </button>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                  {rawFiles.map(raw => (
-                    <div key={raw.id} className="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shadow-sm hover:ring-2 ring-primary/20 transition-all">
-                      <div className="relative">
-                        {raw.file.type.startsWith('video/') ? (
-                          <div className="w-full h-auto max-h-48 aspect-video flex items-center justify-center bg-slate-900 text-white">
-                            <span className="material-symbols-outlined text-3xl">play_circle</span>
-                          </div>
-                        ) : (
-                          <img
-                            src={raw.previewUrl}
-                            className="w-full h-auto max-h-48 object-contain bg-slate-200"
-                            alt="raw"
-                          />
-                        )}
-                        <button
-                          onClick={() => removeRawFile(raw.id)}
-                          className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
-                        >
-                          <span className="material-symbols-outlined text-sm">close</span>
-                        </button>
-                      </div>
-                      <div className="p-2 bg-white">
-                        <p className="text-[10px] text-slate-500 truncate font-medium">{raw.file.name}</p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
+        {showAdmin && <AdminDashboard onClose={() => { setShowAdmin(false); loadTemplates(); }} />}
+      </div>
+    );
+  };
 
-          {/* Processed Previews Section */}
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <PreviewGrid
-              assets={processedAssets}
-              config={config}
-              onClear={() => setProcessedAssets([])}
-              onToggleMask={() => handleConfigChange({ showMask: !config.showMask })}
-              isGenerating={isProcessing}
-            />
-          </div>
-        </div>
-      </main>
-
-      <Footer
-        selectedCount={templates.filter(t => t.checked).length}
-        assetCount={processedAssets.length}
-      />
-
-      {/* Admin Toggle */}
-      <button
-        onClick={() => setShowAdmin(true)}
-        className="fixed bottom-4 right-4 bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors z-40"
-      >
-        <span className="material-symbols-outlined">settings</span>
-      </button>
-
-      {showAdmin && <AdminDashboard onClose={() => { setShowAdmin(false); loadTemplates(); }} />}
-    </div>
-  );
-};
-
-export default App;
+  export default App;
