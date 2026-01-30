@@ -55,33 +55,70 @@ const AdCard: React.FC<{
           src={asset.url}
         />
 
-        {/* Dynamic Overlay Layer - MR Mask */}
-        {(asset.category === '焦点视窗' || asset.category === '开屏') && localShowMask && (
+        {/* Dynamic Overlay Layer - MR Mask or Focal Window Layers */}
+        {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
-            {asset.maskUrl ? (
-              <img
-                src={`${ASSETS_URL}${asset.maskUrl}`}
-                className="w-full h-full object-contain"
-                alt="mask overlay"
-              />
-            ) : (
-              <div
-                className="absolute inset-0 flex items-center px-6"
-                style={{
-                  background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
-                  opacity: 0.85
-                }}
-              >
-                <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center animate-in fade-in zoom-in duration-300">
-                  <span
-                    className="material-symbols-outlined text-2xl fill"
-                    style={{ color: config.smartExtract ? asset.aiExtractedColor : config.iconColor }}
-                  >
-                    {config.smartExtract ? asset.suggestedIcon : 'star'}
-                  </span>
-                </div>
+            {asset.category === '焦点视窗' ? (
+              <div className="absolute inset-0">
+                {/* 层级关系：固定 1 -> Icon 底 (变色) -> 渐变 (变色) -> 固定 2 */}
+                {/* 固定背景 1 */}
+                <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 w-full h-full object-contain" alt="fixed 1" />
+
+                {/* Icon 底图 (动态变色) */}
+                <div
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    maskImage: 'url(/focal-window/icon_bg.png)',
+                    WebkitMaskImage: 'url(/focal-window/icon_bg.png)',
+                    maskSize: 'contain',
+                    WebkitMaskSize: 'contain',
+                    backgroundColor: config.smartExtract ? asset.aiExtractedColor : config.iconColor,
+                    mixBlendMode: 'normal'
+                  }}
+                />
+
+                {/* 渐变图层 (动态变色) */}
+                <div
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    maskImage: 'url(/focal-window/gradient_layer.png)',
+                    WebkitMaskImage: 'url(/focal-window/gradient_layer.png)',
+                    maskSize: 'contain',
+                    WebkitMaskSize: 'contain',
+                    background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor}, transparent)`,
+                    mixBlendMode: 'normal'
+                  }}
+                />
+
+                {/* 固定背景 2 (最顶层) */}
+                <img src="/focal-window/fixed_bg_2.png" className="absolute inset-0 w-full h-full object-contain" alt="fixed 2" />
               </div>
-            )}
+            ) : asset.category === '开屏' ? (
+              asset.maskUrl ? (
+                <img
+                  src={`${ASSETS_URL}${asset.maskUrl}`}
+                  className="w-full h-full object-contain"
+                  alt="mask overlay"
+                />
+              ) : (
+                <div
+                  className="absolute inset-0 flex items-center px-6"
+                  style={{
+                    background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor} 0%, transparent 100%)`,
+                    opacity: 0.85
+                  }}
+                >
+                  <div className="w-12 h-12 bg-white rounded-lg shadow-lg flex items-center justify-center animate-in fade-in zoom-in duration-300">
+                    <span
+                      className="material-symbols-outlined text-2xl fill"
+                      style={{ color: config.smartExtract ? asset.aiExtractedColor : config.iconColor }}
+                    >
+                      {config.smartExtract ? asset.suggestedIcon : 'star'}
+                    </span>
+                  </div>
+                </div>
+              )
+            ) : null}
           </div>
         )}
 
