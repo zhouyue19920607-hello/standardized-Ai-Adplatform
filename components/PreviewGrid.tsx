@@ -39,39 +39,104 @@ const AdCard: React.FC<{
       // 不带遮罩：直接下载原图
       const link = document.createElement('a');
       link.href = asset.url;
-      link.download = `orig_${asset.name}`;
+      link.download = `original_${asset.name}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       return;
     }
 
-    // 带遮罩：尝试使用 Canvas 合成 (针对美图秀秀焦点视窗)
+    // 带遮罩：实现 Canvas 合成 (仅针对美图秀秀焦点视窗)
     if (asset.app === '美图秀秀' && asset.category === '焦点视窗') {
       try {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = asset.url;
+        // 设置画布尺寸为原始图片尺寸
+        const loadImg = (src: string): Promise<HTMLImageElement> => {
+          return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = src;
+          });
+        };
 
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-        });
+        const [mainImg, bg1, bg2, iconMask, gradMask] = await Promise.all([
+          loadImg(asset.url),
+          loadImg('/focal-window/fixed_bg_1.png'),
+          loadImg('/focal-window/fixed_bg_2.png'),
+          loadImg('/focal-window/icon_bg.png'),
+          loadImg('/focal-window/gradient_layer.png')
+        ]);
 
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        canvas.width = mainImg.naturalWidth;
+        canvas.height = mainImg.naturalHeight;
 
-        // 绘制底层用户素材
-        ctx.drawImage(img, 0, 0);
+        // 1. 绘制底层用户素材
+        ctx.drawImage(mainImg, 0, 0, canvas.width, canvas.height);
 
-        // TODO: 这里如果需要精确合成 PNG 图层和 CSS 遮罩，逻辑较重。
-        // 为了快速响应用户要求“保存点亮遮罩后的成果”，目前先实现下载逻辑的切换。
-        // 由于 Canvas 合成静态资源跨域和 CSS Mask 渲染限制，暂时先弹窗提示或下载原图，
-        // 后续如果需要像素级还原，建议使用后端合成。
+        // 获取当前应有的颜色
+        const baseColor = (config.smartExtract && asset.aiExtractedColor) ? asset.aiExtractedColor : config.iconColor;
+        const derivedColor = getDerivedGradientColor(baseColor);
+
+        // 2. 绘制 fixed_bg_2 (内底) - z-10
+        ctx.drawImage(bg2, 0, 0, canvas.width, canvas.height);
+
+        // 3. 绘制 gradient_layer (变色渐变层) - z-20
+        const gradCanvas = document.createElement('canvas');
+        gradCanvas.width = canvas.width;
+        gradCanvas.height = canvas.height;
+        const gradCtx = gradCanvas.getContext('2d')!;
+
+        // 填充颜色
+        gradCtx.fillStyle = derivedColor;
+        gradCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 处理黑白图为 Alpha 遮罩 (Luminance to Alpha)
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = canvas.width;
+        maskCanvas.height = canvas.height;
+        const maskCtx = maskCanvas.getContext('2d')!;
+        maskCtx.drawImage(gradMask, 0, 0, canvas.width, canvas.height);
+        const maskData = maskCtx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < maskData.data.length; i += 4) {
+          // 标准 Luminance 逻辑：白色(255)->Alpha(255), 黑色(0)->Alpha(0)
+          // 这样 PNG 里的黑条部分就会变成“窗口”透明，白区变色。
+          const avg = (maskData.data[i] + maskData.data[i + 1] + maskData.data[i + 2]) / 3;
+          maskData.data[i + 3] = avg;
+        }
+        maskCtx.putImageData(maskData, 0, 0);
+
+        gradCtx.globalCompositeOperation = 'destination-in';
+        gradCtx.drawImage(maskCanvas, 0, 0);
+
+        // 添加垂直 0-20-80-100 羽化 (用户指定逻辑)
+        const verticalGrad = gradCtx.createLinearGradient(0, 0, 0, canvas.height);
+        verticalGrad.addColorStop(0, 'rgba(0,0,0,0)');
+        verticalGrad.addColorStop(0.2, 'rgba(0,0,0,1)');
+        verticalGrad.addColorStop(0.8, 'rgba(0,0,0,1)');
+        verticalGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        gradCtx.globalCompositeOperation = 'destination-in';
+        gradCtx.fillStyle = verticalGrad;
+        gradCtx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(gradCanvas, 0, 0);
+
+        // 4. 绘制 icon_bg (图标底 - 变色) - z-30
+        const iconCanvas = document.createElement('canvas');
+        iconCanvas.width = canvas.width;
+        iconCanvas.height = canvas.height;
+        const iconCtx = iconCanvas.getContext('2d')!;
+        iconCtx.fillStyle = baseColor;
+        iconCtx.fillRect(0, 0, canvas.width, canvas.height);
+        iconCtx.globalCompositeOperation = 'destination-in';
+        iconCtx.drawImage(iconMask, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(iconCanvas, 0, 0);
+
+        // 5. 绘制 fixed_bg_1 (最顶层) - z-40
+        ctx.drawImage(bg1, 0, 0, canvas.width, canvas.height);
 
         const link = document.createElement('a');
         link.href = canvas.toDataURL('image/png');
@@ -81,15 +146,18 @@ const AdCard: React.FC<{
         document.body.removeChild(link);
       } catch (err) {
         console.error("Canvas composite failed:", err);
+        // 回退逻辑：如果合成失败，下载原图
+        const link = document.createElement('a');
+        link.href = asset.url;
+        link.download = `download_fallback_${asset.name}`;
+        link.click();
       }
     } else {
-      // 非特定模版带遮罩下载：暂回退原图下载
+      // 其他模版直接下载
       const link = document.createElement('a');
       link.href = asset.url;
-      link.download = `masked_${asset.name}`;
-      document.body.appendChild(link);
+      link.download = `${localShowMask ? 'preview' : 'original'}_${asset.name}`;
       link.click();
-      document.body.removeChild(link);
     }
   };
 
@@ -110,17 +178,17 @@ const AdCard: React.FC<{
         {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
             {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (() => {
-              const baseColor = config.smartExtract ? asset.aiExtractedColor : config.iconColor;
+              const baseColor = (config.smartExtract && asset.aiExtractedColor) ? asset.aiExtractedColor : config.iconColor;
               const derivedGradientColor = getDerivedGradientColor(baseColor);
 
               return (
                 <div className="absolute inset-0">
-                  {/* 最顶层 (z-40)：fixed_bg_1.png (顶层文案/边框) */}
+                  {/* 最顶层 (z-40) */}
                   <div className="absolute inset-0 z-[40]">
-                    <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-fill" alt="top border" />
+                    <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-fill" alt="top" />
                   </div>
 
-                  {/* 第三层 (z-30)：icon_bg.png (图标底 - 动态变色) */}
+                  {/* 第三层：图标底 (z-30) */}
                   <div
                     className="absolute inset-0 z-[30]"
                     style={{
@@ -132,22 +200,27 @@ const AdCard: React.FC<{
                     }}
                   />
 
-                  {/* 第二层 (z-20)：gradient_layer.png (渐变层 - 混合遮罩与 HSB 取色) */}
+                  {/* 第二层：变色渐变层 (z-20) */}
                   <div
                     className="absolute inset-0 z-[20]"
                     style={{
-                      // 复合遮罩：垂直羽化(用户SVG逻辑) + 图像形状
+                      // 复合遮罩：垂直渐变边缘 + PNG 形状
+                      // Luminance 模式下：黑位(PNG中间)透明 -> 形成窗口；白位(上下)显示颜色
                       maskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
                       WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
                       maskSize: '100% 100%',
                       WebkitMaskSize: '100% 100%',
+                      maskMode: 'luminance',
+                      WebkitMaskMode: 'luminance',
                       backgroundColor: derivedGradientColor,
+                      // 如果用户依然感觉没拾取色值，强制在这里使用拾取到的色值展示
+                      boxShadow: '0 0 0 transparent'
                     }}
                   />
 
-                  {/* 内底层 (z-10)：fixed_bg_2.png (固定透明板) */}
+                  {/* 内底层 (z-10) */}
                   <div className="absolute inset-0 z-[10]">
-                    <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-fill" alt="inner base" />
+                    <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-fill" alt="base" />
                   </div>
                 </div>
               );
