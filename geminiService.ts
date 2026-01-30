@@ -1,7 +1,7 @@
 
 export async function analyzeImageColors(base64Image: string) {
   try {
-    const resp = await fetch("/api/analyze-image", {
+    const resp = await fetch("/api/analyze-color", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
