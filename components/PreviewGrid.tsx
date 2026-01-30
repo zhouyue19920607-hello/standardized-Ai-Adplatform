@@ -60,39 +60,41 @@ const AdCard: React.FC<{
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
             {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (
               <div className="absolute inset-0">
-                {/* 层级关系 (由底到顶): 用户素材 -> fixed_bg_1 -> icon_bg -> gradient_layer -> fixed_bg_2 */}
+                {/* 物理层级校准: z-index 越大越靠前 (显示在上方) */}
 
-                {/* 第四层：固定透明板 (最底层叠加) */}
-                <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 w-full h-full object-contain" alt="fixed 1" />
+                {/* 顶层 (第一层): fixed_bg_1.png (顶层文案/边框) */}
+                <div className="absolute inset-0 z-[40]">
+                  <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-contain" alt="top border" />
+                </div>
 
-                {/* 第三层：Icon 底图 (动态变色) */}
+                {/* 第二层: icon_bg.png (图标底 - 动态变色) */}
                 <div
-                  className="absolute inset-0 w-full h-full"
+                  className="absolute inset-0 z-[30]"
                   style={{
                     maskImage: 'url(/focal-window/icon_bg.png)',
                     WebkitMaskImage: 'url(/focal-window/icon_bg.png)',
                     maskSize: 'contain',
                     WebkitMaskSize: 'contain',
                     backgroundColor: config.smartExtract ? asset.aiExtractedColor : config.iconColor,
-                    mixBlendMode: 'normal'
                   }}
                 />
 
-                {/* 第二层：渐变图层 (动态变色) */}
+                {/* 第三层: gradient_layer.png (渐变图层 - 动态变色) */}
                 <div
-                  className="absolute inset-0 w-full h-full"
+                  className="absolute inset-0 z-[20]"
                   style={{
                     maskImage: 'url(/focal-window/gradient_layer.png)',
                     WebkitMaskImage: 'url(/focal-window/gradient_layer.png)',
                     maskSize: 'contain',
                     WebkitMaskSize: 'contain',
                     background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor}, transparent)`,
-                    mixBlendMode: 'normal'
                   }}
                 />
 
-                {/* 第一层：固定背景 2 (最顶层文案/边框) */}
-                <img src="/focal-window/fixed_bg_2.png" className="absolute inset-0 w-full h-full object-contain" alt="fixed 2" />
+                {/* 内底层 (第四层): fixed_bg_2.png (固定透明板) */}
+                <div className="absolute inset-0 z-[10]">
+                  <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-contain" alt="base board" />
+                </div>
               </div>
             ) : (asset.category === '焦点视窗' || asset.category === '开屏') ? (
               asset.maskUrl ? (
