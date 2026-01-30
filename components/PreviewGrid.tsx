@@ -178,18 +178,18 @@ const AdCard: React.FC<{
         {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
             {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (() => {
-              // 优先使用 asset 自带的拾色，如果没有则回退到 config 配置
-              const baseColor = asset.aiExtractedColor || config.iconColor;
+              // 强制确保颜色存在
+              const baseColor = asset.aiExtractedColor || config.iconColor || '#2563EB';
               const derivedGradientColor = getDerivedGradientColor(baseColor);
 
               return (
                 <div className="absolute inset-0">
-                  {/* 最顶层 (z-40) */}
+                  {/* 层级 4：顶层文案 */}
                   <div className="absolute inset-0 z-[40]">
                     <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-fill" alt="top" />
                   </div>
 
-                  {/* 第三层：图标底 (z-30) */}
+                  {/* 层级 3：图标底 (变色) */}
                   <div
                     className="absolute inset-0 z-[30]"
                     style={{
@@ -201,12 +201,11 @@ const AdCard: React.FC<{
                     }}
                   />
 
-                  {/* 第二层：变色渐变层 (z-20) */}
+                  {/* 层级 2：渐变层 (HSB 派生深色 + 垂直渐变) */}
                   <div
                     className="absolute inset-0 z-[20]"
                     style={{
-                      // 复合遮罩：垂直渐变边缘 (羽化增加10%) + PNG 形状
-                      // Luminance 模式下：黑位(PNG中间)透明 -> 形成窗口；白位(上下)显示颜色
+                      // 垂直渐变：0-30% 透明渐变到黑(显示色)，80-100% 黑渐变到透明
                       maskImage: `linear-gradient(to bottom, transparent 0%, black 30%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
                       WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 30%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
                       maskSize: '100% 100%',
@@ -218,7 +217,7 @@ const AdCard: React.FC<{
                     }}
                   />
 
-                  {/* 内底层 (z-10) */}
+                  {/* 层级 1：内底座 */}
                   <div className="absolute inset-0 z-[10]">
                     <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-fill" alt="base" />
                   </div>
@@ -308,6 +307,12 @@ const AdCard: React.FC<{
                 <span className="text-xs font-bold text-slate-800 truncate max-w-[120px]">{asset.templateName}</span>
                 <span className="text-[10px] text-slate-400 font-medium px-1.5 border border-slate-200 rounded">{asset.size}</span>
               </div>
+              {asset.aiExtractedColor && (
+                <div className="flex items-center gap-1 mt-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: asset.aiExtractedColor }} />
+                  <span className="text-[9px] text-slate-400 font-mono">拾取色: {asset.aiExtractedColor}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100">
