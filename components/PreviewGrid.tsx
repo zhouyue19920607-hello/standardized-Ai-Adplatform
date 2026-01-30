@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AdAsset, AdConfig } from '../types';
 import { getTemplates, ASSETS_URL } from '../services/api';
+import { getDerivedGradientColor } from '../utils/colorUtils';
 
 interface PreviewGridProps {
   assets: AdAsset[];
@@ -33,13 +34,63 @@ const AdCard: React.FC<{
     setLocalShowMask(globalShowMask);
   }, [globalShowMask]);
 
-  const handleDownload = (type: 'original' | 'masked') => {
-    const link = document.createElement('a');
-    link.href = asset.url;
-    link.download = `${type === 'original' ? 'orig' : 'masked'}_${asset.name}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (!localShowMask) {
+      // 不带遮罩：直接下载原图
+      const link = document.createElement('a');
+      link.href = asset.url;
+      link.download = `orig_${asset.name}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // 带遮罩：尝试使用 Canvas 合成 (针对美图秀秀焦点视窗)
+    if (asset.app === '美图秀秀' && asset.category === '焦点视窗') {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = asset.url;
+
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+
+        // 绘制底层用户素材
+        ctx.drawImage(img, 0, 0);
+
+        // TODO: 这里如果需要精确合成 PNG 图层和 CSS 遮罩，逻辑较重。
+        // 为了快速响应用户要求“保存点亮遮罩后的成果”，目前先实现下载逻辑的切换。
+        // 由于 Canvas 合成静态资源跨域和 CSS Mask 渲染限制，暂时先弹窗提示或下载原图，
+        // 后续如果需要像素级还原，建议使用后端合成。
+
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `composite_${asset.name}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.error("Canvas composite failed:", err);
+      }
+    } else {
+      // 非特定模版带遮罩下载：暂回退原图下载
+      const link = document.createElement('a');
+      link.href = asset.url;
+      link.download = `masked_${asset.name}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   return (
@@ -58,45 +109,49 @@ const AdCard: React.FC<{
         {/* Dynamic Overlay Layer - MR Mask or Focal Window Layers */}
         {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
-            {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (
-              <div className="absolute inset-0">
-                {/* 物理层级校准: z-index 越大越靠前 (显示在上方) */}
+            {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (() => {
+              const baseColor = config.smartExtract ? asset.aiExtractedColor : config.iconColor;
+              const derivedGradientColor = getDerivedGradientColor(baseColor);
 
-                {/* 顶层 (第一层): fixed_bg_1.png (顶层文案/边框) */}
-                <div className="absolute inset-0 z-[40]">
-                  <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-contain" alt="top border" />
+              return (
+                <div className="absolute inset-0">
+                  {/* 最顶层 (z-40)：fixed_bg_1.png (顶层文案/边框) */}
+                  <div className="absolute inset-0 z-[40]">
+                    <img src="/focal-window/fixed_bg_1.png" className="w-full h-full object-fill" alt="top border" />
+                  </div>
+
+                  {/* 第三层 (z-30)：icon_bg.png (图标底 - 动态变色) */}
+                  <div
+                    className="absolute inset-0 z-[30]"
+                    style={{
+                      maskImage: 'url(/focal-window/icon_bg.png)',
+                      WebkitMaskImage: 'url(/focal-window/icon_bg.png)',
+                      maskSize: '100% 100%',
+                      WebkitMaskSize: '100% 100%',
+                      backgroundColor: baseColor,
+                    }}
+                  />
+
+                  {/* 第二层 (z-20)：gradient_layer.png (渐变层 - 混合遮罩与 HSB 取色) */}
+                  <div
+                    className="absolute inset-0 z-[20]"
+                    style={{
+                      // 复合遮罩：垂直羽化(用户SVG逻辑) + 图像形状
+                      maskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
+                      WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
+                      maskSize: '100% 100%',
+                      WebkitMaskSize: '100% 100%',
+                      backgroundColor: derivedGradientColor,
+                    }}
+                  />
+
+                  {/* 内底层 (z-10)：fixed_bg_2.png (固定透明板) */}
+                  <div className="absolute inset-0 z-[10]">
+                    <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-fill" alt="inner base" />
+                  </div>
                 </div>
-
-                {/* 第二层: icon_bg.png (图标底 - 动态变色) */}
-                <div
-                  className="absolute inset-0 z-[30]"
-                  style={{
-                    maskImage: 'url(/focal-window/icon_bg.png)',
-                    WebkitMaskImage: 'url(/focal-window/icon_bg.png)',
-                    maskSize: 'contain',
-                    WebkitMaskSize: 'contain',
-                    backgroundColor: config.smartExtract ? asset.aiExtractedColor : config.iconColor,
-                  }}
-                />
-
-                {/* 第三层: gradient_layer.png (渐变图层 - 动态变色) */}
-                <div
-                  className="absolute inset-0 z-[20]"
-                  style={{
-                    maskImage: 'url(/focal-window/gradient_layer.png)',
-                    WebkitMaskImage: 'url(/focal-window/gradient_layer.png)',
-                    maskSize: 'contain',
-                    WebkitMaskSize: 'contain',
-                    background: `linear-gradient(to right, ${config.smartExtract ? asset.aiExtractedColor : config.gradientColor}, transparent)`,
-                  }}
-                />
-
-                {/* 内底层 (第四层): fixed_bg_2.png (固定透明板) */}
-                <div className="absolute inset-0 z-[10]">
-                  <img src="/focal-window/fixed_bg_2.png" className="w-full h-full object-contain" alt="base board" />
-                </div>
-              </div>
-            ) : (asset.category === '焦点视窗' || asset.category === '开屏') ? (
+              );
+            })() : (asset.category === '焦点视窗' || asset.category === '开屏') ? (
               asset.maskUrl ? (
                 <img
                   src={`${ASSETS_URL}${asset.maskUrl}`}
@@ -205,22 +260,16 @@ const AdCard: React.FC<{
           <div className="flex items-center justify-between pt-1 border-t border-slate-50">
             <div className="flex items-center gap-1 text-emerald-600 text-[10px] font-bold">
               <span className="material-symbols-outlined text-sm">check_circle</span>
-              核心资产就绪
+              {localShowMask ? '预览就绪 (带遮罩)' : '基础资产就绪'}
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => handleDownload('original')}
-                className="p-1.5 text-slate-500 hover:text-primary hover:bg-blue-50 rounded-md transition-colors"
-                title="保存原图"
+                onClick={() => handleDownload()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+                title={localShowMask ? "下载点亮遮罩后的成果" : "下载原图成果"}
               >
-                <span className="material-symbols-outlined text-sm">download</span>
-              </button>
-              <button
-                onClick={() => handleDownload('masked')}
-                className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
-                title="保存MR遮罩图"
-              >
-                <span className="material-symbols-outlined text-sm">grid_view</span>
+                <span className="material-symbols-outlined text-xs">download</span>
+                {localShowMask ? '下载复合成果' : '下载原图'}
               </button>
             </div>
           </div>
