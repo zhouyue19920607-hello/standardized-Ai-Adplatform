@@ -113,10 +113,10 @@ const AdCard: React.FC<{
         gradCtx.globalCompositeOperation = 'destination-in';
         gradCtx.drawImage(maskCanvas, 0, 0);
 
-        // 添加垂直 0-20-80-100 羽化 (用户指定逻辑)
+        // 添加垂直 0-30-80-100 羽化 (用户指定逻辑：向上增加 10% 渐变)
         const verticalGrad = gradCtx.createLinearGradient(0, 0, 0, canvas.height);
         verticalGrad.addColorStop(0, 'rgba(0,0,0,0)');
-        verticalGrad.addColorStop(0.2, 'rgba(0,0,0,1)');
+        verticalGrad.addColorStop(0.3, 'rgba(0,0,0,1)'); // 从 20% 移至 30%
         verticalGrad.addColorStop(0.8, 'rgba(0,0,0,1)');
         verticalGrad.addColorStop(1, 'rgba(0,0,0,0)');
         gradCtx.globalCompositeOperation = 'destination-in';
@@ -178,7 +178,8 @@ const AdCard: React.FC<{
         {localShowMask && (
           <div className="absolute inset-0 transition-opacity duration-300 pointer-events-none">
             {asset.app === '美图秀秀' && asset.category === '焦点视窗' ? (() => {
-              const baseColor = (config.smartExtract && asset.aiExtractedColor) ? asset.aiExtractedColor : config.iconColor;
+              // 优先使用 asset 自带的拾色，如果没有则回退到 config 配置
+              const baseColor = asset.aiExtractedColor || config.iconColor;
               const derivedGradientColor = getDerivedGradientColor(baseColor);
 
               return (
@@ -204,16 +205,15 @@ const AdCard: React.FC<{
                   <div
                     className="absolute inset-0 z-[20]"
                     style={{
-                      // 复合遮罩：垂直渐变边缘 + PNG 形状
+                      // 复合遮罩：垂直渐变边缘 (羽化增加10%) + PNG 形状
                       // Luminance 模式下：黑位(PNG中间)透明 -> 形成窗口；白位(上下)显示颜色
-                      maskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
-                      WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
+                      maskImage: `linear-gradient(to bottom, transparent 0%, black 30%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
+                      WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 30%, black 80%, transparent 100%), url(/focal-window/gradient_layer.png)`,
                       maskSize: '100% 100%',
                       WebkitMaskSize: '100% 100%',
                       maskMode: 'luminance',
                       WebkitMaskMode: 'luminance',
                       backgroundColor: derivedGradientColor,
-                      // 如果用户依然感觉没拾取色值，强制在这里使用拾取到的色值展示
                       boxShadow: '0 0 0 transparent'
                     }}
                   />
