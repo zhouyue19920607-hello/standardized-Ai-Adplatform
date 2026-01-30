@@ -12,7 +12,9 @@
   "dependencies": {
     "@google/genai": "^1.38.0",
     "axios": "^1.13.4",
+    "chroma-js": "^3.2.0",
     "clsx": "^2.1.1",
+    "colorthief": "^2.6.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
@@ -21,6 +23,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@types/chroma-js": "^3.1.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

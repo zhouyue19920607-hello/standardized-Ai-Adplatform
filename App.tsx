@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -8,6 +7,7 @@ import { AdTemplate, AdAsset, AdConfig } from './types';
 import { analyzeImageColors } from './geminiService';
 import { getTemplates } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
+import { extractSmartColor } from './utils/smartColor';
 
 interface RawFile {
   id: string;
@@ -33,8 +33,8 @@ const App: React.FC = () => {
   };
   const [config, setConfig] = useState<AdConfig>({
     smartExtract: true,
-    iconColor: '#2563EB',
-    gradientColor: '#2563EB',
+    iconColor: '#FF00FF',
+    gradientColor: '#FF00FF',
     showMask: false,
     splashText: '跳转至第三方平台',
   });
@@ -55,10 +55,10 @@ const App: React.FC = () => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newRawFiles: RawFile[] = Array.from(files).map(file => ({
+    const newRawFiles: RawFile[] = Array.from(files).map((file: File) => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
-      previewUrl: URL.createObjectURL(file)
+      previewUrl: URL.createObjectURL(file as any),
     }));
 
     setRawFiles(prev => [...prev, ...newRawFiles]);
@@ -83,19 +83,19 @@ const App: React.FC = () => {
 
     const results: AdAsset[] = [];
 
-    for (const raw of rawFiles) {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => resolve(reader.result?.toString().split(',')[1] || '');
-        reader.readAsDataURL(raw.file);
-      });
 
-      const base64 = await base64Promise;
+    for (const raw of rawFiles) {
+      // 获取图片的 DataURL
+      const previewUrl = raw.previewUrl;
+
       const analysis = config.smartExtract
-        ? await analyzeImageColors(base64)
-        : { hexColor: config.iconColor, iconName: 'star' };
+        ? await extractSmartColor(previewUrl)
+        : { hexColor: config.iconColor };
 
       activeTemplates.forEach(template => {
+        if (analysis.hexColor) {
+          console.log(`[ColorAnalysis] Extracted color for ${raw.file.name}: ${analysis.hexColor} (HCL Corrected)`);
+        }
         results.push({
           id: `${raw.id}-${template.id}`,
           url: raw.previewUrl,
@@ -107,12 +107,17 @@ const App: React.FC = () => {
           app: template.app,
           templateName: template.name,
           aiExtractedColor: analysis.hexColor,
-          suggestedIcon: analysis.iconName,
           dimensions: template.dimensions || '1080 x 1920',
           splashText: template.category === '开屏' ? config.splashText : undefined,
           maskUrl: template.mask_path,
         });
       });
+    }
+
+    // 生成后自动开启遮罩预览 (如果包含焦点视窗)
+    const hasFocalWindow = activeTemplates.some(t => t.category === '焦点视窗');
+    if (hasFocalWindow) {
+      handleConfigChange({ showMask: true });
     }
 
     setProcessedAssets(results);
