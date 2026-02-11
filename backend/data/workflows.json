@@ -1,2 +1,10 @@
-[]
-
+[
+  {
+    "id": "wf_1769787041100",
+    "name": "视频截取第一帧",
+    "description": "",
+    "filePath": "backend/storage/workflows/1769787041088______________________.json.json",
+    "templateId": null,
+    "updatedAt": "2026-01-30T15:30:41.100Z"
+  }
+]

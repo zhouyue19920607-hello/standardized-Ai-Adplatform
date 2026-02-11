@@ -1,6 +1,6 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdTemplate, AdConfig } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface SidebarProps {
   templates: AdTemplate[];
@@ -10,188 +10,282 @@ interface SidebarProps {
   activeCount: number;
   onGenerate: () => void;
   isProcessing: boolean;
+  onTemplateUpdate: (id: string, updates: Partial<AdTemplate>) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-  templates, 
-  config, 
-  onTemplateToggle, 
+const Sidebar: React.FC<SidebarProps> = ({
+  templates,
+  config,
+  onTemplateToggle,
   onConfigChange,
   activeCount,
   onGenerate,
-  isProcessing
+  isProcessing,
+  onTemplateUpdate
 }) => {
+  const { t } = useLanguage();
+  if (!Array.isArray(templates)) return null;
   const apps: AdTemplate['app'][] = ['美图秀秀', '美颜', 'wink'];
-  
-  // Checks if any template of a specific sub-category is selected
-  const isSubCategoryActive = (app: string, cat: string) => 
-    templates.some(t => t.app === app && t.category === cat && t.checked);
+
+  // State for collapsible sub-categories (Key format: "AppName-CategoryName")
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
+
+  // Helper to toggle expansion
+  const toggleCat = (key: string) => {
+    setExpandedCats(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Helper to init expansion state on first load (e.g. expand all by default or first one)
+  // Simple approach: controlled by click. Default collapsed? 
+  // User "still needs expand/collapse", implies they want control. 
+  // I'll default to 'true' (expanded) for meaningful content.
+  useEffect(() => {
+    const initialExpanded: Record<string, boolean> = {};
+    templates.forEach(tpl => {
+      const key = `${tpl.app}-${tpl.category}`;
+      if (initialExpanded[key] === undefined) initialExpanded[key] = true;
+    });
+    setExpandedCats(prev => ({ ...initialExpanded, ...prev }));
+  }, []);
 
   return (
-    <aside className="w-80 bg-white border-r border-slate-200 flex flex-col h-[calc(100vh-73px)] sticky top-[73px]">
-      <div className="p-5 border-b border-slate-100">
-        <h2 className="font-bold flex items-center gap-2 text-slate-700">
-          <span className="material-symbols-outlined text-primary">apps</span>
-          广告模版矩阵
-        </h2>
+    <aside className="w-[340px] sticky top-24 h-[calc(100vh-180px)] flex flex-col liquid-glass ml-4 my-4 shrink-0 overflow-hidden shadow-2xl z-50">
+      <div className="px-6 py-4 shrink-0 flex items-center">
+        <p className="text-sm text-slate-900 font-bold">{t('sidebar.selectCat')}</p>
       </div>
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+
+      <div className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar pb-24">
         {apps.map(appName => {
-          const appTemplates = templates.filter(t => t.app === appName);
-          const categories = Array.from(new Set(appTemplates.map(t => t.category)));
-          const selectedInApp = appTemplates.filter(t => t.checked).length;
+          const appTemplates = templates.filter(tpl => tpl.app === appName);
+          const isDisabledApp = appName === 'wink' || appName === '美颜';
+
+          // Get unique categories for this app
+          const categories = Array.from(new Set(appTemplates.map(tpl => tpl.category)));
 
           return (
-            <details key={appName} className="group/app bg-white rounded-xl" open>
-              <summary className="flex items-center justify-between px-1 py-2 cursor-pointer list-none hover:bg-slate-50 rounded-lg transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-slate-400 group-open/app:rotate-90 transition-transform">
-                    chevron_right
-                  </span>
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <span className="w-1 h-3.5 bg-primary/60 rounded-full"></span>
-                    {appName}
-                  </h3>
-                </div>
-                {selectedInApp > 0 && (
-                  <span className="text-[10px] bg-blue-50 text-primary px-2 py-0.5 rounded-full font-bold">
-                    已选 {selectedInApp}
-                  </span>
+            <div key={appName} className="space-y-2 group">
+              {/* App Header */}
+              <div className="flex items-center gap-2 px-3">
+                <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
+                {isDisabledApp && (
+                  <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t('sidebar.waiting')}</span>
                 )}
-              </summary>
+              </div>
 
-              <div className="space-y-2 mt-2 ml-3.5 pl-3 border-l border-slate-100">
-                {categories.map(cat => {
-                  const subTemplates = appTemplates.filter(t => t.category === cat);
-                  const isActive = isSubCategoryActive(appName, cat);
+              <div className={`transition-all`}>
+                {/* If disabled app, show placeholder or simplified list */}
+                {isDisabledApp ? (
+                  <div className="p-8 text-center bg-gray-50/50">
+                    <span className="material-symbols-outlined text-ios-gray-3 text-3xl mb-2">construction</span>
+                    <p className="text-xs text-ios-gray-2 font-medium">{t('sidebar.noTemplate')}</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col">
+                    {categories.map(cat => {
+                      const subTemplates = appTemplates.filter(tpl => tpl.category === cat);
+                      const expandKey = `${appName}-${cat}`;
+                      const isExpanded = expandedCats[expandKey] ?? true; // Default true
+                      const selectedCount = subTemplates.filter(tpl => tpl.checked).length;
+                      const isAllSelected = subTemplates.length > 0 && subTemplates.every(tpl => tpl.checked);
 
-                  return (
-                    <details key={`${appName}-${cat}`} className="group bg-slate-50/50 rounded-xl border border-slate-100 overflow-hidden" open={isActive}>
-                      <summary className="flex items-center justify-between p-2.5 cursor-pointer hover:bg-slate-100 transition-colors list-none">
-                        <div className="flex items-center gap-2">
-                          <span className={`material-symbols-outlined text-sm transition-transform group-open:rotate-90 ${isActive ? 'text-primary' : 'text-slate-400'}`}>
-                            chevron_right
-                          </span>
-                          <span className={`text-[11px] font-bold ${isActive ? 'text-primary' : 'text-slate-600'}`}>
-                            {cat}
-                          </span>
-                        </div>
-                        <span className="text-[9px] text-slate-400 font-medium">
-                          {subTemplates.length}
-                        </span>
-                      </summary>
-                      
-                      <div className="px-2 pb-2 pt-0.5 space-y-0.5">
-                        {subTemplates.map(t => (
-                          <label key={t.id} className="flex items-center gap-2.5 p-2 hover:bg-white rounded-lg cursor-pointer transition-all group/item border border-transparent hover:border-slate-100">
-                            <input 
-                              type="checkbox" 
-                              checked={t.checked}
-                              onChange={() => onTemplateToggle(t.id)}
-                              className="rounded border-slate-300 text-primary focus:ring-primary h-3.5 w-3.5"
-                            />
-                            <span className={`text-[11px] ${t.checked ? 'text-primary font-bold' : 'text-slate-500'} transition-colors`}>
-                              {t.name}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-
-                      {/* Config Panel for Focus Category */}
-                      {cat === '焦点视窗' && isActive && (
-                        <div className="mx-2 mb-2 p-2.5 bg-white rounded-lg border border-slate-100 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">个性化配置</span>
-                            <span className="material-symbols-outlined text-slate-300 text-xs">settings_suggest</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-slate-600">智能提取配色</span>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
-                                checked={config.smartExtract}
-                                onChange={(e) => onConfigChange({ smartExtract: e.target.checked })}
-                              />
-                              <div className="w-7 h-3.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-primary"></div>
-                            </label>
+                      return (
+                        <div key={cat} className="border-b border-ios-gray-6 last:border-0">
+                          {/* Category Header */}
+                          <div
+                            className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
+                            onClick={() => toggleCat(expandKey)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`material-symbols-outlined text-[18px] text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                              <span className="text-[15px] font-bold text-slate-800">{t(`categories.${cat}`)}</span>
+                              <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-full">{subTemplates.length}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {selectedCount > 0 && (
+                                <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-bold">{selectedCount}</span>
+                              )}
+                              {/* Select All Checkbox for Category */}
+                              <div
+                                className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const targetState = !isAllSelected;
+                                  subTemplates.forEach(tpl => {
+                                    if (tpl.checked !== targetState) onTemplateToggle(tpl.id);
+                                  });
+                                }}
+                              >
+                                {isAllSelected ? (
+                                  <span className="material-symbols-outlined text-sm text-primary fill">check_circle</span>
+                                ) : (
+                                  <span className="material-symbols-outlined text-sm text-ios-gray-3">radio_button_unchecked</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
 
-                          {!config.smartExtract && (
-                            <div className="space-y-2 pt-2 border-t border-slate-50">
-                               <div className="flex items-center justify-between gap-2">
-                                 <span className="text-[9px] text-slate-500 shrink-0">图标色</span>
-                                 <div className="flex items-center gap-1.5 flex-1">
-                                   <input 
-                                      className="flex-1 text-[9px] font-mono p-1 border border-slate-100 rounded bg-slate-50 uppercase" 
-                                      type="text" 
-                                      value={config.iconColor}
-                                      onChange={(e) => onConfigChange({ iconColor: e.target.value })}
-                                   />
-                                   <div 
-                                      className="w-4 h-4 rounded-sm border border-slate-200 cursor-pointer shrink-0"
-                                      style={{ backgroundColor: config.iconColor }}
-                                      onClick={() => document.getElementById(`cp-${appName}-${cat}-1`)?.click()}
-                                   ></div>
-                                   <input 
-                                      type="color" id={`cp-${appName}-${cat}-1`} className="sr-only"
-                                      value={config.iconColor} onChange={(e) => onConfigChange({ iconColor: e.target.value })}
-                                   />
-                                 </div>
-                               </div>
-                               <div className="flex items-center justify-between gap-2">
-                                 <span className="text-[9px] text-slate-500 shrink-0">渐变色</span>
-                                 <div className="flex items-center gap-1.5 flex-1">
-                                   <input 
-                                      className="flex-1 text-[9px] font-mono p-1 border border-slate-100 rounded bg-slate-50 uppercase" 
-                                      type="text" 
-                                      value={config.gradientColor}
-                                      onChange={(e) => onConfigChange({ gradientColor: e.target.value })}
-                                   />
-                                   <div 
-                                      className="w-4 h-4 rounded-sm border border-slate-200 cursor-pointer shrink-0"
-                                      style={{ backgroundColor: config.gradientColor }}
-                                      onClick={() => document.getElementById(`cp-${appName}-${cat}-2`)?.click()}
-                                   ></div>
-                                   <input 
-                                      type="color" id={`cp-${appName}-${cat}-2`} className="sr-only"
-                                      value={config.gradientColor} onChange={(e) => onConfigChange({ gradientColor: e.target.value })}
-                                   />
-                                 </div>
-                               </div>
+                          {/* Templates List (Collapsible) */}
+                          {isExpanded && (
+                            <div className="bg-ios-gray-6/30 p-1.5 space-y-1">
+                              {subTemplates.map(tpl => (
+                                <div key={tpl.id} className="px-1">
+                                  <label
+                                    className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
+                                                            ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
+                                    }
+                                  >
+                                    <div className="flex items-center justify-center">
+                                      {tpl.checked ? (
+                                        <span className="material-symbols-outlined text-[22px] text-primary fill">check_circle</span>
+                                      ) : (
+                                        <span className="material-symbols-outlined text-[22px] text-ios-gray-4">radio_button_unchecked</span>
+                                      )}
+                                      <input
+                                        type="checkbox"
+                                        checked={tpl.checked}
+                                        onChange={() => onTemplateToggle(tpl.id)}
+                                        className="sr-only"
+                                      />
+                                    </div>
+                                    <div className="flex flex-col flex-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className={`text-sm font-semibold truncate ${tpl.checked ? 'text-primary' : 'text-slate-800'}`}>
+                                          {t(`templates.${tpl.name}`) !== `templates.${tpl.name}` ? t(`templates.${tpl.name}`) : tpl.name}
+                                        </span>
+                                        {tpl.mask_path && <span className="material-symbols-outlined text-[14px] text-slate-400" title="支持MR遮罩">visibility</span>}
+                                      </div>
+                                      <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{tpl.dimensions}</span>
+                                    </div>
+                                  </label>
+
+                                  {/* Config Panel (Inline) - Focal Window or Dynamic Splash */}
+                                  {tpl.checked && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (
+                                    <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                                        <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
+                                      </div>
+
+                                      {/* Specific option for Dynamic Splash */}
+                                      {tpl.category === '开屏' && tpl.name.includes('动态') && (
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.captureFirst')}</span>
+                                          <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              className="sr-only peer"
+                                              checked={config.captureFirstFrame}
+                                              onChange={(e) => onConfigChange({ captureFirstFrame: e.target.checked })}
+                                            />
+                                            <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                          </label>
+                                        </div>
+                                      )}
+
+                                      {/* Focal Window Options */}
+                                      {tpl.category === '焦点视窗' && (
+                                        <>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.smartExtract')}</span>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                              {tpl.smartExtract && tpl.palette && tpl.palette.length > 1 && (
+                                                <button
+                                                  onClick={() => {
+                                                    const currentIdx = tpl.palette?.findIndex(p => p.iconColor === tpl.iconColor) ?? -1;
+                                                    const nextIndex = (currentIdx + 1) % (tpl.palette?.length || 1);
+                                                    const nextScheme = tpl.palette?.[nextIndex];
+                                                    if (nextScheme) {
+                                                      onTemplateUpdate(tpl.id, {
+                                                        iconColor: nextScheme.iconColor,
+                                                        gradientColor: nextScheme.gradientColor
+                                                      });
+                                                    }
+                                                  }}
+                                                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-all border border-primary/20 active:scale-95"
+                                                  title="随机更换配色"
+                                                >
+                                                  <span className="material-symbols-outlined text-[18px]">casino</span>
+                                                </button>
+                                              )}
+                                              <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  className="sr-only peer"
+                                                  checked={tpl.smartExtract ?? true}
+                                                  onChange={(e) => onTemplateUpdate(tpl.id, { smartExtract: e.target.checked })}
+                                                />
+                                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                              </label>
+                                            </div>
+                                          </div>
+
+                                          {!tpl.smartExtract && (
+                                            <div className="space-y-3 pt-2 border-t border-ios-gray-6">
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-semibold text-ios-gray-2 shrink-0">{t('sidebar.iconColor')}</span>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-[10px] font-mono text-ios-gray-3 uppercase">{tpl.iconColor}</span>
+                                                  <div
+                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white"
+                                                    style={{ backgroundColor: tpl.iconColor }}
+                                                    onClick={() => document.getElementById(`cp-${appName}-${tpl.id}-1`)?.click()}
+                                                  ></div>
+                                                  <input type="color" id={`cp-${appName}-${tpl.id}-1`} className="sr-only" value={tpl.iconColor} onChange={(e) => onTemplateUpdate(tpl.id, { iconColor: e.target.value })} />
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-semibold text-ios-gray-2 shrink-0">{t('sidebar.gradientColor')}</span>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-[10px] font-mono text-ios-gray-3 uppercase">{tpl.gradientColor}</span>
+                                                  <div
+                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white"
+                                                    style={{ backgroundColor: tpl.gradientColor }}
+                                                    onClick={() => document.getElementById(`cp-${appName}-${tpl.id}-2`)?.click()}
+                                                  ></div>
+                                                  <input type="color" id={`cp-${appName}-${tpl.id}-2`} className="sr-only" value={tpl.gradientColor} onChange={(e) => onTemplateUpdate(tpl.id, { gradientColor: e.target.value })} />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
-                      )}
-                    </details>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </details>
+            </div>
           );
         })}
       </div>
 
-      <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-        <button 
-          onClick={onGenerate}
-          disabled={activeCount === 0 || isProcessing || !templates.some(t => t.checked)}
-          className="w-full py-3.5 px-4 bg-primary hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isProcessing ? (
-            <>
-              <span className="material-symbols-outlined text-xl animate-spin">sync</span>
-              AI 生成中...
-            </>
-          ) : (
-            <>
-              <span className="material-symbols-outlined text-xl group-hover:rotate-12 transition-transform text-white fill">bolt</span>
-              执行生成 ({activeCount})
-            </>
-          )}
-        </button>
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-transparent pointer-events-none">
+        <div className="ios-glass p-2 rounded-ios shadow-ios-lg pointer-events-auto">
+          <button
+            onClick={onGenerate}
+            disabled={activeCount === 0 || isProcessing || !templates.some(tpl => tpl.checked)}
+            className="w-full py-3.5 px-4 bg-primary hover:brightness-110 text-white rounded-ios font-bold text-sm shadow-ios transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:grayscale transform active:scale-[0.98]"
+          >
+            {isProcessing ? (
+              <>
+                <span className="material-symbols-outlined text-xl animate-spin">sync</span>
+                {t('sidebar.generating')}
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-xl fill">bolt</span>
+                {t('sidebar.generate')} ({activeCount})
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </aside>
   );

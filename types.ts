@@ -1,4 +1,9 @@
 
+export interface ColorScheme {
+  iconColor: string;
+  gradientColor: string;
+}
+
 export interface AdTemplate {
   id: string;
   name: string;
@@ -8,6 +13,13 @@ export interface AdTemplate {
   dimensions?: string;
   mask_path?: string | null;
   workflow_id?: string | null;
+  crop_overlay_path?: string | null;
+  badge_overlay_path?: string | null;
+  // Per-template settings
+  smartExtract?: boolean;
+  iconColor?: string;
+  gradientColor?: string;
+  palette?: ColorScheme[];
 }
 
 export interface AdAsset {
@@ -21,16 +33,23 @@ export interface AdAsset {
   app: string;
   templateName: string;
   aiExtractedColor?: string;
+  gradientColor?: string;
+  aiExtractedColors?: ColorScheme[];
   suggestedIcon?: string;
   dimensions: string;
   splashText?: string;
   maskUrl?: string | null;
+  cropOverlayUrl?: string | null;
+  badgeOverlayUrl?: string | null;
+  showMask?: boolean;
+  showCrop?: boolean;
+  showBadge?: boolean;
 }
 
 export interface AdConfig {
-  smartExtract: boolean;
-  iconColor: string;
-  gradientColor: string;
   showMask: boolean;
+  showCrop: boolean;
   splashText: string;
+  captureFirstFrame: boolean;
+  assetsVersion: number;
 }

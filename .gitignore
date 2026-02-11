@@ -33,3 +33,9 @@ backend/static/masks/*
 !backend/static/masks/.gitkeep
 backend/static/workflows/*
 !backend/static/workflows/.gitkeep
+
+release/
+backend/storage/
+backend/static/uploads/
+dist/
+

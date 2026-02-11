@@ -60,7 +60,10 @@ def seed():
     db = SessionLocal()
     for t_data in INITIAL_TEMPLATES:
         if not db.query(AdTemplate).filter(AdTemplate.id == t_data["id"]).first():
-            t_data["dimensions"] = CATEGORY_DIMENSIONS.get(t_data["category"], '1080 x 1920')
+            if t_data["id"] == "mt-ib-3":
+                t_data["dimensions"] = "1126 x 640"
+            else:
+                t_data["dimensions"] = CATEGORY_DIMENSIONS.get(t_data["category"], '1080 x 1920')
             db_item = AdTemplate(**t_data)
             db.add(db_item)
     

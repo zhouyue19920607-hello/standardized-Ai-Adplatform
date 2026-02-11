@@ -5,6 +5,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI, Type } from "@google/genai";
+import axios from "axios";
+import { processImage } from "./utils/imageProcessor.mjs";
 
 // ---- 基础路径与环境变量 ----
 const __filename = fileURLToPath(import.meta.url);
@@ -59,7 +61,7 @@ async function ensureDataFiles() {
       { id: "mt-fe-1", app: "美图秀秀", category: "信息流", name: "一键配方图文", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-1", app: "美图秀秀", category: "icon/banner", name: "热推第三位", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1080 x 1920" },
+      { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1126 x 640" },
       { id: "mt-ib-4", app: "美图秀秀", category: "icon/banner", name: "话题页banner", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-p-2", app: "美图秀秀", category: "弹窗", name: "首页弹窗", checked: false, dimensions: "1080 x 1920" },
@@ -123,6 +125,10 @@ app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use("/static", express.static(STORAGE_DIR));
 
+// 生产环境下静态服务 Vue/React 构建出来的 dist 目录
+const DIST_DIR = path.join(ROOT_DIR, "dist");
+app.use(express.static(DIST_DIR));
+
 // ---- API：模版管理 ----
 app.get("/api/templates", async (req, res) => {
   const templates = await readJson(TEMPLATES_FILE, []);
@@ -150,6 +156,10 @@ app.post("/api/templates", async (req, res) => {
     return res.status(400).json({ error: "id, name, app, category 为必填字段" });
   }
 
+  if (payload.app === "美颜" || payload.app === "wink") {
+    return res.status(400).json({ error: "暂不支持 '美颜' 和 'wink' 应用配置" });
+  }
+
   const templates = await readJson(TEMPLATES_FILE, []);
   if (templates.some(t => t.id === payload.id)) {
     return res.status(409).json({ error: "Template id already exists" });
@@ -163,6 +173,18 @@ app.post("/api/templates", async (req, res) => {
   templates.push(template);
   await writeJson(TEMPLATES_FILE, templates);
   res.status(201).json(template);
+});
+
+// 模版排序
+app.post("/api/templates/reorder", async (req, res) => {
+  const { templates: newOrderTemplates } = req.body;
+  if (!Array.isArray(newOrderTemplates)) {
+    return res.status(400).json({ error: "Invalid templates array" });
+  }
+
+  // 简易实现：直接全量覆盖。为了安全起见，这里可以校验 ID 集合是否一致，但信任前端全量传回也没问题。
+  await writeJson(TEMPLATES_FILE, newOrderTemplates);
+  res.json({ success: true, count: newOrderTemplates.length });
 });
 
 // 模版遮罩 PNG 上传 / 更新
@@ -185,7 +207,56 @@ app.post("/api/templates/:id/mask", upload.single("mask"), async (req, res) => {
   templates[index] = {
     ...templates[index],
     maskPath: relativePath,
+    mask_path: maskUrl, // Ensuring compatibility if frontend expects mask_path
     maskUrl
+  };
+  await writeJson(TEMPLATES_FILE, templates);
+  res.json(templates[index]);
+});
+
+// 模版裁剪区域 PNG 上传 (For Splash)
+app.post("/api/templates/:id/crop-overlay", upload.single("image"), async (req, res) => {
+  const { id } = req.params;
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "缺少上传文件字段 'image'" });
+  }
+
+  const templates = await readJson(TEMPLATES_FILE, []);
+  const index = templates.findIndex(t => t.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Template not found" });
+  }
+
+  const overlayUrl = `/static/${path.relative(STORAGE_DIR, file.path).replace(/\\/g, "/")}`;
+
+  templates[index] = {
+    ...templates[index],
+    crop_overlay_path: overlayUrl
+  };
+  await writeJson(TEMPLATES_FILE, templates);
+  res.json(templates[index]);
+});
+
+// 模版广告角标 PNG 上传 (For Focal Window)
+app.post("/api/templates/:id/badge-overlay", upload.single("image"), async (req, res) => {
+  const { id } = req.params;
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "缺少上传文件字段 'image'" });
+  }
+
+  const templates = await readJson(TEMPLATES_FILE, []);
+  const index = templates.findIndex(t => t.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Template not found" });
+  }
+
+  const overlayUrl = `/static/${path.relative(STORAGE_DIR, file.path).replace(/\\/g, "/")}`;
+
+  templates[index] = {
+    ...templates[index],
+    badge_overlay_path: overlayUrl
   };
   await writeJson(TEMPLATES_FILE, templates);
   res.json(templates[index]);
@@ -212,9 +283,7 @@ app.post("/api/workflows", upload.single("workflow"), async (req, res) => {
   const { name, description, templateId } = req.body || {};
   const file = req.file;
 
-  if (!name) {
-    return res.status(400).json({ error: "name 为必填字段" });
-  }
+  const finalName = name || (file ? file.originalname.replace(/\.[^/.]+$/, "") : "未命名工作流");
 
   if (!file) {
     return res.status(400).json({ error: "缺少上传文件字段 'workflow'" });
@@ -226,7 +295,7 @@ app.post("/api/workflows", upload.single("workflow"), async (req, res) => {
 
   const workflow = {
     id,
-    name,
+    name: finalName,
     description: description || "",
     filePath: relativePath,
     templateId: templateId || null,
@@ -324,24 +393,131 @@ app.post("/api/analyze-image", async (req, res) => {
 });
 
 // ---- API：ComfyUI 调用占位（可按需扩展）----
-// 这里只做一个简单占位，未来可在此读取 workflow JSON，并调用 COMFYUI 的 /prompt 接口
+// ---- API：原始素材上传 (视频/图片) ----
+app.post("/api/upload", upload.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "缺少上传文件" });
+  }
+
+  const relativePath = path.relative(ROOT_DIR, file.path).replace(/\\/g, "/");
+  const url = `/static/${path.relative(STORAGE_DIR, file.path).replace(/\\/g, "/")}`;
+
+  res.json({
+    ok: true,
+    path: relativePath,
+    url
+  });
+});
+
+// ---- API：ComfyUI 调用处理 ----
+async function pollComfyUIResult(promptId) {
+  const checkUrl = `${COMFYUI_BASE_URL}/history/${promptId}`;
+  for (let i = 0; i < 60; i++) { // 最多等待 60 秒
+    try {
+      const resp = await axios.get(checkUrl);
+      const history = resp.data[promptId];
+      if (history && history.outputs) {
+        return history.outputs;
+      }
+    } catch (e) {
+      console.error("Polling ComfyUI failed:", e.message);
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  throw new Error("ComfyUI execution timeout");
+}
+
 app.post("/api/comfyui/generate", async (req, res) => {
   const { workflowId, params } = req.body || {};
   if (!workflowId) {
     return res.status(400).json({ error: "缺少 workflowId" });
   }
 
-  // 预留：这里你可以根据 workflowId 读取 workflows.json 中的 filePath，
-  // 再从文件系统中加载 JSON 内容，并调用 COMFYUI_BASE_URL 的接口。
-  // 为避免在本环境下真实联网，这里仅返回结构化的“计划调用信息”。
+  const workflows = await readJson(WORKFLOWS_FILE, []);
+  const wf = workflows.find(w => w.id === workflowId);
+  if (!wf) {
+    return res.status(404).json({ error: "Workflow not found" });
+  }
 
-  res.json({
-    ok: true,
-    message: "ComfyUI 调用占位：请在生产环境中实现与 ComfyUI 的真实 HTTP 对接。",
-    comfyuiBaseUrl: COMFYUI_BASE_URL,
-    workflowId,
-    params: params || {}
-  });
+  try {
+    // 1. 读取工作流 JSON 内容
+    const workflowPath = path.resolve(ROOT_DIR, wf.filePath);
+    const workflowJson = await readJson(workflowPath, null);
+    if (!workflowJson) throw new Error("Workflow file missing");
+
+    // 2. 注入动态参数 (自动识别输入节点)
+    const inputPath = params.inputPath ? path.resolve(ROOT_DIR, params.inputPath) : "";
+    let foundInput = false;
+
+    for (const nodeId in workflowJson) {
+      const node = workflowJson[nodeId];
+      // 支持 VHS_LoadVideo, LoadVideo, LoadImage 等常见节点
+      if (node.class_type === "VHS_LoadVideo" || node.class_type === "LoadVideo") {
+        node.inputs.video = inputPath;
+        foundInput = true;
+      } else if (node.class_type === "LoadImage") {
+        node.inputs.image = inputPath;
+        foundInput = true;
+      }
+    }
+
+    if (!foundInput) {
+      console.warn("Could not find suitable input node in workflow, sending as-is.");
+    }
+
+    // 3. 提交任务到 ComfyUI
+    console.log(`[ComfyUI] Sending prompt to ${COMFYUI_BASE_URL}/prompt`);
+    const promptResp = await axios.post(`${COMFYUI_BASE_URL}/prompt`, { prompt: workflowJson }, { timeout: 2000 });
+    const promptId = promptResp.data.prompt_id;
+    console.log(`[ComfyUI] Task created: ${promptId}`);
+
+    // 4. 等待并获取结果
+    const outputs = await pollComfyUIResult(promptId);
+
+    // 5. 提取图片结果 (简单逻辑：取第一个输出节点的第一个图片)
+    let resultUrl = "";
+    for (const nodeId in outputs) {
+      const nodeOutput = outputs[nodeId];
+      if (nodeOutput.images && nodeOutput.images.length > 0) {
+        const img = nodeOutput.images[0];
+        // 构造 ComfyUI view 接口的 URL
+        const rawUrl = `${COMFYUI_BASE_URL}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || "")}&type=${img.type || "output"}`;
+
+        // Download to local storage to avoid CORS issues and enable processing
+        try {
+          const resp = await axios.get(rawUrl, { responseType: 'arraybuffer' });
+          const ext = path.extname(img.filename) || ".png";
+          const newFilename = `comfy_out_${Date.now()}${ext}`;
+          const localPath = path.join(STORAGE_DIR, newFilename);
+
+          await fs.writeFile(localPath, resp.data);
+          resultUrl = `/static/${newFilename}`;
+        } catch (downloadErr) {
+          console.error("Failed to download ComfyUI result locally:", downloadErr);
+          // Fallback to raw URL if download fails
+          resultUrl = rawUrl;
+        }
+        break;
+      }
+    }
+
+    if (!resultUrl) throw new Error("No image output found in workflow results");
+
+    res.json({
+      ok: true,
+      resultUrl,
+      message: "ComfyUI 工作流执成功"
+    });
+
+  } catch (err) {
+    console.error("ComfyUI execution failed:", err.message);
+    res.status(500).json({
+      error: "ComfyUI 执行失败",
+      details: err.message,
+      message: "请确保 ComfyUI 已在本地启动 (默认 http://127.0.0.1:8188) 且已安装对应节点库 (如 VHS)。"
+    });
+  }
 });
 
 // ---- API: 焦点视窗广告生成 ----
@@ -437,6 +613,102 @@ app.post("/api/focal-window/generate", upload.single("image"), async (req, res) 
   }
 });
 
+
+
+// ---- API: Smart Crop & Compress (不依赖 ComfyUI) ----
+app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "缺少上传图片" });
+    }
+
+    const { width, height, maxSizeKB } = req.body || {};
+    const targetWidth = parseInt(width) || 1440;
+    const targetHeight = parseInt(height) || 2340;
+    const limitKB = parseInt(maxSizeKB) || 200;
+
+    // Detect Important Region using Gemini Vision
+    let importantRegion = null;
+    if (geminiClient) {
+      try {
+        console.log("[SmartCrop] Detecting important region via Gemini...");
+        const imageBuffer = await fs.readFile(file.path);
+        const imageBase64 = imageBuffer.toString('base64');
+
+        const response = await geminiClient.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: imageBase64
+                }
+              },
+              {
+                text: "Detect the bounding box of the main subject and any critical text in this image. I need one bounding box [ymin, xmin, ymax, xmax] that encompasses the area of interest to be preserved during cropping. Return as JSON."
+              }
+            ]
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                ymin: { type: Type.NUMBER },
+                xmin: { type: Type.NUMBER },
+                ymax: { type: Type.NUMBER },
+                xmax: { type: Type.NUMBER }
+              },
+              required: ["ymin", "xmin", "ymax", "xmax"]
+            }
+          }
+        });
+
+        const parsed = JSON.parse(response.text || "{}");
+        if (parsed.ymin !== undefined) {
+          importantRegion = parsed;
+          console.log("[SmartCrop] Region detected:", importantRegion);
+        }
+      } catch (geminiErr) {
+        console.error("[SmartCrop] Gemini detection failed, falling back to center-crop:", geminiErr.message);
+      }
+    }
+
+    // Output filename
+    const ext = ".jpg"; // Force JPG for compression
+    const basename = path.basename(file.originalname, path.extname(file.originalname)); // Use original name base
+    const outputFilename = `processed_${Date.now()}_${basename}${ext}`;
+    const outputPath = path.join(STORAGE_DIR, outputFilename);
+
+    console.log(`[SmartCrop] Processing ${file.path} -> ${targetWidth}x${targetHeight}, limit ${limitKB}KB`);
+
+    // Process
+    const result = await processImage(file.path, outputPath, targetWidth, targetHeight, limitKB, importantRegion);
+
+    // Generate URL
+    const url = `/static/${outputFilename}`;
+
+    res.json({
+      ok: true,
+      url,
+      width: result.width,
+      height: result.height,
+      sizeKB: (result.size / 1024).toFixed(2),
+      message: "智能裁剪与压缩完成"
+    });
+
+  } catch (err) {
+    console.error("Smart crop failed:", err);
+    res.status(500).json({ error: "图片处理失败", details: err.message });
+  }
+});
+
+// SPA 兜底：所有非 API 且非静态资源的请求都返回 index.html
+app.get("*", (req, res) => {
+  res.sendFile(path.join(ROOT_DIR, "dist", "index.html"));
+});
 
 // ---- 启动 ----
 ensureDataFiles().then(() => {

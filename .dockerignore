@@ -1,0 +1,9 @@
+node_modules
+dist
+backend/storage/*
+!backend/storage/.gitkeep
+backend/data/*.json
+*.log
+.git
+.env*
+venv

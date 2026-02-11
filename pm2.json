@@ -1,0 +1,14 @@
+{
+    "apps": [
+        {
+            "name": "ai-ad-platform",
+            "script": "./backend/server.mjs",
+            "env": {
+                "NODE_ENV": "production",
+                "PORT": 4000,
+                "GEMINI_API_KEY": "YOUR_GEMINI_API_KEY",
+                "COMFYUI_BASE_URL": "http://127.0.0.1:8188"
+            }
+        }
+    ]
+}
