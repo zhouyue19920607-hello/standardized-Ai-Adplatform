@@ -29,7 +29,7 @@ fi
 
 echo -e "${GREEN}✓ 系统检查通过${NC}"
 
-echo -e "${YELLOW}步骤 2/7: 创建应用目录...${NC}"
+echo -e "${YELLOW}步骤 2/8: 创建应用目录...${NC}"
 mkdir -p $APP_DIR
 mkdir -p $BACKEND_DIR/assets
 mkdir -p $BACKEND_DIR/data
@@ -37,11 +37,10 @@ mkdir -p /var/log/pm2
 
 echo -e "${GREEN}✓ 目录创建完成${NC}"
 
-echo -e "${YELLOW}步骤 3/7: 解压部署包...${NC}"
+echo -e "${YELLOW}步骤 3/8: 解压应用文件...${NC}"
 if [ -f "/root/ai-platform.tar.gz" ]; then
-    tar -xzf /root/ai-platform.tar.gz -C /tmp/
-    cp -r /tmp/deploy-package/* $APP_DIR/
-    rm -rf /tmp/deploy-package
+    # 直接解压到目标目录
+    tar -xzf /root/ai-platform.tar.gz -C $APP_DIR
     echo -e "${GREEN}✓ 部署包解压完成${NC}"
 else
     echo -e "${RED}错误: 未找到部署包 /root/ai-platform.tar.gz${NC}"
@@ -49,7 +48,7 @@ else
     exit 1
 fi
 
-echo -e "${YELLOW}步骤 4/7: 安装Python依赖...${NC}"
+echo -e "${YELLOW}步骤 4/8: 安装Python依赖...${NC}"
 cd $BACKEND_DIR
 if [ -f "requirements.txt" ]; then
     pip3 install -r requirements.txt
@@ -58,14 +57,19 @@ else
     echo -e "${YELLOW}! 未找到requirements.txt，跳过依赖安装${NC}"
 fi
 
-echo -e "${YELLOW}步骤 5/7: 设置文件权限...${NC}"
+echo -e "${YELLOW}步骤 5/8: 安装 Node.js 依赖...${NC}"
+cd $APP_DIR
+npm install --omit=dev
+echo -e "${GREEN}✓ Node.js 依赖安装完成${NC}"
+
+echo -e "${YELLOW}步骤 6/8: 设置文件权限...${NC}"
 chmod -R 755 $APP_DIR
 chmod -R 777 $BACKEND_DIR/assets
 chmod -R 777 $BACKEND_DIR/data
 
 echo -e "${GREEN}✓ 文件权限设置完成${NC}"
 
-echo -e "${YELLOW}步骤 6/7: 配置并启动后端服务...${NC}"
+echo -e "${YELLOW}步骤 7/8: 配置并启动后端服务...${NC}"
 # 检查PM2是否安装
 if ! command -v pm2 &> /dev/null; then
     echo -e "${YELLOW}PM2未安装，正在安装...${NC}"
@@ -73,17 +77,17 @@ if ! command -v pm2 &> /dev/null; then
 fi
 
 # 停止旧服务（如果存在）
-pm2 delete ai-platform-backend 2>/dev/null || true
+pm2 delete ai-ad-platform 2>/dev/null || true
 
 # 启动新服务
-cd $BACKEND_DIR
-pm2 start ecosystem.config.js
+cd $APP_DIR
+pm2 start pm2.json
 pm2 save
 pm2 startup
 
 echo -e "${GREEN}✓ 后端服务启动完成${NC}"
 
-echo -e "${YELLOW}步骤 7/7: 配置Nginx...${NC}"
+echo -e "${YELLOW}步骤 8/8: 配置Nginx...${NC}"
 # 复制Nginx配置
 if [ -f "$APP_DIR/nginx.conf" ]; then
     cp $APP_DIR/nginx.conf /etc/nginx/sites-available/ai-platform
@@ -105,7 +109,7 @@ echo "========================================="
 echo -e "${GREEN}部署完成！${NC}"
 echo "========================================="
 echo ""
-echo "访问地址: http://$(curl -s ifconfig.me)"
+echo "访问地址: http://saapmeitu.cn"
 echo ""
 echo "常用命令:"
 echo "  查看后端日志: pm2 logs ai-platform-backend"
