@@ -6,7 +6,6 @@ import Sidebar from './components/Sidebar';
 import PreviewGrid from './components/PreviewGrid';
 import Footer from './components/Footer';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme } from './types';
-import { analyzeImageColors } from './geminiService';
 import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
@@ -248,6 +247,38 @@ const App: React.FC = () => {
     setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
+  // NOTE: 允许的视频尺寸白名单，图片不受此限制
+  const ALLOWED_VIDEO_DIMENSIONS = [
+    { width: 1126, height: 900 },
+    { width: 1440, height: 2340 },
+    { width: 1440, height: 1938 },
+  ];
+
+  /**
+   * 校验视频尺寸是否符合要求
+   * @returns true 表示尺寸合法，false 表示尺寸不符合
+   */
+  const validateVideoDimensions = (file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        const isValid = ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === w && d.height === h);
+        resolve(isValid);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        // 无法读取尺寸时放行，避免误拦截
+        resolve(true);
+      };
+      video.src = url;
+    });
+  };
+
   const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
@@ -255,6 +286,17 @@ const App: React.FC = () => {
 
     newFilesArray.forEach(async (f) => {
       const file = f as File;
+
+      // NOTE: 仅对视频格式校验尺寸，图片不受限制
+      if (file.type.startsWith('video/')) {
+        const isValidSize = await validateVideoDimensions(file);
+        if (!isValidSize) {
+          const allowedList = ALLOWED_VIDEO_DIMENSIONS.map(d => `${d.width}x${d.height}px`).join('、');
+          alert(`视频尺寸不符合要求！\n\n请上传以下尺寸之一的视频：\n${allowedList}\n\n当前文件：${file.name}`);
+          return;
+        }
+      }
+
       const id = Math.random().toString(36).substr(2, 9);
       const previewUrl = URL.createObjectURL(file as any);
 
@@ -278,6 +320,7 @@ const App: React.FC = () => {
       }
     });
   };
+
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -859,7 +902,10 @@ const App: React.FC = () => {
                       {t('main.addMore')}
                     </button>
                     <button
-                      onClick={() => setRawFiles([])}
+                      onClick={() => {
+                        setRawFiles([]);
+                        setProcessedAssets([]);
+                      }}
                       className="text-[11px] font-bold text-red-500 bg-white px-4 py-2 rounded-full shadow-ios hover:bg-red-50 transition-all active:scale-95"
                     >
                       {t('main.clearAll')}
