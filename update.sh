@@ -34,8 +34,16 @@ echo -e "${YELLOW}[3/4] 构建前端...${NC}"
 npm run build
 cp -r dist/* $DIST_DIR/
 chmod -R 755 $DIST_DIR/
-chown -R www-data:www-data $DIST_DIR/
+chown -R www-data:www-data $DIST_DIR/ 2>/dev/null || true
 echo -e "${GREEN}✓ 前端构建完成${NC}"
+
+# NOTE: 确保上传目录始终存在且权限正确，防止上传功能失效
+echo -e "${YELLOW}[*] 检查上传目录...${NC}"
+mkdir -p $SRC_DIR/backend/storage/masks
+mkdir -p $SRC_DIR/backend/storage/workflows
+chmod -R 755 $SRC_DIR/backend/storage
+chown -R www-data:www-data $SRC_DIR/backend/storage 2>/dev/null || true
+echo -e "${GREEN}✓ 上传目录已就绪${NC}"
 
 # 4. 重启后端
 echo -e "${YELLOW}[4/4] 重启后端服务...${NC}"
