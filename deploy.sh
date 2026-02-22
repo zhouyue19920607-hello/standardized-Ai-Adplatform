@@ -33,6 +33,9 @@ echo -e "${YELLOW}步骤 2/8: 创建应用目录...${NC}"
 mkdir -p $APP_DIR
 mkdir -p $BACKEND_DIR/assets
 mkdir -p $BACKEND_DIR/data
+# NOTE: storage 目录用于存放所有上传文件（图片素材、遮罩、生成结果等），必须提前创建
+mkdir -p $BACKEND_DIR/storage/masks
+mkdir -p $BACKEND_DIR/storage/workflows
 mkdir -p /var/log/pm2
 
 echo -e "${GREEN}✓ 目录创建完成${NC}"
@@ -66,6 +69,11 @@ echo -e "${YELLOW}步骤 6/8: 设置文件权限...${NC}"
 chmod -R 755 $APP_DIR
 chmod -R 777 $BACKEND_DIR/assets
 chmod -R 777 $BACKEND_DIR/data
+# NOTE: storage 目录需要 Node.js 服务可写，755 + 正确所有者即可
+chmod -R 755 $BACKEND_DIR/storage
+# 将 storage 目录所有者设置为运行 Node.js 的用户（www-data 或 root）
+chown -R www-data:www-data $BACKEND_DIR/storage 2>/dev/null || \
+  echo -e "${YELLOW}! www-data 用户不存在，storage 目录所有者保持当前用户${NC}"
 
 echo -e "${GREEN}✓ 文件权限设置完成${NC}"
 
