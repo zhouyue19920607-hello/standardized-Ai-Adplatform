@@ -41,7 +41,8 @@ export const uploadMask = async (id: string, file: File): Promise<{ mask_path: s
 export const uploadCropOverlay = async (id: string, file: File) => {
     const formData = new FormData();
     formData.append('image', file);
-    const response = await api.post(`${API_URL}/templates/${id}/crop-overlay`, formData, {
+    // NOTE: 使用相对路径，避免与 axios baseURL 重复拼接导致 404
+    const response = await api.post(`/templates/${id}/crop-overlay`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
@@ -50,7 +51,8 @@ export const uploadCropOverlay = async (id: string, file: File) => {
 export const uploadBadgeOverlay = async (id: string, file: File) => {
     const formData = new FormData();
     formData.append('image', file);
-    const response = await api.post(`${API_URL}/templates/${id}/badge-overlay`, formData, {
+    // NOTE: 使用相对路径，避免与 axios baseURL 重复拼接导致 404
+    const response = await api.post(`/templates/${id}/badge-overlay`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
