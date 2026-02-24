@@ -69,6 +69,7 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
         // Compression loop
         while (quality >= 10 && scale >= 0.5) {
             let pipeline = sharp(inputPath)
+                .ensureAlpha() // 确保包含 alpha 通道
                 .extract({
                     left: cropLeft,
                     top: cropTop,
@@ -79,21 +80,20 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
                     width: Math.round(currentWidth * scale),
                     height: Math.round(currentHeight * scale),
                     fit: 'fill',
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }, // 确保缩放背景透明
                     kernel: sharp.kernel.lanczos3
                 });
 
             if (isPng) {
-                // For PNG, we can use compressionLevel (0-9)
-                // sharp doesn't have a direct "quality" for png in the same way as jpeg
-                // but we can adjust palette/colors if we wanted to be aggressive.
-                // For now, let's keep it simple and just use png()
-                pipeline = pipeline.png({ compressionLevel: 9 });
+                // PNG 保持最高无损压缩
+                pipeline = pipeline.png({ compressionLevel: 9, palette: false });
             } else {
                 pipeline = pipeline.jpeg({ quality, mozjpeg: true });
             }
 
             buffer = await pipeline.toBuffer();
 
+            // PNG 不进行质量阶梯压缩（保持透明度第一），JPEG 则按大小压缩
             if (isPng || buffer.length <= maxSizeBytes) {
                 break;
             }

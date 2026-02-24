@@ -47,6 +47,7 @@ const AdCard: React.FC<{
   const isImmersiveFocal = asset.templateName.includes('沉浸式');
   // NOTE: 一键配方图文，图片在蒙版上方，需要特殊分层处理
   const isRecipeContent = asset.id.includes('mt-fe-1');
+  const isStaticFocal = asset.category === '焦点视窗' && !isImmersiveFocal && !asset.templateName.includes('动态');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
   const aspectRatio = (localShowMask && asset.category === '焦点视窗')
@@ -188,6 +189,17 @@ const AdCard: React.FC<{
               </div>
             )}
 
+            {/* Focal Window Mask (Lower Layer - for transparent PNGs) */}
+            {localShowMask && (isStaticFocal || isImmersiveFocal) && asset.maskUrl && (
+              <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
+                <img
+                  src={`${ASSETS_URL}${asset.maskUrl}`}
+                  className="w-full h-full object-contain"
+                  alt="Mask Background"
+                />
+              </div>
+            )}
+
             {/* Topic Background UI Mask (Overlay Layer) */}
             {isTopicBg && localShowMask && asset.maskUrl && (
               <div className="absolute inset-0 z-20 pointer-events-none mix-blend-normal">
@@ -208,7 +220,7 @@ const AdCard: React.FC<{
             )}
 
             {/* Standard Mask (Overlay Layer - for other categories) */}
-            {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent) && (
+            {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || isStaticFocal || isImmersiveFocal) && (
               <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" /></div>
             )}
 
@@ -424,6 +436,18 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               </div>
             )}
 
+            {/* Modal: Focal Window Mask (Lower Layer - for transparent PNGs) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && (selectedAsset.category === '焦点视窗') && (
+              <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
+                <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask bg" />
+              </div>
+            )}
+
+            {/* Modal: Focal Window Dynamic UI Background (for transparent PNGs) */}
+            {selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' && !selectedAsset.maskUrl && (
+              <div className="absolute inset-0 z-0 bg-white" />
+            )}
+
             {selectedAssetInfo.showMask && selectedAsset.maskUrl && selectedAsset.id.includes('mt-ib-3') && (
               <div className="absolute inset-0 pointer-events-none z-20 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask overlay" />
@@ -446,7 +470,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
             {/* Modal Overlays: Standard Mask Overlay */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && (
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1') || selectedAsset.category === '焦点视窗') && (
               <div className="absolute inset-0 pointer-events-none z-20 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask" />
               </div>
