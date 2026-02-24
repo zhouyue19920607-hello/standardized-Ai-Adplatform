@@ -444,6 +444,8 @@ const App: React.FC = () => {
         const isTopicBanner = template.id === 'mt-ib-4';
         const isScorePopup = template.id === 'mt-p-1';
         const isHomePopup = template.id === 'mt-p-2' || template.id === 'mt-p-3';
+        // NOTE: 一键配方图文，信息流模板，裁剪至 720x960
+        const isRecipeContent = template.id === 'mt-fe-1';
 
         // 1. If Workflow exists -> Try ComfyUI -> Fallback to Smart Crop (if image) or Thumbnail (if video)
         // Special handling: If captureFirstFrame is enabled for dynamic splash, skip workflow entirely
@@ -677,7 +679,16 @@ const App: React.FC = () => {
             console.error("Direct Smart Crop (Score Popup) failed", e);
           }
         }
-        // 10. Video Handling
+        // 10. 一键配方图文 (信息流) + Image -> Force Smart Crop (720x960)
+        else if (isRecipeContent && raw.file.type.startsWith('image/')) {
+          try {
+            const smart = await smartCropImage(raw.file, 720, 960, 250);
+            if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
+          } catch (e) {
+            console.error("Direct Smart Crop (Recipe Content) failed", e);
+          }
+        }
+        // 11. Video Handling
         // 10. Video Handling (Dynamic Focal etc.)
         else if (raw.file.type.startsWith('video/')) {
           // If it's Dynamic Focal (isDynamicFocal), we keep it as video unless splash capture logic intervenes (handled above).
@@ -718,7 +729,8 @@ const App: React.FC = () => {
                 (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' : // Static Focal always static image now
                   (isHotRecommend && raw.file.type.startsWith('image/')) ? '720 x 960' :
                     (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
-                      (template.dimensions || '1080 x 1920'),
+                      (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                        (template.dimensions || '1080 x 1920'),
           splashText: template.category === '开屏' ? config.splashText : undefined,
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,

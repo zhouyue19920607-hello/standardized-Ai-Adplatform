@@ -93,7 +93,10 @@
     "category": "信息流",
     "name": "一键配方图文",
     "checked": false,
-    "dimensions": "1080 x 1920"
+    "dimensions": "720 x 960",
+    "maskPath": "backend/storage/masks/1771914229879____________________00000.jpg.jpg",
+    "mask_path": "/static/masks/1771914229879____________________00000.jpg.jpg",
+    "maskUrl": "/static/masks/1771914229879____________________00000.jpg.jpg"
   },
   {
     "id": "mt-ib-1",
