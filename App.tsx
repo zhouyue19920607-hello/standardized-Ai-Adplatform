@@ -791,6 +791,14 @@ const App: React.FC = () => {
   const handleBatchDownload = async () => {
     if (processedAssets.length === 0) return;
 
+    const hasVideo = processedAssets.some(asset => asset.type.startsWith('video'));
+    if (hasVideo) {
+      alert('此网站仅支持视频卡片预览及图片格式保存。');
+      if (processedAssets.every(asset => asset.type.startsWith('video'))) {
+        return;
+      }
+    }
+
     try {
       const zip = new JSZip();
       const folderName = `ad-assets-${new Date().toISOString().slice(0, 10)}`;
@@ -800,6 +808,8 @@ const App: React.FC = () => {
       const nameCounts: Record<string, number> = {};
 
       for (const asset of processedAssets) {
+        if (asset.type.startsWith('video')) continue;
+
         try {
           const blob = await compositeAsset(asset, config);
 

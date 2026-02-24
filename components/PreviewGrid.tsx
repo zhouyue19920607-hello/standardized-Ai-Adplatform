@@ -64,6 +64,11 @@ const AdCard: React.FC<{
   }, [globalShowMask]);
 
   const handleDownload = async () => {
+    if (asset.type.startsWith('video')) {
+      alert('此网站仅支持视频卡片预览及图片格式保存。');
+      return;
+    }
+
     const safeName = (asset.templateName || asset.name || 'image').replace(/[\/\\:*?"<>|]/g, '_');
 
     const downloadCanvasAsJpg = (canvas: HTMLCanvasElement, filename: string) => {
