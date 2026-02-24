@@ -59,6 +59,28 @@ const drawImageContain = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, 
     ctx.drawImage(img, dx, dy, dw, dh);
 };
 
+const drawImageRounded = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, radius: number, fit: 'cover' | 'contain' = 'cover', align: 'center' | 'top' = 'center') => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.clip();
+    if (fit === 'cover') {
+        drawImageCover(ctx, img, x, y, w, h);
+    } else {
+        drawImageContain(ctx, img, x, y, w, h, align);
+    }
+    ctx.restore();
+};
+
 /**
  * Intelligent asset compositor that replicates the PreviewGrid download logic.
  * Returns a Blob (JPEG/MP4) of the composited result.
@@ -72,7 +94,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     }
 
     const isHotRecommend = asset.id.includes('mt-ib-1');
+    const isHotSearch = asset.id.includes('mt-ib-2');
     const isTopicBg = asset.id.includes('mt-ib-3');
+    const isTopicBanner = asset.id.includes('mt-ib-4');
+    const isPopup = asset.category === '弹窗';
+    const isScorePopup = isPopup && asset.id.includes('mt-p-1');
+    const isHomePopup = isPopup && (asset.id.includes('mt-p-2') || asset.id.includes('mt-p-3'));
     const isStandardFocal = asset.category === '焦点视窗' && !isHotRecommend && !isTopicBg;
     const isImmersiveFocal = asset.templateName.includes('沉浸式');
     // NOTE: 一键配方图文：图片 -> 蒙版 -> 角标 层序
@@ -85,7 +112,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     const needsComposite = showMask ||
         (asset.category === '焦点视窗' && showBadge && asset.badgeOverlayUrl) ||
         (isHotRecommend && showBadge && asset.badgeOverlayUrl) ||
+        (isHotSearch && showBadge && asset.badgeOverlayUrl) ||
         (isTopicBg && showBadge && asset.badgeOverlayUrl) ||
+        (isTopicBanner && showBadge && asset.badgeOverlayUrl) ||
+        (isPopup && showBadge && asset.badgeOverlayUrl) ||
         (isRecipeContent && showBadge && asset.badgeOverlayUrl);
 
     if (!needsComposite) {
@@ -209,8 +239,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             drawImageContain(ctx, badgeImg, 0, 0, targetW, bH, 'top');
         }
 
-    } else if (isHotRecommend || isTopicBg) {
-        // Hot Recommend / Topic Background logic
+    } else if (isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup) {
+        // Shared logic for standard 1126x2436 background based templates
         const loadList = [loadImg(asset.url)];
         if (showMask && asset.maskUrl) {
             loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
@@ -224,8 +254,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        const targetW = showMask ? 1126 : (isHotRecommend ? 720 : 1126);
-        const targetH = showMask ? 2436 : (isHotRecommend ? 960 : 640);
+        const targetW = 1126; // Always use base resolution for these
+        const targetH = 2436;
         canvas.width = targetW;
         canvas.height = targetH;
 
@@ -234,26 +264,37 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             ctx.fillRect(0, 0, targetW, targetH);
         }
 
+        // Define region
+        let rect = { x: 0, y: 0, w: targetW, h: targetH, r: 0, fit: 'cover' as 'cover' | 'contain' };
+        if (isHotRecommend) rect = { x: 708, y: 1779, w: 288, h: 384, r: 10, fit: 'cover' };
+        else if (isHotSearch) rect = { x: 168, y: 1293, w: 156, h: 156, r: 10, fit: 'cover' };
+        else if (isScorePopup) rect = { x: 83, y: 485, w: 960, h: 1440, r: 10, fit: 'cover' };
+        else if (isHomePopup) rect = { x: 83, y: 738, w: 960, h: 960, r: 0, fit: 'contain' };
+        else if (isTopicBanner) rect = { x: 48, y: 980, w: 1030, h: 288, r: 5, fit: 'cover' };
+        else if (isTopicBg) rect = { x: 0, y: 0, w: 1126, h: 640, r: 0, fit: 'cover' };
+
         if (showMask && maskImg) {
-            if (isHotRecommend) {
-                ctx.drawImage(maskImg, 0, 0, targetW, targetH);
-                drawImageCover(ctx, mainImg, 708, 1779, 288, 384);
-                if (showBadge && badgeImg) {
-                    drawImageContain(ctx, badgeImg, 708, 1779, 288, 384, 'top');
-                }
-            } else {
+            if (isTopicBg) {
                 // Topic Background: Image -> Badge -> Mask
-                drawImageCover(ctx, mainImg, 0, 0, 1126, 640);
-                if (showBadge && badgeImg) {
-                    drawImageContain(ctx, badgeImg, 0, 0, 1126, 640, 'top');
-                }
+                if (rect.r > 0) drawImageRounded(ctx, mainImg, rect.x, rect.y, rect.w, rect.h, rect.r, rect.fit);
+                else if (rect.fit === 'cover') drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+                else drawImageContain(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+
+                if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, rect.x, rect.y, rect.w, rect.h, 'top');
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+            } else {
+                // Normal: Mask -> Image -> Badge
+                ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+                if (rect.r > 0) drawImageRounded(ctx, mainImg, rect.x, rect.y, rect.w, rect.h, rect.r, rect.fit);
+                else if (rect.fit === 'cover') drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+                else drawImageContain(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+
+                if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, rect.x, rect.y, rect.w, rect.h, 'top');
             }
         } else {
-            drawImageCover(ctx, mainImg, 0, 0, targetW, targetH);
-            if (showBadge && badgeImg) {
-                drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH);
-            }
+            if (rect.r > 0) drawImageRounded(ctx, mainImg, 0, 0, targetW, targetH, rect.r, rect.fit);
+            else drawImageContain(ctx, mainImg, 0, 0, targetW, targetH);
+            if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH);
         }
 
     } else if (asset.category === '开屏') {
@@ -353,13 +394,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         const dx = 46;
         const dy = 1489; // 2436 - 675 - 272
 
-        // Layer 1: 蒙版（底层）
         if (maskImg) {
             ctx.drawImage(maskImg, 0, 0, 1126, 2436);
         }
 
-        // Layer 2: 用户图片（盖在蒙版上方）
-        ctx.drawImage(mainImg!, dx, dy, dw, dh);
+        // Layer 2: 用户图片（盖在蒙版上方）带 10px 圆角
+        drawImageRounded(ctx, mainImg!, dx, dy, dw, dh, 10, 'cover');
 
         // Layer 3: 角标（最上层）
         if (badgeImg) {
