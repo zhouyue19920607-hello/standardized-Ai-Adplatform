@@ -21,6 +21,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const STORAGE_DIR = path.join(__dirname, "storage");
 const MASKS_DIR = path.join(STORAGE_DIR, "masks");
 const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
+const BADGES_DIR = path.join(STORAGE_DIR, "badges");
 
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 const WORKFLOWS_FILE = path.join(DATA_DIR, "workflows.json");
@@ -96,6 +97,7 @@ async function ensureDataFiles() {
 
   await ensureDir(MASKS_DIR);
   await ensureDir(WORKFLOWS_DIR);
+  await ensureDir(BADGES_DIR);
 }
 
 // ---- Multer 上传：遮罩 PNG & Workflow JSON ----
@@ -105,6 +107,8 @@ const storage = multer.diskStorage({
       cb(null, MASKS_DIR);
     } else if (file.fieldname === "workflow") {
       cb(null, WORKFLOWS_DIR);
+    } else if (file.fieldname === "image") {
+      cb(null, BADGES_DIR);
     } else {
       cb(null, STORAGE_DIR);
     }
@@ -252,7 +256,20 @@ app.post("/api/templates/:id/badge-overlay", upload.single("image"), async (req,
     return res.status(404).json({ error: "Template not found" });
   }
 
-  const overlayUrl = `/static/${path.relative(STORAGE_DIR, file.path).replace(/\\/g, "/")}`;
+  // Use stable name for default badge: [id]_badge.[ext]
+  const ext = path.extname(file.originalname) || ".png";
+  const stableFilename = `${id}_badge${ext}`;
+  const stablePath = path.join(BADGES_DIR, stableFilename);
+
+  // Rename/Move from multer's temp name to stable name
+  try {
+    await fs.rename(file.path, stablePath);
+  } catch (err) {
+    console.error("Rename badge failed, fallback to original:", err);
+  }
+
+  const relativePath = `storage/badges/${stableFilename}`;
+  const overlayUrl = `/static/badges/${stableFilename}`;
 
   templates[index] = {
     ...templates[index],
@@ -710,9 +727,39 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(ROOT_DIR, "dist", "index.html"));
 });
 
+// ---- 自动清理：定期删除过期的临时素材 (1小时前) ----
+async function cleanupStorage() {
+  console.log("[Cleanup] Starting storage cleanup...");
+  try {
+    const files = await fs.readdir(STORAGE_DIR);
+    const now = Date.now();
+    const expiry = 60 * 60 * 1000; // 1 小时
+
+    for (const file of files) {
+      // 排除蒙版、工作流和默认角标目录
+      if (file === "masks" || file === "workflows" || file === "badges") continue;
+
+      const filePath = path.join(STORAGE_DIR, file);
+      const stats = await fs.stat(filePath);
+
+      if (now - stats.mtimeMs > expiry) {
+        await fs.unlink(filePath);
+        console.log(`[Cleanup] Deleted expired file: ${file}`);
+      }
+    }
+  } catch (err) {
+    console.error("[Cleanup] Storage cleanup failed:", err);
+  }
+}
+
+// 每 30 分钟跑一次清理
+setInterval(cleanupStorage, 30 * 60 * 1000);
+
 // ---- 启动 ----
 ensureDataFiles().then(() => {
   app.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
+    // 启动时先跑一次清理
+    cleanupStorage();
   });
 });

@@ -130,6 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               {subTemplates.map(tpl => (
                                 <div key={tpl.id} className="px-1">
                                   <label
+                                    title={tpl.name === '动态开屏' ? t('sidebar.cardPreviewOnly') : undefined}
                                     className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
                                                             ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                                     }

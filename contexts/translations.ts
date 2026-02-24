@@ -1,7 +1,7 @@
 export const translations = {
     zh: {
         header: {
-            title: "标准化硬广AI自动化处理平台",
+            title: "标准化自动看板",
             subtitle: "美图秀秀品牌营销自定义看板",
             guide: "使用指南",
             admin: "后台管理",
@@ -18,6 +18,7 @@ export const translations = {
             generating: "AI 生成中...",
             waiting: "待开放",
             noTemplate: "该应用暂无可用模版",
+            cardPreviewOnly: "仅卡片样式预览",
         },
         main: {
             startCreation: "开始创作",
@@ -117,6 +118,7 @@ export const translations = {
             generating: "AI Generating...",
             waiting: "Upcoming",
             noTemplate: "No templates available",
+            cardPreviewOnly: "Card style preview only",
         },
         main: {
             startCreation: "Create Now",

@@ -38,4 +38,5 @@ release/
 backend/storage/
 backend/static/uploads/
 dist/
+ai-platform.tar.gz
 
