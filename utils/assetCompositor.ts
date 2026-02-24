@@ -325,23 +325,29 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        canvas.width = 720;
-        canvas.height = 960;
+        canvas.width = 1126;
+        canvas.height = 2436;
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, 720, 960);
+        ctx.fillRect(0, 0, 1126, 2436);
+
+        // 计算定位 (基于 1126x2436)
+        const dw = 1034; // 1126 - 46*2
+        const dh = 1378; // 1034 * (960/720)
+        const dx = 46;
+        const dy = 2436 - dh - 272;
 
         // Layer 1: 用户图片
-        drawImageContain(ctx, mainImg!, 0, 0, 720, 960);
+        ctx.drawImage(mainImg!, dx, dy, dw, dh);
 
-        // Layer 2: 蒙版（在图片上层）
+        // Layer 2: 蒙版（盖在图片上方）
         if (maskImg) {
-            ctx.drawImage(maskImg, 0, 0, 720, 960);
+            ctx.drawImage(maskImg, 0, 0, 1126, 2436);
         }
 
-        // Layer 3: 角标（最上层）
+        // Layer 3: 角标
         if (badgeImg) {
-            drawImageContain(ctx, badgeImg, 0, 0, 720, 960, 'top');
+            ctx.drawImage(badgeImg, dx, dy, dw, dh);
         }
 
     } else {
