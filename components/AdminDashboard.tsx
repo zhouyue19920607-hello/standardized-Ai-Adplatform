@@ -407,8 +407,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                     </div>
                                                 )}
 
-                                                {/* Asset: Badge (Focal or icon/banner or 弹窗) */}
-                                                {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗') && (
+                                                {/* Asset: Badge (Focal or icon/banner or 弹窗 or 信息流) */}
+                                                {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
                                                     <div className="relative group/asset">
                                                         <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
                                                             {tpl.badge_overlay_path ? (

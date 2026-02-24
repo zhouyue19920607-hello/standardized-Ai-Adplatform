@@ -75,6 +75,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     const isTopicBg = asset.id.includes('mt-ib-3');
     const isStandardFocal = asset.category === '焦点视窗' && !isHotRecommend && !isTopicBg;
     const isImmersiveFocal = asset.templateName.includes('沉浸式');
+    // NOTE: 一键配方图文：图片 -> 蒙版 -> 角标 层序
+    const isRecipeContent = asset.id.includes('mt-fe-1');
 
     // Check if we need compositing (usually when mask is shown or badge is enabled)
     const showMask = config.showMask;
@@ -83,7 +85,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     const needsComposite = showMask ||
         (asset.category === '焦点视窗' && showBadge && asset.badgeOverlayUrl) ||
         (isHotRecommend && showBadge && asset.badgeOverlayUrl) ||
-        (isTopicBg && showBadge && asset.badgeOverlayUrl);
+        (isTopicBg && showBadge && asset.badgeOverlayUrl) ||
+        (isRecipeContent && showBadge && asset.badgeOverlayUrl);
 
     if (!needsComposite) {
         const resp = await fetch(asset.url);
@@ -307,6 +310,40 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             ctx.font = `bold ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
             ctx.fillText(asset.splashText || config.splashText, targetW / 2, targetH - bottomOffset);
         }
+    } else if (isRecipeContent) {
+        // 一键配方图文: 图片 -> 蒙版 -> 角标
+        const loadList: Promise<HTMLImageElement | null>[] = [loadImg(asset.url)];
+        if (showMask && asset.maskUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+        } else {
+            loadList.push(Promise.resolve(null));
+        }
+        if (showBadge && asset.badgeOverlayUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`));
+        } else {
+            loadList.push(Promise.resolve(null));
+        }
+
+        const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
+        canvas.width = 720;
+        canvas.height = 960;
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, 720, 960);
+
+        // Layer 1: 用户图片
+        drawImageContain(ctx, mainImg!, 0, 0, 720, 960);
+
+        // Layer 2: 蒙版（在图片上层）
+        if (maskImg) {
+            ctx.drawImage(maskImg, 0, 0, 720, 960);
+        }
+
+        // Layer 3: 角标（最上层）
+        if (badgeImg) {
+            drawImageContain(ctx, badgeImg, 0, 0, 720, 960, 'top');
+        }
+
     } else {
         const img = await loadImg(asset.url);
         canvas.width = img.naturalWidth;

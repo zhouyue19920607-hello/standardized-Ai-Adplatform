@@ -45,6 +45,8 @@ const AdCard: React.FC<{
   const isScorePopup = isPopup && asset.id.includes('mt-p-1');
   const isHomePopup = isPopup && (asset.id.includes('mt-p-2') || asset.id.includes('mt-p-3'));
   const isImmersiveFocal = asset.templateName.includes('沉浸式');
+  // NOTE: 一键配方图文，图片在蒙版上方，需要特殊分层处理
+  const isRecipeContent = asset.id.includes('mt-fe-1');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
   const aspectRatio = (localShowMask && asset.category === '焦点视窗')
@@ -199,7 +201,7 @@ const AdCard: React.FC<{
             )}
 
             {/* Standard Mask (Overlay Layer - for other categories) */}
-            {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup) && (
+            {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent) && (
               <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" /></div>
             )}
 
@@ -242,12 +244,19 @@ const AdCard: React.FC<{
               </div>
             )}
             {/* Final Layers: Special Results (on top of masks) */}
-            {(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup) && !asset.type.startsWith('video') && (
+            {(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && !asset.type.startsWith('video') && (
               <div
-                className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : 'z-10')}`}
-                style={localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : { width: '100%', height: '26.27%', left: 0, top: 0 }))))) : { inset: 0 }}
+                className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-30' : 'z-10'))}`}
+                style={localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { inset: 0 } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }}
               >
-                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-contain' : (isHomePopup ? 'object-contain' : 'object-cover')) : 'object-contain'}`} />
+                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-contain' : (isHomePopup ? 'object-contain' : (isRecipeContent ? 'object-contain' : 'object-cover'))) : 'object-contain'}`} />
+              </div>
+            )}
+
+            {/* 一键配方图文: Mask on top of image (z-[35]) */}
+            {isRecipeContent && localShowMask && asset.maskUrl && (
+              <div className="absolute inset-0 z-[35] pointer-events-none">
+                <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Recipe Mask" />
               </div>
             )}
           </div>
@@ -256,9 +265,9 @@ const AdCard: React.FC<{
         {localShowCrop && asset.cropOverlayUrl && (
           <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
         )}
-        {localShowBadge && asset.badgeOverlayUrl && (asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner) && (
+        {localShowBadge && asset.badgeOverlayUrl && (asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && (
           <div
-            className={`absolute pointer-events-none ${(isHotSearch || isTopicBanner) ? 'z-20' : (isScorePopup ? 'z-[45]' : (isHomePopup ? 'z-[45]' : (isTopicBg ? 'z-[15]' : 'z-[50]')))}`}
+            className={`absolute pointer-events-none ${(isHotSearch || isTopicBanner) ? 'z-20' : (isScorePopup ? 'z-[45]' : (isHomePopup ? 'z-[45]' : (isTopicBg ? 'z-[15]' : (isRecipeContent ? 'z-[40]' : 'z-[50]'))))}`}
             style={localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isTopicBg ? { width: '100%', height: '26.27%', left: 0, top: 0 } : { top: 0, left: 0, width: '100%', height: isImmersiveFocal ? '100%' : '37%' })))))) : { inset: 0 }}>
             <img src={`${ASSETS_URL}${asset.badgeOverlayUrl}`} className={`w-full h-full ${localShowMask ? (isPopup ? (isHomePopup ? 'object-contain' : 'object-cover') : (isTopicBanner ? 'object-contain' : 'object-contain object-top')) : 'object-contain'}`} />
           </div>
@@ -295,7 +304,7 @@ const AdCard: React.FC<{
             </button>
           )}
 
-          {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner) && asset.badgeOverlayUrl && (
+          {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
             <button
               onClick={() => setLocalShowBadge(!localShowBadge)}
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
