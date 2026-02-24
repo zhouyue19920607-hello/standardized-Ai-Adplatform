@@ -59,6 +59,7 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
             cropLeft = 0;
         }
 
+        const isPng = outputPath.toLowerCase().endsWith('.png');
         let quality = 80;
         let buffer;
         let scale = 1.0;
@@ -67,7 +68,7 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
 
         // Compression loop
         while (quality >= 10 && scale >= 0.5) {
-            const pipeline = sharp(inputPath)
+            let pipeline = sharp(inputPath)
                 .extract({
                     left: cropLeft,
                     top: cropTop,
@@ -79,12 +80,21 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
                     height: Math.round(currentHeight * scale),
                     fit: 'fill',
                     kernel: sharp.kernel.lanczos3
-                })
-                .jpeg({ quality, mozjpeg: true });
+                });
+
+            if (isPng) {
+                // For PNG, we can use compressionLevel (0-9)
+                // sharp doesn't have a direct "quality" for png in the same way as jpeg
+                // but we can adjust palette/colors if we wanted to be aggressive.
+                // For now, let's keep it simple and just use png()
+                pipeline = pipeline.png({ compressionLevel: 9 });
+            } else {
+                pipeline = pipeline.jpeg({ quality, mozjpeg: true });
+            }
 
             buffer = await pipeline.toBuffer();
 
-            if (buffer.length <= maxSizeBytes) {
+            if (isPng || buffer.length <= maxSizeBytes) {
                 break;
             }
 

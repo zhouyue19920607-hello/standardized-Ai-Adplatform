@@ -157,7 +157,7 @@ const AdCard: React.FC<{
         </div>
       </div>
       <div
-        className="relative bg-slate-100 overflow-hidden cursor-zoom-in w-full group/preview"
+        className="relative bg-[#f8f8fa] overflow-hidden cursor-zoom-in w-full group/preview"
         style={{ aspectRatio, containerType: 'size' }}
         onDoubleClick={() => onZoom({ ...asset, splashText: localSplashText }, localShowMask, localShowCrop, localShowBadge)}
       >
@@ -370,7 +370,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
         <div className="fixed inset-0 z-[9999] bg-black/55 backdrop-blur-sm flex items-start justify-center pt-4 animate-in fade-in duration-200" onClick={() => setSelectedAssetInfo(null)}>
           <button className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors z-[10000]" onClick={() => setSelectedAssetInfo(null)}><span className="material-symbols-outlined text-4xl">close</span></button>
           <div
-            className="relative flex items-center justify-center overflow-hidden shadow-2xl"
+            className="relative flex items-center justify-center overflow-hidden shadow-2xl bg-white"
             style={{
               aspectRatio: (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-p-') || selectedAsset.id.includes('mt-fe-'))) ? '1126 / 2436' : (selectedAssetInfo.showMask && selectedAsset.category === '开屏') ? '1440 / 2340' : parseAspectRatio(selectedAsset.dimensions),
               height: '92vh',

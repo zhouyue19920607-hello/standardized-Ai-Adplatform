@@ -694,7 +694,8 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     }
 
     // Output filename
-    const ext = ".jpg"; // Force JPG for compression
+    const originalExt = path.extname(file.originalname).toLowerCase();
+    const ext = originalExt === ".png" ? ".png" : ".jpg";
     const basename = path.basename(file.originalname, path.extname(file.originalname)); // Use original name base
     const outputFilename = `processed_${Date.now()}_${basename}${ext}`;
     const outputPath = path.join(STORAGE_DIR, outputFilename);
