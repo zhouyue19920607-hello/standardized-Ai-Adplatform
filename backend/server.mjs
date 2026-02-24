@@ -114,9 +114,10 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || ".dat";
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9_\-\.]/g, "_");
-    cb(null, `${Date.now()}_${safeName}${ext}`);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const base = path.basename(file.originalname, ext);
+    const safeBase = base.replace(/[^a-zA-Z0-9_\-]/g, "_");
+    cb(null, `${Date.now()}_${safeBase}${ext || '.dat'}`);
   }
 });
 
