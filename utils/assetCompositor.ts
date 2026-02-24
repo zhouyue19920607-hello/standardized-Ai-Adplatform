@@ -332,10 +332,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         ctx.fillRect(0, 0, 1126, 2436);
 
         // 计算定位 (基于 1126x2436)
-        const dw = 465; // 1034 * 0.45
-        const dh = 620; // 1378 * 0.45
+        const dw = 506; // 1034 * 0.49
+        const dh = 675; // 1378 * 0.49
         const dx = 46;
-        const dy = 1544; // 2436 - 620 - 272
+        const dy = 1489; // 2436 - 675 - 272
 
         // Layer 1: 蒙版（底层）
         if (maskImg) {
