@@ -46,9 +46,15 @@ echo -e "${YELLOW}[*] 检查上传目录...${NC}"
 mkdir -p $SRC_DIR/backend/storage/masks
 mkdir -p $SRC_DIR/backend/storage/workflows
 mkdir -p $SRC_DIR/backend/storage/badges
-chmod -R 755 $SRC_DIR/backend/storage
+chmod -R 777 $SRC_DIR/backend/storage
+
+# 修复路径映射：将 Nginx 预期的存储路径指向当前代码库的存储路径
+echo -e "${YELLOW}[*] 修复 Nginx 静态路径映射...${NC}"
+mkdir -p /var/www/ai-platform/backend
+rm -rf /var/www/ai-platform/backend/storage
+ln -sf $SRC_DIR/backend/storage /var/www/ai-platform/backend/storage
 chown -R www-data:www-data $SRC_DIR/backend/storage 2>/dev/null || true
-echo -e "${GREEN}✓ 上传目录已就绪${NC}"
+echo -e "${GREEN}✓ 路径映射已修复${NC}"
 
 # 4. 重启后端
 echo -e "${YELLOW}[4/4] 重启后端服务...${NC}"
