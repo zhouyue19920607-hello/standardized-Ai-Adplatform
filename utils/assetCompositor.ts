@@ -146,8 +146,9 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
                 const rgb = hexToRgb(finalGradientColor);
                 const colorStr = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}`;
                 grad.addColorStop(0, `${colorStr}, 0)`);
-                grad.addColorStop(0.25, `${colorStr}, 1)`);
-                grad.addColorStop(1, `${colorStr}, 1)`);
+                grad.addColorStop(0.1, `${colorStr}, 1)`);
+                grad.addColorStop(0.3, `${colorStr}, 1)`);
+                grad.addColorStop(1, `${colorStr}, 0)`);
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, barY, targetW, barHeight);
                 ctx.restore();
@@ -175,8 +176,9 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
                 const rgb = hexToRgb(finalGradientColor);
                 const colorStr = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}`;
                 grad.addColorStop(0, `${colorStr}, 0)`);
-                grad.addColorStop(0.25, `${colorStr}, 1)`);
-                grad.addColorStop(1, `${colorStr}, 1)`);
+                grad.addColorStop(0.1, `${colorStr}, 1)`);
+                grad.addColorStop(0.3, `${colorStr}, 1)`);
+                grad.addColorStop(1, `${colorStr}, 0)`);
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, barY, targetW, barHeight);
                 ctx.restore();
