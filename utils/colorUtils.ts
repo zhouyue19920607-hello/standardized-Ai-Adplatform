@@ -62,8 +62,9 @@ export function hsbToHex(h: number, s: number, b: number) {
  */
 export function getDerivedGradientColor(baseHex: string) {
     const { h } = hexToHsb(baseHex);
-    // 之前是 0.1，现应用户要求调暗到 0.05，使其视觉上更“深”更“沉”
-    return hsbToHex(h, 1.0, 0.05);
+    // 采样 mt-f-3 的反馈，将饱和定在 0.9，亮度调至 0.04
+    // 这样色值会呈现一种“极深且带色彩倾向的黑”，能与 UI 背景完美融合
+    return hsbToHex(h, 0.9, 0.04);
 }
 
 /**

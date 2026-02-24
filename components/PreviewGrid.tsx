@@ -227,7 +227,7 @@ const AdCard: React.FC<{
                   <div className="absolute inset-0">
                     <div className="absolute inset-0 z-[40]"><img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" /></div>
                     <div className="absolute inset-0 z-[30]" style={{ maskImage: `url(${focalAssetsPath}/icon_bg.png)`, WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`, backgroundColor: baseColor, maskSize: '100% 100%' }} />
-                    <div className="absolute left-0 right-0 z-[20]" style={{ top: `${(isImmersiveFocal ? 1600 : 750) / 2436 * 100}%`, height: '20.5%', backgroundColor: gradColor, maskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)' }} />
+                    <div className="absolute left-0 right-0 z-[20]" style={{ top: `${(isImmersiveFocal ? 1600 : 750) / 2436 * 100}%`, height: '20.5%', backgroundColor: gradColor, maskImage: 'linear-gradient(to bottom, transparent 0%, white 25%, white 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, white 25%, white 100%)' }} />
                     <div className="absolute inset-0 z-[10]"><img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" /></div>
                   </div>
                 );
@@ -463,7 +463,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   <div className="absolute inset-0">
                     <div className="absolute inset-0 z-[40]"><img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" /></div>
                     <div className="absolute inset-0 z-[30]" style={{ maskImage: `url(${focalAssetsPath}/icon_bg.png)`, WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`, backgroundColor: baseColor, maskSize: '100% 100%' }} />
-                    <div className="absolute left-0 right-0 z-[20]" style={{ top: `${(isImmersiveFocal ? 1600 : 750) / 2436 * 100}%`, height: '20.5%', backgroundColor: gradColor, maskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)' }} />
+                    <div className="absolute left-0 right-0 z-[20]" style={{ top: `${(isImmersiveFocal ? 1600 : 750) / 2436 * 100}%`, height: '20.5%', backgroundColor: gradColor, maskImage: 'linear-gradient(to bottom, transparent 0%, white 25%, white 100%)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, white 25%, white 100%)' }} />
                     <div className="absolute inset-0 z-[10]"><img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" /></div>
                   </div>
                 );
