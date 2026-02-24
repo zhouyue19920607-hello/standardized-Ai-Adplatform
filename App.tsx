@@ -679,6 +679,15 @@ const App: React.FC = () => {
             console.error("Direct Smart Crop (Score Popup) failed", e);
           }
         }
+        // 9.5 Home Popup (首页弹窗) + Image -> Force Smart Crop (720x960)
+        else if (isHomePopup && raw.file.type.startsWith('image/')) {
+          try {
+            const smart = await smartCropImage(raw.file, 720, 960, 250);
+            if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
+          } catch (e) {
+            console.error("Direct Smart Crop (Home Popup) failed", e);
+          }
+        }
         // 10. 一键配方图文 (信息流) + Image -> Force Smart Crop (720x960)
         else if (isRecipeContent && raw.file.type.startsWith('image/')) {
           try {
@@ -727,7 +736,7 @@ const App: React.FC = () => {
             (isSplash && raw.file.type.startsWith('image/')) ? (isNonFullscreenSplash ? '1440 x 1938' : '1440 x 2340') :
               (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' : // Immersive always static image now
                 (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' : // Static Focal always static image now
-                  (isHotRecommend && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                  ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
                     (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
                       (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
                         (template.dimensions || '1080 x 1920'),
