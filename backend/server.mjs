@@ -135,6 +135,10 @@ const DIST_DIR = path.join(ROOT_DIR, "dist");
 app.use(express.static(DIST_DIR));
 
 // ---- API：模版管理 ----
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", last_updated: "2026-02-24 18:48", feature: "png_transparency_v3" });
+});
+
 app.get("/api/templates", async (req, res) => {
   const templates = await readJson(TEMPLATES_FILE, []);
   res.json(templates);

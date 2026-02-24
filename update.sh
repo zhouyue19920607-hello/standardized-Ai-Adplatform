@@ -21,8 +21,12 @@ echo "========================================="
 # 1. 拉取最新代码
 echo -e "${YELLOW}[1/4] 拉取最新代码...${NC}"
 cd $SRC_DIR
+# 强制拉取，覆盖服务器端可能存在的微小改动
+git fetch --all
+git reset --hard origin/master
 git pull origin master
-echo -e "${GREEN}✓ 代码已更新${NC}"
+git status
+echo -e "${GREEN}✓ 代码已强力更新${NC}"
 
 # 2. 安装依赖（如有新增依赖）
 echo -e "${YELLOW}[2/4] 检查依赖...${NC}"
