@@ -158,7 +158,7 @@ const AdCard: React.FC<{
         </div>
       </div>
       <div
-        className="relative bg-[#f8f8fa] overflow-hidden cursor-zoom-in w-full group/preview"
+        className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview"
         style={{ aspectRatio, containerType: 'size' }}
         onDoubleClick={() => onZoom({ ...asset, splashText: localSplashText }, localShowMask, localShowCrop, localShowBadge)}
       >
@@ -180,7 +180,7 @@ const AdCard: React.FC<{
 
             {/* Hot Recommend Background Mask (Lower Layer) */}
             {isHotRecommend && localShowMask && asset.maskUrl && (
-              <div className="absolute inset-0 z-0 pointer-events-none mix-blend-normal">
+              <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
                 <img
                   src={`${ASSETS_URL}${asset.maskUrl}`}
                   className="w-full h-full object-contain"

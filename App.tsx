@@ -954,7 +954,7 @@ const App: React.FC = () => {
                 <div className={`grid gap-5 pb-2 transition-all duration-700 ${isCollapsed ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 opacity-60' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5'}`}>
                   {rawFiles.map(raw => (
                     <div key={raw.id} className={`liquid-glass relative group p-1 transition-all lens-effect ${isCollapsed ? 'scale-90 hover:scale-100' : ''}`}>
-                      <div className={`relative bg-black/20 flex items-center justify-center overflow-hidden rounded-[16px] ${isCollapsed ? 'aspect-square' : 'aspect-[4/3]'}`}>
+                      <div className={`relative bg-slate-100 flex items-center justify-center overflow-hidden rounded-[16px] ${isCollapsed ? 'aspect-square' : 'aspect-[4/3]'}`}>
                         {raw.file.type.startsWith('video/') ? (
                           <div className="w-full h-full flex items-center justify-center bg-slate-900">
                             {raw.thumbnailUrl ? (
