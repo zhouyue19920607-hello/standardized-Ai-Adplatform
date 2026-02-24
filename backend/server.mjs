@@ -136,7 +136,7 @@ app.use(express.static(DIST_DIR));
 
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", last_updated: "2026-02-24 19:10", feature: "png_transparency_v5_timeout_fix" });
+  res.json({ status: "ok", last_updated: "2026-02-24 19:15", feature: "png_transparency_v6_mimetype_wildcard" });
 });
 
 app.get("/api/templates", async (req, res) => {
@@ -704,8 +704,9 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
 
     // Output filename
     const originalExt = path.extname(file.originalname).toLowerCase();
-    const isPngMimetype = file.mimetype === "image/png";
-    const ext = (originalExt === ".png" || isPngMimetype) ? ".png" : ".jpg";
+    const isPngMimetype = file.mimetype && (file.mimetype.toLowerCase().includes("png") || file.mimetype.toLowerCase().includes("webp"));
+    // 同时也支持 webp 透明度，如果用户上传的是 webp
+    const ext = (originalExt === ".png" || originalExt === ".webp" || isPngMimetype) ? (isPngMimetype && file.mimetype.includes("webp") ? ".webp" : ".png") : ".jpg";
     console.log(`[SmartCrop] File: ${file.originalname}, Mime: ${file.mimetype}, Final Ext: ${ext}`);
     const basename = path.basename(file.originalname, path.extname(file.originalname)); // Use original name base
     const outputFilename = `processed_${Date.now()}_${basename}${ext}`;
