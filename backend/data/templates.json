@@ -164,7 +164,7 @@
     "category": "弹窗",
     "name": "首页弹窗",
     "checked": false,
-    "dimensions": "1126 x 2436",
+    "dimensions": "720 x 960",
     "maskPath": "backend/storage/masks/1770699760569______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699760569______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699760569______________-.jpg.jpg"
@@ -175,7 +175,7 @@
     "category": "弹窗",
     "name": "首页弹窗异形",
     "checked": false,
-    "dimensions": "1126 x 2436",
+    "dimensions": "720 x 960",
     "maskPath": "backend/storage/masks/1770699763404______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699763404______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699763404______________-.jpg.jpg"
