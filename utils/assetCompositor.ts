@@ -337,15 +337,15 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         const dx = 46;
         const dy = 2436 - dh - 272;
 
-        // Layer 1: 用户图片
-        ctx.drawImage(mainImg!, dx, dy, dw, dh);
-
-        // Layer 2: 蒙版（盖在图片上方）
+        // Layer 1: 蒙版（底层）
         if (maskImg) {
             ctx.drawImage(maskImg, 0, 0, 1126, 2436);
         }
 
-        // Layer 3: 角标
+        // Layer 2: 用户图片（盖在蒙版上方）
+        ctx.drawImage(mainImg!, dx, dy, dw, dh);
+
+        // Layer 3: 角标（最上层）
         if (badgeImg) {
             ctx.drawImage(badgeImg, dx, dy, dw, dh);
         }

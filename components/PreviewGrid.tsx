@@ -168,7 +168,7 @@ const AdCard: React.FC<{
                 loop
                 muted
               />
-            ) : (!(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup) && (
+            ) : (!(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && (
               <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && (asset.category === '焦点视窗' || asset.templateName === '非全屏') ? 'object-contain object-top' : 'object-contain'}`} />
             ))}
 
@@ -205,6 +205,13 @@ const AdCard: React.FC<{
             {/* Standard Mask (Overlay Layer - for other categories) */}
             {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent) && (
               <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" /></div>
+            )}
+
+            {/* 一键配方图文: Mask 在图片下方 (z-[15]), 图片将在上方 (z-[40]) */}
+            {isRecipeContent && localShowMask && asset.maskUrl && (
+              <div className="absolute inset-0 z-[15] pointer-events-none">
+                <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Recipe Mask" />
+              </div>
             )}
 
             {localShowMask && asset.category === '焦点视窗' && !asset.maskUrl && (
@@ -248,17 +255,10 @@ const AdCard: React.FC<{
             {/* Final Layers: Special Results (on top of masks) */}
             {(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && !asset.type.startsWith('video') && (
               <div
-                className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-30' : 'z-10'))}`}
+                className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
                 style={localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '91.83%', height: '56.59%', left: '4.085%', top: '32.24%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }}
               >
-                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-contain' : (isHomePopup ? 'object-contain' : (isRecipeContent ? 'object-cover rounded-[10px]' : 'object-cover'))) : 'object-contain'}`} />
-              </div>
-            )}
-
-            {/* 一键配方图文: Mask on top of image (z-[35]) */}
-            {isRecipeContent && localShowMask && asset.maskUrl && (
-              <div className="absolute inset-0 z-[35] pointer-events-none">
-                <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Recipe Mask" />
+                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-contain' : (isHomePopup ? 'object-contain' : (isRecipeContent ? 'object-cover' : 'object-cover'))) : 'object-contain'}`} />
               </div>
             )}
           </div>
@@ -373,7 +373,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             }}
             onClick={e => e.stopPropagation()}
           >
-            {!(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗') && (
+            {!(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && (
               selectedAsset.type.startsWith('video') ? (
                 <video
                   src={selectedAsset.url}
@@ -433,8 +433,15 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               </div>
             )}
 
+            {/* Modal: Recipe Content Mask (Lower Layer) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && selectedAsset.id.includes('mt-fe-1') && (
+              <div className="absolute inset-0 pointer-events-none z-[15] mix-blend-normal">
+                <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="recipe mask" />
+              </div>
+            )}
+
             {/* Modal Overlays: Standard Mask Overlay */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗') && (
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && (
               <div className="absolute inset-0 pointer-events-none z-20 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask" />
               </div>
@@ -497,19 +504,20 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
             {/* Modal: Final Result Layers (on top of masks) */}
-            {(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗') && (
+            {(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && (
               <div
-                className={`absolute ${(selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-4')) ? 'z-[40]' : (selectedAsset.category === '弹窗' ? 'z-[50]' : 'z-10')}`}
+                className={`absolute ${(selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-4')) ? 'z-[40]' : (selectedAsset.category === '弹窗' ? 'z-[50]' : (selectedAsset.id.includes('mt-fe-1') ? 'z-[40]' : 'z-10'))}`}
                 style={selectedAssetInfo.showMask ? (
                   selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                     selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
                       selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } :
                         (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } :
                           selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
-                            { width: '100%', height: '26.27%', left: 0, top: 0 }
+                            selectedAsset.id.includes('mt-fe-1') ? { width: '91.83%', height: '56.59%', left: '4.085%', top: '32.24%' } :
+                              { width: '100%', height: '26.27%', left: 0, top: 0 }
                 ) : { inset: 0 }}
               >
-                <img src={selectedAsset.url} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-contain' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover' : 'object-contain')) : 'object-contain'}`} />
+                <img src={selectedAsset.url} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-contain' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover' : (selectedAsset.id.includes('mt-fe-1') ? 'object-cover' : 'object-contain'))) : 'object-contain'}`} />
               </div>
             )}
           </div>
