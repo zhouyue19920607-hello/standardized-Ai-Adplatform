@@ -62,7 +62,8 @@ export function hsbToHex(h: number, s: number, b: number) {
  */
 export function getDerivedGradientColor(baseHex: string) {
     const { h } = hexToHsb(baseHex);
-    return hsbToHex(h, 1.0, 0.1);
+    // 之前是 0.1，现应用户要求调暗到 0.05，使其视觉上更“深”更“沉”
+    return hsbToHex(h, 1.0, 0.05);
 }
 
 /**
