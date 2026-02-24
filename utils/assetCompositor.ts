@@ -93,6 +93,9 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         return await resp.blob();
     }
 
+    const isPng = asset.type === 'image/png' || asset.url.toLowerCase().endsWith('.png');
+    const outputMime = isPng ? 'image/png' : 'image/jpeg';
+
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas context not available');
@@ -125,8 +128,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         canvas.width = targetW;
         canvas.height = targetH;
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (!isPng) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         if (showMask) {
             const dw = targetW;
@@ -224,8 +229,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         canvas.width = targetW;
         canvas.height = targetH;
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, targetW, targetH);
+        if (!isPng) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, targetW, targetH);
+        }
 
         if (showMask && maskImg) {
             if (isHotRecommend) {
@@ -273,8 +280,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         canvas.width = targetW;
         canvas.height = targetH;
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, targetW, targetH);
+        if (!isPng) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, targetW, targetH);
+        }
 
         // Drawing alignment: object-top if mask is on, middle if mask is off
         const scale = Math.min(targetW / mainImg.naturalWidth, targetH / mainImg.naturalHeight);
@@ -333,8 +342,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         canvas.width = 1126;
         canvas.height = 2436;
 
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, 1126, 2436);
+        if (!isPng) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
         // 计算定位 (基于 1126x2436)
         const dw = 506; // 1034 * 0.49
@@ -370,13 +381,13 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             canvas.toBlob(async (blob) => {
                 if (!blob) return reject(new Error('Failed to create blob'));
 
-                if (blob.size <= targetSizeBytes || quality <= 0.1) {
+                if (isPng || blob.size <= targetSizeBytes || quality <= 0.1) {
                     resolve(blob);
                 } else {
                     quality -= 0.1;
                     attempt();
                 }
-            }, 'image/jpeg', quality);
+            }, outputMime, isPng ? undefined : quality);
         }
 
         attempt();
