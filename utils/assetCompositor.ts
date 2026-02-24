@@ -301,7 +301,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         if (showMask) {
             const isUpDownSliding = asset.templateName === '上下滑动开屏';
             const fontSize = (isUpDownSliding || isNonFullscreenSplash) ? 58 : 42;
-            const bottomOffset = isNonFullscreenSplash ? 610 : (isUpDownSliding ? 285 : targetH * 0.0897);
+            let bottomOffset = isNonFullscreenSplash ? 610 : (isUpDownSliding ? 285 : targetH * 0.0897);
+            if (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-2') || asset.id.includes('mt-s-3')) {
+                bottomOffset -= 2; // 向下移动（减小 bottom offset）
+            }
 
             ctx.fillStyle = '#FFFFFF';
             ctx.textAlign = 'center';
