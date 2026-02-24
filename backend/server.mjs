@@ -136,7 +136,7 @@ app.use(express.static(DIST_DIR));
 
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", last_updated: "2026-02-24 18:48", feature: "png_transparency_v3" });
+  res.json({ status: "ok", last_updated: "2026-02-24 19:01", feature: "png_transparency_v4" });
 });
 
 app.get("/api/templates", async (req, res) => {
@@ -700,7 +700,9 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
 
     // Output filename
     const originalExt = path.extname(file.originalname).toLowerCase();
-    const ext = originalExt === ".png" ? ".png" : ".jpg";
+    const isPngMimetype = file.mimetype === "image/png";
+    const ext = (originalExt === ".png" || isPngMimetype) ? ".png" : ".jpg";
+    console.log(`[SmartCrop] File: ${file.originalname}, Mime: ${file.mimetype}, Final Ext: ${ext}`);
     const basename = path.basename(file.originalname, path.extname(file.originalname)); // Use original name base
     const outputFilename = `processed_${Date.now()}_${basename}${ext}`;
     const outputPath = path.join(STORAGE_DIR, outputFilename);

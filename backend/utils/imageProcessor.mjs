@@ -60,6 +60,7 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
         }
 
         const isPng = outputPath.toLowerCase().endsWith('.png');
+        console.log(`[imageProcessor] Processing image, target format is PNG: ${isPng}, Output: ${outputPath}`);
         let quality = 80;
         let buffer;
         let scale = 1.0;
