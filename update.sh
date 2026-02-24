@@ -41,6 +41,7 @@ echo -e "${GREEN}✓ 前端构建完成${NC}"
 echo -e "${YELLOW}[*] 检查上传目录...${NC}"
 mkdir -p $SRC_DIR/backend/storage/masks
 mkdir -p $SRC_DIR/backend/storage/workflows
+mkdir -p $SRC_DIR/backend/storage/badges
 chmod -R 755 $SRC_DIR/backend/storage
 chown -R www-data:www-data $SRC_DIR/backend/storage 2>/dev/null || true
 echo -e "${GREEN}✓ 上传目录已就绪${NC}"
