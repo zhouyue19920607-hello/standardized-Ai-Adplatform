@@ -136,7 +136,7 @@ app.use(express.static(DIST_DIR));
 
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", last_updated: "2026-02-24 19:01", feature: "png_transparency_v4" });
+  res.json({ status: "ok", last_updated: "2026-02-24 19:10", feature: "png_transparency_v5_timeout_fix" });
 });
 
 app.get("/api/templates", async (req, res) => {
@@ -650,7 +650,7 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     const targetHeight = parseInt(height) || 2340;
     const limitKB = parseInt(maxSizeKB) || 200;
 
-    // Detect Important Region using Gemini Vision
+    // Detect Important Region using Gemini Vision (with Timeout)
     let importantRegion = null;
     if (geminiClient) {
       try {
@@ -658,13 +658,14 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
         const imageBuffer = await fs.readFile(file.path);
         const imageBase64 = imageBuffer.toString('base64');
 
-        const response = await geminiClient.models.generateContent({
+        // 使用 Promise.race 增加 10 秒超时
+        const geminiTask = geminiClient.models.generateContent({
           model: "gemini-3-flash-preview",
           contents: {
             parts: [
               {
                 inlineData: {
-                  mimeType: "image/jpeg",
+                  mimeType: file.mimetype || "image/jpeg",
                   data: imageBase64
                 }
               },
@@ -688,13 +689,16 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
           }
         });
 
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini Timeout")), 10000));
+        const response = await Promise.race([geminiTask, timeoutPromise]);
+
         const parsed = JSON.parse(response.text || "{}");
         if (parsed.ymin !== undefined) {
           importantRegion = parsed;
           console.log("[SmartCrop] Region detected:", importantRegion);
         }
       } catch (geminiErr) {
-        console.error("[SmartCrop] Gemini detection failed, falling back to center-crop:", geminiErr.message);
+        console.error("[SmartCrop] Gemini detection bypassed/failed:", geminiErr.message);
       }
     }
 

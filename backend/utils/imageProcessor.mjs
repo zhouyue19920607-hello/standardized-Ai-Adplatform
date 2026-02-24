@@ -69,43 +69,49 @@ export async function processImage(inputPath, outputPath, width = 1440, height =
 
         // Compression loop
         while (quality >= 10 && scale >= 0.5) {
-            let pipeline = sharp(inputPath)
-                .ensureAlpha() // 确保包含 alpha 通道
-                .extract({
+            console.log(`[imageProcessor] Loop iteration, scale: ${scale}, quality: ${quality}`);
+            try {
+                let pipeline = sharp(inputPath);
+
+                // Add alpha if needed for transparency
+                pipeline = pipeline.ensureAlpha();
+
+                pipeline = pipeline.extract({
                     left: cropLeft,
                     top: cropTop,
                     width: cropWidth,
                     height: cropHeight
-                })
-                .resize({
+                }).resize({
                     width: Math.round(currentWidth * scale),
                     height: Math.round(currentHeight * scale),
                     fit: 'fill',
-                    background: { r: 0, g: 0, b: 0, alpha: 0 }, // 确保缩放背景透明
+                    background: { r: 0, g: 0, b: 0, alpha: 0 },
                     kernel: sharp.kernel.lanczos3
                 });
 
-            if (isPng) {
-                // PNG 保持最高无损压缩
-                pipeline = pipeline.png({ compressionLevel: 9, palette: false });
-            } else {
-                pipeline = pipeline.jpeg({ quality, mozjpeg: true });
-            }
+                if (isPng) {
+                    pipeline = pipeline.png({ compressionLevel: 9 });
+                } else {
+                    pipeline = pipeline.jpeg({ quality, mozjpeg: true });
+                }
 
-            buffer = await pipeline.toBuffer();
+                buffer = await pipeline.toBuffer();
+                console.log(`[imageProcessor] Buffered result size: ${buffer.length} bytes`);
 
-            // PNG 不进行质量阶梯压缩（保持透明度第一），JPEG 则按大小压缩
-            if (isPng || buffer.length <= maxSizeBytes) {
-                break;
-            }
+                if (isPng || buffer.length <= maxSizeBytes) {
+                    break;
+                }
 
-            // Strategy: Reduce quality gradually first
-            if (quality > 20) {
-                quality -= 5;
-            } else {
-                // If quality is already low, start reducing resolution
-                scale -= 0.1;
-                quality = 80; // Reset quality for the smaller resolution
+                // Strategy: Reduce quality gradually first
+                if (quality > 20) {
+                    quality -= 5;
+                } else {
+                    scale -= 0.1;
+                    quality = 80;
+                }
+            } catch (innerErr) {
+                console.error(`[imageProcessor] Sharp iteration failed: ${innerErr.message}`);
+                throw innerErr;
             }
         }
 
