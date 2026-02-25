@@ -279,21 +279,6 @@ const AdCard: React.FC<{
                 }}
               >
                 <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-cover rounded-[5px]' : (isHomePopup ? 'object-contain' : (isScorePopup ? 'object-cover rounded-[10px]' : (isRecipeContent ? 'object-cover rounded-[10px]' : (isHotRecommend || isHotSearch) ? 'object-cover rounded-[10px]' : 'object-cover')))) : 'object-contain'}`} />
-
-                {/* Score Popup Text (mt-p-1) inside asset container */}
-                {isScorePopup && asset.splashText && (
-                  <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: '13.4cqh' }}>
-                    <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
-                      fontSize: '2.77cqh',
-                      fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-                      fontWeight: 400
-                    }}>
-                      {isEditingText ? (
-                        <input autoFocus className="bg-transparent border-none text-white focus:ring-0 p-0 text-center w-64" value={localSplashText} onChange={e => setLocalSplashText(e.target.value)} onBlur={() => { setIsEditingText(false); onUpdate?.({ splashText: localSplashText }); }} />
-                      ) : <span className="text-white text-center block shadow-sm">{localSplashText}</span>}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -307,6 +292,29 @@ const AdCard: React.FC<{
             className={`absolute pointer-events-none ${(isHotSearch || isTopicBanner) ? 'z-[45]' : (isScorePopup ? 'z-[55]' : (isHomePopup ? 'z-[55]' : (isTopicBg ? 'z-[15]' : (isRecipeContent ? 'z-[50]' : 'z-[50]'))))}`}
             style={localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : (isTopicBg ? { width: '100%', height: '26.27%', left: 0, top: 0 } : { top: 0, left: 0, width: '100%', height: isImmersiveFocal ? '100%' : '37%' }))))))) : { inset: 0 }}>
             <img src={`${ASSETS_URL}${asset.badgeOverlayUrl}`} className={`w-full h-full ${localShowMask ? (isPopup ? (isScorePopup ? 'object-cover' : (isHomePopup ? 'object-contain' : 'object-cover')) : (isTopicBanner ? 'object-contain' : (isRecipeContent ? 'object-contain object-top' : 'object-contain object-top'))) : 'object-contain'}`} />
+          </div>
+        )}
+
+        {/* Score Popup Text (mt-p-1) Top Layer */}
+        {isScorePopup && asset.splashText && (
+          <div
+            className="absolute pointer-events-none z-[70]"
+            style={{
+              ...(localShowMask ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : { inset: 0 }),
+              containerType: 'size'
+            }}
+          >
+            <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh' }}>
+              <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
+                fontSize: '2.77cqh',
+                fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+                fontWeight: 400
+              }}>
+                {isEditingText ? (
+                  <input autoFocus className="bg-transparent border-none text-white focus:ring-0 p-0 text-center w-64" value={localSplashText} onChange={e => setLocalSplashText(e.target.value)} onBlur={() => { setIsEditingText(false); onUpdate?.({ splashText: localSplashText }); }} />
+                ) : <span className="text-white text-center block shadow-sm">{localSplashText}</span>}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -568,15 +576,23 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 }}
               >
                 <img src={selectedAsset.url} alt={selectedAsset.name} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-cover rounded-[5px]' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-fe-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2')) ? 'object-cover rounded-[10px]' : 'object-cover'))) : 'object-contain'}`} />
+              </div>
+            )}
 
-                {/* Score Popup Text (mt-p-1) inside modal asset container */}
-                {selectedAsset.id.includes('mt-p-1') && selectedAssetInfo.showMask && (
-                  <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: '13.4cqh' }}>
-                    <div style={{ fontSize: '2.77cqh', fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif', fontWeight: 400 }}>
-                      <span className="text-white text-center block shadow-sm">{selectedAsset.splashText}</span>
-                    </div>
+            {/* Modal: Score Popup Text (mt-p-1) Top Layer */}
+            {selectedAsset.id.includes('mt-p-1') && selectedAsset.splashText && (
+              <div
+                className="absolute pointer-events-none z-[75]"
+                style={{
+                  ...(selectedAssetInfo.showMask ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : { inset: 0 }),
+                  containerType: 'size'
+                }}
+              >
+                <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh' }}>
+                  <div style={{ fontSize: '2.77cqh', fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif', fontWeight: 400 }}>
+                    <span className="text-white text-center block shadow-sm">{selectedAsset.splashText}</span>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
