@@ -305,7 +305,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             ctx.textBaseline = 'bottom';
             const fontSize = 40; // 30pt is approx 40px
             ctx.font = `normal ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
-            ctx.fillText(asset.splashText, targetW / 2, targetH - 193);
+            ctx.fillText(asset.splashText, targetW / 2, targetH - 188);
             ctx.restore();
         }
 

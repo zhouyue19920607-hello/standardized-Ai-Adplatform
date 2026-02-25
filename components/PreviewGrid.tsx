@@ -304,7 +304,7 @@ const AdCard: React.FC<{
               containerType: 'size'
             }}
           >
-            <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh' }}>
+            <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh', transform: 'translateY(5px)' }}>
               <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
                 fontSize: '2.77cqh',
                 fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
@@ -588,7 +588,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   containerType: 'size'
                 }}
               >
-                <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh' }}>
+                <div className="absolute inset-x-0 text-center pointer-events-none" style={{ bottom: '13.4cqh', transform: 'translateY(5px)' }}>
                   <div style={{ fontSize: '2.77cqh', fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif', fontWeight: 400 }}>
                     <span className="text-white text-center block shadow-sm">{selectedAsset.splashText}</span>
                   </div>
