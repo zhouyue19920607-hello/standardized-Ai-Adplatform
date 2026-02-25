@@ -152,7 +152,7 @@
     "category": "弹窗",
     "name": "保分页弹窗",
     "checked": false,
-    "dimensions": "1126 x 2436",
+    "dimensions": "960 x 1440",
     "maskPath": "backend/storage/masks/1770625209601_________________.jpg.jpg",
     "mask_path": "/static/masks/1770625209601_________________.jpg.jpg",
     "maskUrl": "/static/masks/1770625209601_________________.jpg.jpg",

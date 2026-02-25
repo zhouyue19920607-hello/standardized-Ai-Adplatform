@@ -254,8 +254,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        const targetW = 1126; // Always use base resolution for these
-        const targetH = 2436;
+        const targetW = isScorePopup ? 960 : 1126; // mt-p-1 use 960x1440
+        const targetH = isScorePopup ? 1440 : 2436;
         canvas.width = targetW;
         canvas.height = targetH;
 
@@ -268,7 +268,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         let rect = { x: 0, y: 0, w: targetW, h: targetH, r: 0, fit: 'cover' as 'cover' | 'contain' };
         if (isHotRecommend) rect = { x: 708, y: 1779, w: 288, h: 384, r: 10, fit: 'cover' };
         else if (isHotSearch) rect = { x: 168, y: 1293, w: 156, h: 156, r: 10, fit: 'cover' };
-        else if (isScorePopup) rect = { x: 83, y: 485, w: 960, h: 1440, r: 10, fit: 'cover' };
+        else if (isScorePopup) rect = { x: 0, y: 0, w: 960, h: 1440, r: 0, fit: 'cover' };
         else if (isHomePopup) rect = { x: 83, y: 738, w: 960, h: 960, r: 0, fit: 'contain' };
         else if (isTopicBanner) rect = { x: 48, y: 980, w: 1030, h: 288, r: 5, fit: 'cover' };
         else if (isTopicBg) rect = { x: 0, y: 0, w: 1126, h: 640, r: 0, fit: 'cover' };
@@ -295,6 +295,18 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             if (rect.r > 0) drawImageRounded(ctx, mainImg, 0, 0, targetW, targetH, rect.r, rect.fit);
             else drawImageContain(ctx, mainImg, 0, 0, targetW, targetH);
             if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH);
+        }
+
+        // Add Score Popup Text (mt-p-1)
+        if (isScorePopup && asset.splashText) {
+            ctx.save();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            const fontSize = 40; // 30pt is approx 40px
+            ctx.font = `normal ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+            ctx.fillText(asset.splashText, targetW / 2, targetH - 193);
+            ctx.restore();
         }
 
     } else if (asset.category === '开屏') {

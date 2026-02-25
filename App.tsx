@@ -737,10 +737,11 @@ const App: React.FC = () => {
               (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' : // Immersive always static image now
                 (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' : // Static Focal always static image now
                   ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
-                    (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
-                      (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
-                        (template.dimensions || '1080 x 1920'),
-          splashText: template.category === '开屏' ? config.splashText : undefined,
+                    (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
+                      (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
+                        (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                          (template.dimensions || '1080 x 1920'),
+          splashText: (template.category === '开屏' || template.id === 'mt-p-1') ? config.splashText : undefined,
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,
           badgeOverlayUrl: template.badge_overlay_path ? `${template.badge_overlay_path}?v=${config.assetsVersion}` : null,
