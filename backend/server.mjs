@@ -136,7 +136,7 @@ app.use(express.static(DIST_DIR));
 
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", last_updated: "2026-02-24 19:15", feature: "png_transparency_v6_mimetype_wildcard" });
+  res.json({ status: "ok", last_updated: "2026-02-25 10:35", feature: "png_transparency_v7_mtp1_text" });
 });
 
 app.get("/api/templates", async (req, res) => {
