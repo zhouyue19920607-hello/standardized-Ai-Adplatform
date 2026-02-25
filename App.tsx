@@ -586,8 +586,9 @@ const App: React.FC = () => {
               try {
                 const resp = await fetch(thumb);
                 const blob = await resp.blob();
-                const file = new File([blob], "first_frame.png", { type: "image/png" });
-                const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 500);
+                const isMts1 = template.id === 'mt-s-1';
+                const file = new File([blob], isMts1 ? "first_frame.jpg" : "first_frame.png", { type: isMts1 ? "image/jpeg" : "image/png" });
+                const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, isMts1 ? 200 : 500);
                 if (compressed?.url) finalUrl = `${ASSETS_URL}${compressed.url}`;
                 else finalUrl = thumb;
               } catch (e) { finalUrl = thumb; }
@@ -722,8 +723,12 @@ const App: React.FC = () => {
           type: (() => {
             if (!raw.file.type.startsWith('video/')) return raw.file.type;
             if (isStaticFocal || isImmersive) return 'image/png';
-            if (isSplash && template.name.includes('动态') && config.captureFirstFrame) return 'image/png';
-            if (finalUrl.startsWith('data:') || finalUrl.match(/\.(png|jpg|jpeg|webp)$/i)) return 'image/png';
+            if (isSplash && template.name.includes('动态') && config.captureFirstFrame) {
+              return template.id === 'mt-s-1' ? 'image/jpeg' : 'image/png';
+            }
+            if (finalUrl.match(/\.(jpg|jpeg)$/i)) return 'image/jpeg';
+            if (finalUrl.startsWith('data:image/jpeg')) return 'image/jpeg';
+            if (finalUrl.startsWith('data:') || finalUrl.match(/\.(png|webp)$/i)) return 'image/png';
             return 'video/mp4';
           })(),
           category: template.category,
