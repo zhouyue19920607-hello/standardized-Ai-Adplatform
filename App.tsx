@@ -446,6 +446,7 @@ const App: React.FC = () => {
         const isHomePopup = template.id === 'mt-p-2' || template.id === 'mt-p-3';
         // NOTE: 一键配方图文，信息流模板，裁剪至 720x960
         const isRecipeContent = template.id === 'mt-fe-1';
+        const isMts1 = template.id === 'mt-s-1';
 
         // 1. If Workflow exists -> Try ComfyUI -> Fallback to Smart Crop (if image) or Thumbnail (if video)
         // Special handling: If captureFirstFrame is enabled for dynamic splash, skip workflow entirely
@@ -502,7 +503,8 @@ const App: React.FC = () => {
                   const targetW = isImmersive ? 1440 : (isStaticFocal ? 1126 : (isHotRecommend ? 720 : 1440));
                   const targetH = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : (isHotRecommend ? 960 : 2340)));
 
-                  const compressed = await smartCropImage(file, targetW, targetH, isSplash ? 500 : 250);
+                  const limitKB = isMts1 ? 200 : (isSplash ? 500 : 250);
+                  const compressed = await smartCropImage(file, targetW, targetH, limitKB);
                   if (compressed?.url) {
                     finalUrl = `${ASSETS_URL}${compressed.url}`;
                     console.log(`[App] Compression success: ${compressed.sizeKB}KB`);
@@ -524,7 +526,8 @@ const App: React.FC = () => {
                 const w = isImmersive ? 1440 : (isStaticFocal ? 1126 : ((isHotRecommend || isHomePopup) ? 720 : 1440));
                 const h = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : ((isHotRecommend || isHomePopup) ? 960 : 2340)));
 
-                const smart = await smartCropImage(raw.file, w, h, isSplash ? 500 : 250);
+                const limitKB = isMts1 ? 200 : (isSplash ? 500 : 250);
+                const smart = await smartCropImage(raw.file, w, h, limitKB);
                 if (smart?.url) {
                   finalUrl = `${ASSETS_URL}${smart.url}`;
                   console.log(`Fallback to Smart Crop (${w}x${h}) success`);

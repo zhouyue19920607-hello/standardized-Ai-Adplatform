@@ -104,6 +104,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     const isImmersiveFocal = asset.templateName.includes('沉浸式');
     // NOTE: 一键配方图文：图片 -> 蒙版 -> 角标 层序
     const isRecipeContent = asset.id.includes('mt-fe-1');
+    const isMts1 = asset.id.includes('mt-s-1');
 
     // Check if we need compositing (usually when mask is shown or badge is enabled)
     const showMask = config.showMask;
@@ -118,12 +119,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         (isPopup && showBadge && asset.badgeOverlayUrl) ||
         (isRecipeContent && showBadge && asset.badgeOverlayUrl);
 
-    if (!needsComposite) {
+    if (!needsComposite && !isMts1) {
         const resp = await fetch(asset.url);
         return await resp.blob();
     }
 
-    const isPng = asset.type === 'image/png' || asset.url.toLowerCase().endsWith('.png');
+    const isPng = isMts1 ? false : (asset.type === 'image/png' || asset.url.toLowerCase().endsWith('.png'));
     const outputMime = isPng ? 'image/png' : 'image/jpeg';
 
     const canvas = document.createElement('canvas');
