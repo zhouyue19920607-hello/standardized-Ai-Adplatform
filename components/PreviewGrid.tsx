@@ -150,11 +150,11 @@ const AdCard: React.FC<{
 
   return (
     <div className="liquid-glass lens-effect group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-white/20">
-      <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-2 bg-white/5">
+      <div className="px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2 bg-white/5">
         <div className="flex items-center gap-2 overflow-hidden w-full">
-          <span className="text-primary text-[10px] uppercase font-bold tracking-widest shrink-0">{t(`apps.${asset.app}`)}</span>
-          <span className="text-[10px] text-slate-400 font-bold font-mono shrink-0">{asset.dimensions}</span>
-          <h3 className="font-bold text-slate-900 text-sm truncate flex-1">{t(`templates.${asset.templateName}`) !== `templates.${asset.templateName}` ? t(`templates.${asset.templateName}`) : asset.templateName}</h3>
+          <span className="text-primary text-[9px] uppercase font-bold tracking-widest shrink-0">{t(`apps.${asset.app}`)}</span>
+          <span className="text-[9px] text-slate-400 font-bold font-mono shrink-0">{asset.dimensions}</span>
+          <h3 className="font-bold text-slate-900 text-xs truncate flex-1">{t(`templates.${asset.templateName}`) !== `templates.${asset.templateName}` ? t(`templates.${asset.templateName}`) : asset.templateName}</h3>
         </div>
       </div>
       <div
@@ -319,52 +319,52 @@ const AdCard: React.FC<{
         )}
       </div>
 
-      <div className="p-4 border-t border-slate-100 flex items-center justify-between mt-auto bg-slate-50/30">
-        <div className="flex items-center gap-2">
+      <div className="px-3 py-2.5 border-t border-slate-100 flex items-center justify-between mt-auto bg-slate-50/30">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setLocalShowMask(!localShowMask)}
-            className={`h-9 px-4 rounded-xl flex items-center gap-2 transition-all text-xs font-bold shadow-sm ${localShowMask ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
+            className={`h-8 px-2.5 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-sm ${localShowMask ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
           >
-            <span className="material-symbols-outlined text-[18px]">{localShowMask ? 'visibility' : 'visibility_off'}</span>
+            <span className="material-symbols-outlined text-[16px]">{localShowMask ? 'visibility' : 'visibility_off'}</span>
             <span>{localShowMask ? t('preview.adMask') : t('preview.rawAsset')}</span>
           </button>
 
           {asset.cropOverlayUrl && (
             <button
               onClick={() => setLocalShowCrop(!localShowCrop)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm ${localShowCrop ? 'bg-orange-500 text-white shadow-orange-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowCrop ? 'bg-orange-500 text-white shadow-orange-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.cropPreview')}
             >
-              <span className="material-symbols-outlined text-[20px]">crop</span>
+              <span className="material-symbols-outlined text-[18px]">crop</span>
             </button>
           )}
 
           {(asset.category === '开屏' || isHotSearch || isScorePopup) && localShowMask && (
             <button
               onClick={() => setIsEditingText(!isEditingText)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm ${isEditingText ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${isEditingText ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.editText')}
             >
-              <span className="material-symbols-outlined text-[20px]">edit_note</span>
+              <span className="material-symbols-outlined text-[18px]">edit_note</span>
             </button>
           )}
 
           {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
             <button
               onClick={() => setLocalShowBadge(!localShowBadge)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.brandComponent')}
             >
-              <span className="material-symbols-outlined text-[20px]">verified</span>
+              <span className="material-symbols-outlined text-[18px]">verified</span>
             </button>
           )}
         </div>
         <button
           onClick={handleDownload}
-          className="w-9 h-9 rounded-xl flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
+          className="w-8 h-8 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
           title={t('preview.download')}
         >
-          <span className="material-symbols-outlined text-[20px]">download</span>
+          <span className="material-symbols-outlined text-[18px]">download</span>
         </button>
       </div>
     </div>
@@ -397,7 +397,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             <p className="text-slate-800 font-bold tracking-widest text-xs uppercase animate-pulse">{t('preview.generating')}</p>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 pb-20">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8 gap-6 pb-20">
           {filteredAssets.map(asset => (
             <AdCard key={asset.id} asset={asset} globalShowMask={config.showMask} config={config} onZoom={(a, showMask, showCrop, showBadge) => setSelectedAssetInfo({ asset: a, showMask, showCrop, showBadge })} onUpdate={updates => onUpdateAsset?.(asset.id, updates)} />
           ))}
