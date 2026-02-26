@@ -25,6 +25,7 @@ const BADGES_DIR = path.join(STORAGE_DIR, "badges");
 
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 const WORKFLOWS_FILE = path.join(DATA_DIR, "workflows.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 
 // ---- 辅助函数：简易 JSON“库”读写 ----
 async function ensureDir(dir) {
@@ -93,6 +94,17 @@ async function ensureDataFiles() {
   const workflows = await readJson(WORKFLOWS_FILE, null);
   if (!workflows) {
     await writeJson(WORKFLOWS_FILE, []);
+  }
+
+  // NOTE: 初始化 AI 增强模式配置，默认关闭
+  const settings = await readJson(SETTINGS_FILE, null);
+  if (!settings) {
+    await writeJson(SETTINGS_FILE, {
+      aiEnhancedMode: false,
+      aiProvider: "tongyi",
+      tongyiApiKey: "",
+      comfyuiUrl: "http://127.0.0.1:8188"
+    });
   }
 
   await ensureDir(MASKS_DIR);
@@ -637,6 +649,143 @@ app.post("/api/focal-window/generate", upload.single("image"), async (req, res) 
 
 
 
+// ---- API: 系统设置（AI 增强模式开关）----
+app.get("/api/settings", async (req, res) => {
+  const settings = await readJson(SETTINGS_FILE, {
+    aiEnhancedMode: false,
+    aiProvider: "tongyi",
+    tongyiApiKey: "",
+    comfyuiUrl: "http://127.0.0.1:8188"
+  });
+  // NOTE: 为安全起见，返回时遮盖 API Key 的实际内容（只显示是否已配置）
+  res.json({
+    ...settings,
+    tongyiApiKey: settings.tongyiApiKey ? "***configured***" : "",
+    tongyiApiKeyConfigured: !!settings.tongyiApiKey
+  });
+});
+
+app.put("/api/settings", async (req, res) => {
+  const payload = req.body || {};
+  const current = await readJson(SETTINGS_FILE, {
+    aiEnhancedMode: false,
+    aiProvider: "tongyi",
+    tongyiApiKey: "",
+    comfyuiUrl: "http://127.0.0.1:8188"
+  });
+
+  // NOTE: 如果前端传来 "***configured***" 说明用户没改 key，保持原值
+  if (payload.tongyiApiKey === "***configured***") {
+    payload.tongyiApiKey = current.tongyiApiKey;
+  }
+
+  const updated = { ...current, ...payload };
+  await writeJson(SETTINGS_FILE, updated);
+  res.json({ success: true });
+});
+
+
+// ---- 通义万象 Outpaint 辅助函数 ----
+// NOTE: 通义万象图像编辑 API，用于将小图智能外延至目标尺寸，自动补充背景
+async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey) {
+  const FormData = (await import('form-data')).default;
+  const fsp = fs;
+
+  // Step 1: 上传图片，获取 image_url
+  const imageBuffer = await fsp.readFile(inputImagePath);
+  const base64Image = imageBuffer.toString('base64');
+  const mimeType = inputImagePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+  // Step 2: 调用通义万象 image-outpainting API
+  // 通义万象 API 文档: https://help.aliyun.com/zh/model-studio/image-expansion
+  const requestBody = {
+    model: "wanx-image-repair-v1",
+    input: {
+      image_url: `data:${mimeType};base64,${base64Image}`,
+      function: "outpainting",
+      outpainting_params: {
+        target_width: targetWidth,
+        target_height: targetHeight,
+        // NOTE: 将原图居中放置在目标画布，四周 AI 自动补全
+        x_scale: 0.5,
+        y_scale: 0.5,
+      }
+    },
+    parameters: {
+      style: "natural",
+      prompt: "professional advertising photo, clean background, visually balanced layout"
+    }
+  };
+
+  console.log(`[TongyiOutpaint] Requesting outpaint: ${targetWidth}x${targetHeight}`);
+
+  const submitResponse = await axios.post(
+    "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
+    requestBody,
+    {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable" // 异步模式
+      },
+      timeout: 30000
+    }
+  );
+
+  const taskId = submitResponse.data?.output?.task_id;
+  if (!taskId) {
+    throw new Error(`[TongyiOutpaint] No task_id in response: ${JSON.stringify(submitResponse.data)}`);
+  }
+
+  console.log(`[TongyiOutpaint] Task submitted: ${taskId}, polling...`);
+
+  // Step 3: 轮询任务状态，最多等待 120 秒
+  const maxWait = 120000;
+  const pollInterval = 3000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(r => setTimeout(r, pollInterval));
+
+    const statusResponse = await axios.get(
+      `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`,
+      {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        timeout: 15000
+      }
+    );
+
+    const taskStatus = statusResponse.data?.output?.task_status;
+    console.log(`[TongyiOutpaint] Task ${taskId} status: ${taskStatus}`);
+
+    if (taskStatus === "SUCCEEDED") {
+      const outputUrl = statusResponse.data?.output?.results?.[0]?.url;
+      if (!outputUrl) throw new Error("[TongyiOutpaint] No output URL in result");
+
+      // Step 4: 下载结果图并保存到本地
+      const imgResponse = await axios.get(outputUrl, { responseType: "arraybuffer", timeout: 30000 });
+      const outputFilename = `tongyi_outpaint_${Date.now()}.png`;
+      const outputPath = path.join(STORAGE_DIR, outputFilename);
+      await fsp.writeFile(outputPath, Buffer.from(imgResponse.data));
+
+      console.log(`[TongyiOutpaint] Done! Saved to ${outputPath}`);
+      return {
+        url: `/static/${outputFilename}`,
+        width: targetWidth,
+        height: targetHeight,
+        size: imgResponse.data.byteLength
+      };
+
+    } else if (taskStatus === "FAILED") {
+      throw new Error(`[TongyiOutpaint] Task failed: ${JSON.stringify(statusResponse.data?.output)}`);
+    }
+    // PENDING / RUNNING 继续等待
+  }
+
+  throw new Error("[TongyiOutpaint] Timeout waiting for task");
+}
+
+
 // ---- API: Smart Crop & Compress (不依赖 ComfyUI) ----
 app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
   try {
@@ -649,6 +798,27 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     const targetWidth = parseInt(width) || 1440;
     const targetHeight = parseInt(height) || 2340;
     const limitKB = parseInt(maxSizeKB) || 200;
+
+    // NOTE: 检查 AI 增强模式开关，如果开启则路由到对应 AI 服务
+    const settings = await readJson(SETTINGS_FILE, { aiEnhancedMode: false, aiProvider: "tongyi", tongyiApiKey: "" });
+    if (settings.aiEnhancedMode && settings.aiProvider === "tongyi" && settings.tongyiApiKey) {
+      try {
+        console.log(`[SmartCrop] AI 增强模式开启，使用通义万象 Outpaint: ${targetWidth}x${targetHeight}`);
+        const result = await tongyiOutpaint(file.path, targetWidth, targetHeight, settings.tongyiApiKey);
+        return res.json({
+          ok: true,
+          url: result.url,
+          width: result.width,
+          height: result.height,
+          sizeKB: (result.size / 1024).toFixed(2),
+          message: "通义万象 AI 增强完成",
+          aiEnhanced: true
+        });
+      } catch (aiErr) {
+        console.error("[SmartCrop] 通义万象 Outpaint 失败，回退到常规裁剪:", aiErr.message);
+        // NOTE: AI 失败后自动降级到常规裁剪，保证服务可用性
+      }
+    }
 
     // Detect Important Region using Gemini Vision (with Timeout)
     let importantRegion = null;

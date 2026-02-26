@@ -93,3 +93,21 @@ export const smartCropImage = async (file: File, width = 1440, height = 2340, ma
     const response = await api.post('/smart-crop', formData);
     return response.data;
 };
+
+// NOTE: 系统全局设置（AI 增强模式）读取/保存
+export interface SystemSettings {
+    aiEnhancedMode: boolean;
+    aiProvider: 'tongyi' | 'comfyui';
+    tongyiApiKey: string;
+    tongyiApiKeyConfigured?: boolean;
+    comfyuiUrl: string;
+}
+
+export const getSettings = async (): Promise<SystemSettings> => {
+    const response = await api.get<SystemSettings>('/settings');
+    return response.data;
+};
+
+export const updateSettings = async (settings: Partial<SystemSettings>): Promise<void> => {
+    await api.put('/settings', settings);
+};
