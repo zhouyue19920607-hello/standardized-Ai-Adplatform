@@ -219,33 +219,34 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                         </h2>
 
                         {/* Modern Tab Switcher */}
-                        <button
-                            onClick={() => setActiveTab('templates')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeTab === 'templates' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            {t('admin.templates')}
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('settings')}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-                            AI 增强
-                        </button>
-                        {/* NOTE: 工作流管理仅在 AI 增强模式选择了 ComfyUI 时才激活 */}
-                        <button
-                            onClick={() => aiSettings.aiProvider === 'comfyui' && setActiveTab('workflows')}
-                            disabled={aiSettings.aiProvider !== 'comfyui'}
-                            title={aiSettings.aiProvider !== 'comfyui' ? '请先在 AI 增强设置中选择「自建 ComfyUI」' : undefined}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1.5 ${aiSettings.aiProvider !== 'comfyui'
-                                ? 'text-slate-300 cursor-not-allowed'
-                                : activeTab === 'workflows' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                        >
-                            <span className="material-symbols-outlined text-[16px]">account_tree</span>
-                            {t('admin.workflows')}
-                        </button>
-                    </div>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button
+                                onClick={() => setActiveTab('templates')}
+                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${activeTab === 'templates' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                {t('admin.templates')}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('settings')}
+                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1.5 ${activeTab === 'settings' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                                AI 增强
+                            </button>
+                            {/* NOTE: 工作流管理仅在 AI 增强模式选择了 ComfyUI 时才激活 */}
+                            <button
+                                onClick={() => aiSettings.aiProvider === 'comfyui' && setActiveTab('workflows')}
+                                disabled={aiSettings.aiProvider !== 'comfyui'}
+                                title={aiSettings.aiProvider !== 'comfyui' ? '请先在 AI 增强设置中选择「自建 ComfyUI」' : undefined}
+                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1.5 ${aiSettings.aiProvider !== 'comfyui'
+                                    ? 'text-slate-300 cursor-not-allowed'
+                                    : activeTab === 'workflows' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                            >
+                                <span className="material-symbols-outlined text-[16px]">account_tree</span>
+                                {t('admin.workflows')}
+                            </button>
+                        </div>
 
 
                 </div>
