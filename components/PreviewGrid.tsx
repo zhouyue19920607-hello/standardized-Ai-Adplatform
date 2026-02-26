@@ -289,7 +289,10 @@ const AdCard: React.FC<{
         </div>
 
         {localShowCrop && asset.cropOverlayUrl && (
-          <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
+          // NOTE: mt-s-5（非全屏动态）裁剪层跟随结果图，从顶部对齐而非撑满容器
+          asset.id.includes('mt-s-5')
+            ? <div className="absolute top-0 left-0 w-full z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full" style={{ height: 'auto' }} /></div>
+            : <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
         )}
         {localShowBadge && asset.badgeOverlayUrl && (asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && (
           <div
@@ -527,7 +530,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               })()
             )}
             {selectedAssetInfo.showCrop && selectedAsset.cropOverlayUrl && (
-              <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${selectedAsset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
+              // NOTE: mt-s-5（非全屏动态）裁剪层在弹窗中同样从顶部对齐
+              selectedAsset.id.includes('mt-s-5')
+                ? <div className="absolute top-0 left-0 w-full z-20 pointer-events-none"><img src={`${ASSETS_URL}${selectedAsset.cropOverlayUrl}`} className="w-full" style={{ height: 'auto' }} /></div>
+                : <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${selectedAsset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
             )}
             {selectedAssetInfo.showBadge && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-fe-1')) && selectedAsset.badgeOverlayUrl && (
               <div
