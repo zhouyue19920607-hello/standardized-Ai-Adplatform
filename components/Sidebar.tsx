@@ -226,11 +226,33 @@ const Sidebar: React.FC<SidebarProps> = ({
                                             <div className="space-y-3 pt-2 border-t border-ios-gray-6">
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-[11px] font-semibold text-ios-gray-2 shrink-0">{t('sidebar.iconColor')}</span>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-[10px] font-mono text-ios-gray-3 uppercase">{tpl.iconColor}</span>
+                                                <div className="flex items-center gap-1.5">
+                                                  {/* NOTE: 可输入/粘贴 HEX 色値的文本框 */}
+                                                  <input
+                                                    type="text"
+                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 uppercase bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-widest"
+                                                    value={tpl.iconColor || ''}
+                                                    placeholder="#FF0000"
+                                                    onChange={(e) => {
+                                                      const val = e.target.value.trim();
+                                                      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                                                        onTemplateUpdate(tpl.id, { iconColor: val });
+                                                      } else {
+                                                        // 允许输入过程中的中间状态，不立刻应用
+                                                        onTemplateUpdate(tpl.id, { iconColor: val as any });
+                                                      }
+                                                    }}
+                                                    onBlur={(e) => {
+                                                      const val = e.target.value.trim();
+                                                      if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                                                        // 格式不合法，恢复为之前的合法色値
+                                                        onTemplateUpdate(tpl.id, { iconColor: tpl.iconColor });
+                                                      }
+                                                    }}
+                                                  />
                                                   <div
-                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white"
-                                                    style={{ backgroundColor: tpl.iconColor }}
+                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white shrink-0"
+                                                    style={{ backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(tpl.iconColor || '') ? tpl.iconColor : '#cccccc' }}
                                                     onClick={() => document.getElementById(`cp-${appName}-${tpl.id}-1`)?.click()}
                                                   ></div>
                                                   <input type="color" id={`cp-${appName}-${tpl.id}-1`} className="sr-only" value={tpl.iconColor} onChange={(e) => onTemplateUpdate(tpl.id, { iconColor: e.target.value })} />
@@ -238,11 +260,31 @@ const Sidebar: React.FC<SidebarProps> = ({
                                               </div>
                                               <div className="flex items-center justify-between gap-2">
                                                 <span className="text-[11px] font-semibold text-ios-gray-2 shrink-0">{t('sidebar.gradientColor')}</span>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-[10px] font-mono text-ios-gray-3 uppercase">{tpl.gradientColor}</span>
+                                                <div className="flex items-center gap-1.5">
+                                                  {/* NOTE: 可输入/粘贴 HEX 色値的文本框 */}
+                                                  <input
+                                                    type="text"
+                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 uppercase bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-widest"
+                                                    value={tpl.gradientColor || ''}
+                                                    placeholder="#FF6B6B"
+                                                    onChange={(e) => {
+                                                      const val = e.target.value.trim();
+                                                      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                                                        onTemplateUpdate(tpl.id, { gradientColor: val });
+                                                      } else {
+                                                        onTemplateUpdate(tpl.id, { gradientColor: val as any });
+                                                      }
+                                                    }}
+                                                    onBlur={(e) => {
+                                                      const val = e.target.value.trim();
+                                                      if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                                                        onTemplateUpdate(tpl.id, { gradientColor: tpl.gradientColor });
+                                                      }
+                                                    }}
+                                                  />
                                                   <div
-                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white"
-                                                    style={{ backgroundColor: tpl.gradientColor }}
+                                                    className="w-5 h-5 rounded-full border border-ios-gray-5 cursor-pointer shadow-ios ring-2 ring-white shrink-0"
+                                                    style={{ backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(tpl.gradientColor || '') ? tpl.gradientColor : '#cccccc' }}
                                                     onClick={() => document.getElementById(`cp-${appName}-${tpl.id}-2`)?.click()}
                                                   ></div>
                                                   <input type="color" id={`cp-${appName}-${tpl.id}-2`} className="sr-only" value={tpl.gradientColor} onChange={(e) => onTemplateUpdate(tpl.id, { gradientColor: e.target.value })} />
