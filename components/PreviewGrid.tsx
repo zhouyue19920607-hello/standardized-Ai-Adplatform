@@ -176,7 +176,10 @@ const AdCard: React.FC<{
                 muted
               />
             ) : (!(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && (
-              <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && (asset.category === '焦点视窗' || asset.templateName === '非全屏') ? 'object-contain object-top' : 'object-contain'}`} />
+              // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐，以匹配蒙版中的非全屏图片区域
+              (localShowMask && asset.id.includes('mt-s-5'))
+                ? <img src={asset.url} alt={asset.name} className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
+                : <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && asset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
             ))}
 
             {/* Hot Recommend Background Mask (Lower Layer) */}
@@ -428,7 +431,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   muted
                 />
               ) : (
-                <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.templateName === '非全屏') ? 'object-contain object-top' : 'object-contain'}`} />
+                // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐以匹配蒙版的图片区域
+                (selectedAssetInfo.showMask && selectedAsset.id.includes('mt-s-5'))
+                  ? <img src={selectedAsset.url} alt="zoom" className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
+                  : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
               )
             )}
 
