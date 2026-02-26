@@ -10,6 +10,7 @@ interface SidebarProps {
   activeCount: number;
   onGenerate: () => void;
   isProcessing: boolean;
+  generationProgress?: { current: number; total: number } | null;
   onTemplateUpdate: (id: string, updates: Partial<AdTemplate>) => void;
 }
 
@@ -21,6 +22,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeCount,
   onGenerate,
   isProcessing,
+  generationProgress,
   onTemplateUpdate
 }) => {
   const { t } = useLanguage();
@@ -277,7 +279,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {isProcessing ? (
               <>
                 <span className="material-symbols-outlined text-xl animate-spin">sync</span>
-                {t('sidebar.generating')}
+                {t('sidebar.generating')} {generationProgress ? `(${generationProgress.current}/${generationProgress.total})` : ''}
               </>
             ) : (
               <>

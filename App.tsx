@@ -159,6 +159,7 @@ const App: React.FC = () => {
   const [rawFiles, setRawFiles] = useState<RawFile[]>([]);
   const [processedAssets, setProcessedAssets] = useState<AdAsset[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -376,6 +377,7 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     setProcessedAssets([]);
+    setGenerationProgress({ current: 0, total: rawFiles.length * activeTemplates.length });
 
     const results: AdAsset[] = [];
 
@@ -717,7 +719,7 @@ const App: React.FC = () => {
           }
         }
 
-        results.push({
+        const newAsset: AdAsset = {
           id: `${raw.id}-${template.id}`,
           url: finalUrl,
           name: raw.file.name,
@@ -753,7 +755,11 @@ const App: React.FC = () => {
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,
           badgeOverlayUrl: template.badge_overlay_path ? `${template.badge_overlay_path}?v=${config.assetsVersion}` : null,
-        });
+        };
+
+        results.push(newAsset);
+        setProcessedAssets(prev => [...prev, newAsset]);
+        setGenerationProgress(prev => prev ? { ...prev, current: prev.current + 1 } : null);
 
         if (template.id === 'mt-f-2' || template.id === 'mt-s-1') {
           console.log(`[Debug ${template.id}] Pushed result:`, {
@@ -785,6 +791,7 @@ const App: React.FC = () => {
 
     setProcessedAssets(results);
     setIsProcessing(false);
+    setGenerationProgress(null);
   };
 
   const handleUpdateAsset = (assetId: string, updates: Partial<AdAsset>) => {
@@ -885,6 +892,7 @@ const App: React.FC = () => {
           activeCount={rawFiles.length}
           onGenerate={handleGenerate}
           isProcessing={isProcessing}
+          generationProgress={generationProgress}
         />
 
         <div className="flex-1 flex flex-col relative">
@@ -1010,9 +1018,15 @@ const App: React.FC = () => {
                   </div>
                   <h2 className="text-base font-bold text-slate-800">生成预览</h2>
                 </div>
-                {processedAssets.length > 0 && (
+                {processedAssets.length > 0 && !isProcessing && (
                   <span className="text-xs font-bold text-primary bg-primary/20 backdrop-blur-md border border-primary/30 px-3 py-1 rounded-full">
                     {processedAssets.length} 份匹配资产
+                  </span>
+                )}
+                {isProcessing && generationProgress && (
+                  <span className="text-xs font-bold text-blue-500 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                    生成中 {generationProgress.current} / {generationProgress.total}
                   </span>
                 )}
               </div>
