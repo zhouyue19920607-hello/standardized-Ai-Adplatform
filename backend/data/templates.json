@@ -3,7 +3,7 @@
     "id": "mt-s-1",
     "app": "美图秀秀",
     "category": "开屏",
-    "name": "动态开屏",
+    "name": "全屏动态",
     "checked": false,
     "dimensions": "1440 x 2340",
     "workflow_id": "wf_1769787041100",
@@ -11,6 +11,18 @@
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
     "maskUrl": "/static/masks/1770618508446____________________-.png.png"
+  },
+  {
+    "id": "mt-s-5",
+    "app": "美图秀秀",
+    "category": "开屏",
+    "name": "非全屏动态",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "crop_overlay_path": "/static/1770618680137____________________.png.png",
+    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
+    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
+    "maskUrl": "/static/masks/1770618676230_______________________-.png.png"
   },
   {
     "id": "mt-s-2",
@@ -65,18 +77,6 @@
     "checked": true,
     "dimensions": "1126 x 2436",
     "badge_overlay_path": "/static/1770005108546_____________.png.png"
-  },
-  {
-    "id": "mt-s-5",
-    "app": "美图秀秀",
-    "category": "开屏",
-    "name": "非全屏",
-    "checked": false,
-    "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/1770618680137____________________.png.png",
-    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
-    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
-    "maskUrl": "/static/masks/1770618676230_______________________-.png.png"
   },
   {
     "id": "mt-f-3",

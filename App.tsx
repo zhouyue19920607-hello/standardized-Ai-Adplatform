@@ -438,7 +438,7 @@ const App: React.FC = () => {
         const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
         const isDynamicFocal = template.category === '焦点视窗' && template.name.includes('动态') && !template.name.includes('沉浸式');
         const isImmersive = template.category === '焦点视窗' && template.name.includes('沉浸式'); // Assuming Immersive is mostly static images or specific logic
-        const isNonFullscreenSplash = template.name === '非全屏';
+        const isNonFullscreenSplash = template.id === 'mt-s-5';
 
         const isHotRecommend = template.id === 'mt-ib-1';
         const isHotSearch = template.id === 'mt-ib-2';

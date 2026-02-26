@@ -311,7 +311,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
     } else if (asset.category === '开屏') {
-        const isNonFullscreenSplash = asset.templateName === '非全屏';
+        const isNonFullscreenSplash = asset.id.includes('mt-s-5');
         // Load main image, mask, and potential crop overlay
         const loadList = [loadImg(asset.url)];
 
