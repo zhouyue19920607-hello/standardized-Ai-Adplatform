@@ -241,10 +241,10 @@ const AdCard: React.FC<{
             )}
 
             {asset.category === '开屏' && localShowMask && (
-              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: asset.templateName === '非全屏' ? 'calc(26.07% - 5px)' : (asset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (asset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: asset.id.includes('mt-s-2') ? 'translateY(-2px)' : (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-3') || asset.id.includes('mt-s-4')) ? 'translateY(2px)' : 'none' }}>
+              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: asset.id.includes('mt-s-5') ? '26.07%' : (asset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (asset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: asset.id.includes('mt-s-2') ? 'translateY(-2px)' : (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-3') || asset.id.includes('mt-s-4')) ? 'translateY(2px)' : 'none' }}>
                 <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
-                  fontSize: (asset.templateName === '上下滑动开屏' || asset.templateName === '非全屏') ? '2.48cqh' : (asset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'),
-                  letterSpacing: 'normal'
+                  fontSize: (asset.id.includes('mt-s-5') || asset.templateName === '上下滑动开屏') ? '2.48cqh' : (asset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'),
+                  letterSpacing: '0.05em'
                 }}>
                   {isEditingText ? (
                     <input autoFocus className="bg-transparent border-none text-white focus:ring-0 p-0 text-center w-64" value={localSplashText} onChange={e => setLocalSplashText(e.target.value)} onBlur={() => { setIsEditingText(false); onUpdate?.({ splashText: localSplashText }); }} />
@@ -536,8 +536,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             {/* Modal Splash Text Overlay (Fullscreen 開屏) */}
             {selectedAsset.category === '开屏' && selectedAssetInfo.showMask && (
               <div className="absolute inset-x-0 text-center pointer-events-none z-[60]"
-                style={{ bottom: selectedAsset.templateName === '非全屏' ? 'calc(26.07% - 5px)' : (selectedAsset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3') || selectedAsset.id.includes('mt-s-4')) ? 'translateY(2px)' : 'none' }}>
-                <div className="inline-block" style={{ fontSize: (selectedAsset.templateName === '上下滑动开屏' || selectedAsset.templateName === '非全屏') ? '2.48cqh' : (selectedAsset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: 'normal' }}>
+                style={{ bottom: selectedAsset.id.includes('mt-s-5') ? '26.07%' : (selectedAsset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3') || selectedAsset.id.includes('mt-s-4')) ? 'translateY(2px)' : 'none' }}>
+                <div className="inline-block" style={{ fontSize: (selectedAsset.id.includes('mt-s-5') || selectedAsset.templateName === '上下滑动开屏') ? '2.48cqh' : (selectedAsset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
                   <span className="text-white text-center block font-bold shadow-sm">{selectedAsset.splashText || t('preview.defaultSplashText')}</span>
                 </div>
               </div>
