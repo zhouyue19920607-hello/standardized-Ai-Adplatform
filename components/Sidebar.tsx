@@ -45,10 +45,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     const initialExpanded: Record<string, boolean> = {};
     templates.forEach(tpl => {
       const key = `${tpl.app}-${tpl.category}`;
-      if (initialExpanded[key] === undefined) initialExpanded[key] = true;
+      if (initialExpanded[key] === undefined) initialExpanded[key] = false;
     });
     setExpandedCats(prev => ({ ...initialExpanded, ...prev }));
-  }, []);
+  }, [templates.length]); // dependency on length to run when templates load
 
   return (
     <aside className="w-[340px] sticky top-24 h-[calc(100vh-180px)] flex flex-col liquid-glass ml-4 my-4 shrink-0 overflow-hidden shadow-2xl z-50">
