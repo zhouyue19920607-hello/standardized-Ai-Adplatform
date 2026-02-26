@@ -364,8 +364,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         if (showMask) {
             const isUpDownSliding = asset.templateName === '上下滑动开屏';
             const fontSize = (isUpDownSliding || isNonFullscreenSplash) ? 58 : 42;
-            const isTwistSplash = asset.templateName === '扭动开屏';
-            let bottomOffset = isNonFullscreenSplash ? 580 : (isUpDownSliding ? 262 : (isTwistSplash ? 269 : 182));
+            let bottomOffset = isNonFullscreenSplash ? 610 : (isUpDownSliding ? 285 : targetH * 0.0897);
+            if (asset.id.includes('mt-s-2')) {
+                bottomOffset += 2; // 向上移动
+            } else if (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-3') || asset.id.includes('mt-s-4')) {
+                bottomOffset -= 2; // 向下移动
+            }
 
             ctx.fillStyle = '#FFFFFF';
             ctx.textAlign = 'center';

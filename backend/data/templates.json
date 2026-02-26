@@ -7,7 +7,7 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "workflow_id": "wf_1769787041100",
-    "crop_overlay_path": "/static/1770618512191_________________.png.png",
+    "crop_overlay_path": "/static/badges/1772078200648_________________.png",
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
     "maskUrl": "/static/masks/1770618508446____________________-.png.png"
@@ -19,7 +19,7 @@
     "name": "上下滑动开屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/1770618523457_________________.png.png",
+    "crop_overlay_path": "/static/badges/1772078204835_________________.png",
     "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
     "mask_path": "/static/masks/1770618519624__________________________.png.png",
     "maskUrl": "/static/masks/1770618519624__________________________.png.png"
@@ -31,7 +31,7 @@
     "name": "气泡开屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/1770618531523_________________.png.png",
+    "crop_overlay_path": "/static/badges/1772078206724_________________.png",
     "maskPath": "backend/storage/masks/1770618528800____________________-.png.png",
     "mask_path": "/static/masks/1770618528800____________________-.png.png",
     "maskUrl": "/static/masks/1770618528800____________________-.png.png"
@@ -43,7 +43,7 @@
     "name": "扭动开屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/1770085454988_____________-_________.png.png",
+    "crop_overlay_path": "/static/badges/1772078210121_________________.png",
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
     "maskUrl": "/static/masks/1770618641086____________________-.png.png"
