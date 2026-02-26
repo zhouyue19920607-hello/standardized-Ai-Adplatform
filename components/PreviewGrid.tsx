@@ -34,7 +34,7 @@ const AdCard: React.FC<{
   const [localShowMask, setLocalShowMask] = useState(globalShowMask);
   const [isEditingText, setIsEditingText] = useState(false);
   const [localSplashText, setLocalSplashText] = useState(asset.splashText || t('preview.defaultSplashText'));
-  const [localShowCrop, setLocalShowCrop] = useState(false);
+  const [localShowCrop, setLocalShowCrop] = useState(config.showCrop);
   const [localShowBadge, setLocalShowBadge] = useState(false);
 
   const isHotRecommend = asset.id.includes('mt-ib-1');
@@ -59,6 +59,11 @@ const AdCard: React.FC<{
   useEffect(() => {
     setLocalShowMask(globalShowMask);
   }, [globalShowMask]);
+
+  // NOTE: 监听全局「全显裁剪」开关，同步到每张卡片的本地状态
+  useEffect(() => {
+    setLocalShowCrop(config.showCrop);
+  }, [config.showCrop]);
 
   const handleDownload = async () => {
     if (asset.type.startsWith('video')) {

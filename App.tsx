@@ -1033,13 +1033,26 @@ const App: React.FC = () => {
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
-                  <span className="text-[11px] font-bold text-slate-500">显示遮罩</span>
+                  <span className="text-[11px] font-bold text-slate-500">全显遮罩</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       className="sr-only peer"
                       checked={config.showMask}
                       onChange={() => handleConfigChange({ showMask: !config.showMask })}
+                    />
+                    <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
+                  <span className="text-[11px] font-bold text-slate-500">全显裁剪</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.showCrop}
+                      onChange={() => handleConfigChange({ showCrop: !config.showCrop })}
                     />
                     <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
                   </label>
@@ -1070,7 +1083,7 @@ const App: React.FC = () => {
             />
           </div>
         </div>
-      </main>
+      </main >
 
       <Footer
         selectedCount={templates.filter(tpl => tpl.checked).length}
@@ -1080,7 +1093,7 @@ const App: React.FC = () => {
 
 
       {showAdmin && <AdminDashboard onClose={() => { setShowAdmin(false); loadTemplates(); }} />}
-    </div>
+    </div >
   );
 };
 
