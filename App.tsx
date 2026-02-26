@@ -165,9 +165,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleScroll = () => {
       const scrollY = window.scrollY;
-      if (scrollY > 100) {
+      if (scrollY > 200) {
         setIsCollapsed(true);
-      } else if (scrollY < 20) {
+      } else if (scrollY < 50) {
         setIsCollapsed(false);
       }
     };
@@ -893,7 +893,7 @@ const App: React.FC = () => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-700 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[5000px]'}`}
+            className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[5000px]'}`}
           >
             {/* Contextual Drag Overlay - Minimal */}
             {isDragging && !isCollapsed && (
@@ -960,7 +960,7 @@ const App: React.FC = () => {
                     onChange={handleFileUpload}
                   />
                 </div>
-                <div className={`grid gap-5 pb-2 transition-all duration-700 ${isCollapsed ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 opacity-60' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5'}`}>
+                <div className={`grid gap-5 pb-2 transition-all duration-400 ${isCollapsed ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 opacity-60' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5'}`}>
                   {rawFiles.map(raw => (
                     <div key={raw.id} className={`liquid-glass relative group p-1 transition-all lens-effect ${isCollapsed ? 'scale-90 hover:scale-100' : ''}`}>
                       <div className={`relative bg-slate-100 flex items-center justify-center overflow-hidden rounded-[16px] ${isCollapsed ? 'aspect-square' : 'aspect-[4/3]'}`}>
@@ -1001,7 +1001,7 @@ const App: React.FC = () => {
           </section>
 
           {/* Sticky Controller Header */}
-          <div className="px-6 pt-6 pb-3 sticky top-[100px] z-30 pointer-events-none">
+          <div className="px-6 pt-6 pb-3 sticky top-[76px] z-30 pointer-events-none transition-all duration-300">
             <div className="flex items-center justify-between px-6 py-4 liquid-glass border border-white/30 shadow-sm pointer-events-auto">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
@@ -1045,7 +1045,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Processed Previews Section */}
-          <div className="w-full pb-24 sticky top-[180px] overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+          <div className="w-full pb-24 relative">
             <PreviewGrid
               assets={processedAssets}
               config={config}
