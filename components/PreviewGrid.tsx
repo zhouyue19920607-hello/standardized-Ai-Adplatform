@@ -50,15 +50,9 @@ const AdCard: React.FC<{
   const isStaticFocal = asset.category === '焦点视窗' && !isImmersiveFocal && !asset.templateName.includes('动态');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
-  const aspectRatio = (localShowMask && asset.category === '焦点视窗')
+  const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || asset.category === '开屏' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
     ? '1126 / 2436'
-    : (localShowMask && (isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup))
-      ? '1126 / 2436'
-      : (localShowMask && asset.category === '开屏')
-        ? '1440 / 2340'
-        : (localShowMask && isRecipeContent)
-          ? '1126 / 2436'
-          : asset.dimensions?.replace(' x ', ' / ') || '1080 / 1920';
+    : asset.dimensions?.replace(' x ', ' / ') || '1080 / 1920';
 
   useEffect(() => {
     setLocalShowMask(globalShowMask);
