@@ -243,7 +243,7 @@ const AdCard: React.FC<{
             )}
 
             {asset.category === '开屏' && localShowMask && (
-              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: asset.id.includes('mt-s-5') ? '22%' : (asset.templateName === '上下滑动开屏' ? '9.5%' : (asset.templateName === '扭动开屏' ? '9.8%' : '6.5%')) }}>
+              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: asset.id.includes('mt-s-5') ? '23.5%' : (asset.templateName === '上下滑动开屏' ? '10.5%' : (asset.templateName === '扭动开屏' ? '10.8%' : '7.5%')) }}>
                 <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
                   fontSize: (asset.id.includes('mt-s-5') || asset.templateName === '上下滑动开屏') ? '2.48cqh' : (asset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'),
                   letterSpacing: '0.05em'
