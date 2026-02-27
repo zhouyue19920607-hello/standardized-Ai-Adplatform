@@ -6,7 +6,9 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
+import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
+
 
 // ---- 基础路径与环境变量 ----
 const __filename = fileURLToPath(import.meta.url);
@@ -685,40 +687,105 @@ app.put("/api/settings", async (req, res) => {
 });
 
 
-// ---- 通义万象 Outpaint 辅助函数 ----
-// NOTE: 通义万象图像编辑 API，用于将小图智能外延至目标尺寸，自动补充背景
-async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey) {
-  const FormData = (await import('form-data')).default;
-  const fsp = fs;
+// ---- 通义万象辅助函数 ----
 
-  // Step 1: 上传图片，获取 image_url
-  const imageBuffer = await fsp.readFile(inputImagePath);
-  const base64Image = imageBuffer.toString('base64');
-  const mimeType = inputImagePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+/**
+ * 调用通义万象通用图像编辑 2.1 (wanx2.1-imageedit) 进行扩图
+ * 官方文档: https://help.aliyun.com/zh/model-studio/wanx-image-edit
+ * 计费: ¥0.14/张
+ * 优势: 支持 Prompt 引导背景风格、四方向独立比例、直接 base64 传图（无需 OSS 上传）
+ *
+ * @param {string} inputImagePath - 本地图片路径
+ * @param {number} targetWidth - 目标宽度（像素）
+ * @param {number} targetHeight - 目标高度（像素）
+ * @param {string} apiKey - DashScope API Key
+ * @returns {Promise<{url: string, width: number, height: number, size: number}>}
+ */
+async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, customPrompt = "") {
+  const sharpLib = sharp;  // 使用顶层已导入的 sharp
 
-  // Step 2: 调用通义万象 image-outpainting API
-  // 通义万象 API 文档: https://help.aliyun.com/zh/model-studio/image-expansion
+
+  // Step 1: 读取原图元数据
+  let srcWidth, srcHeight;
+  try {
+    const meta = await sharpLib(inputImagePath).metadata();
+    srcWidth = meta.width || 1080;
+    srcHeight = meta.height || 1080;
+  } catch (e) {
+    srcWidth = 1080; srcHeight = 1080;
+    console.warn('[TongyiOutpaint] 无法读取图片尺寸，使用估算值:', e.message);
+  }
+
+  // Step 2: 预处理图片，确保满足 API 要求
+  // NOTE: wanx2.1-imageedit 要求输入图片宽高均 ≥ 512px，且扩图比例 ≤ 2.0
+  // 若不满足，先用 sharp 预放大图片，再调用 API
+  let processedImagePath = inputImagePath;
+  const rawXScale = targetWidth / srcWidth;
+  const rawYScale = targetHeight / srcHeight;
+  const needsPreUpscale = srcWidth < 512 || srcHeight < 512 || rawXScale > 2.0 || rawYScale > 2.0;
+
+  if (needsPreUpscale) {
+    // 计算预放大目标：让扩图比例尽量控制在 2.0 以内同时满足最小尺寸 512px
+    const preWidth = Math.max(512, Math.ceil(targetWidth / 2));
+    const preHeight = Math.max(512, Math.ceil(targetHeight / 2));
+    const preFilename = `tongyi_pre_${Date.now()}.jpg`;
+    const prePath = path.join(STORAGE_DIR, preFilename);
+
+    console.log(`[TongyiOutpaint] 预处理: 原图 ${srcWidth}x${srcHeight} 预放大至 ${preWidth}x${preHeight}（满足 API 最小尺寸和比例要求）`);
+    await sharpLib(inputImagePath)
+      .resize({ width: preWidth, height: preHeight, fit: 'fill', kernel: sharpLib.kernel.lanczos3 })
+      .jpeg({ quality: 95 })
+      .toFile(prePath);
+
+    processedImagePath = prePath;
+    srcWidth = preWidth;
+    srcHeight = preHeight;
+  }
+
+  // Step 3: 读取图片为 base64（用预处理后的图片）
+  // NOTE: wanx2.1-imageedit 支持 base64 直接传参，无需上传到 OSS
+  const imageBuffer = await fs.readFile(processedImagePath);
+  const ext = path.extname(processedImagePath).toLowerCase();
+  const mimeType = ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg');
+  const base64Image = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+
+  // 清理临时预处理文件
+  if (processedImagePath !== inputImagePath) {
+    fs.unlink(processedImagePath).catch(() => { });
+  }
+
+  // Step 4: 计算扩图比例，钳位到 API 允许范围 [1.0, 2.0]
+  const calcXScale = targetWidth / srcWidth;
+  const calcYScale = targetHeight / srcHeight;
+  const xScale = Math.min(Math.max(parseFloat(calcXScale.toFixed(4)), 1.0), 2.0);
+  const yScale = Math.min(Math.max(parseFloat(calcYScale.toFixed(4)), 1.0), 2.0);
+  console.log(`[TongyiOutpaint] 原图 ${srcWidth}x${srcHeight} → 目标 ${targetWidth}x${targetHeight}，扩图比例 x=${xScale}, y=${yScale}`);
+
+  const defaultPrompt = "专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻";
+  const finalPrompt = customPrompt?.trim() ? customPrompt.trim() : defaultPrompt;
+  console.log(`[TongyiOutpaint] 使用 Prompt: ${finalPrompt}`);
+
+  // Step 3: 调用 wanx2.1-imageedit expand 接口
   const requestBody = {
-    model: "wanx-image-repair-v1",
+    model: "wanx2.1-imageedit",
     input: {
-      image_url: `data:${mimeType};base64,${base64Image}`,
-      function: "outpainting",
-      outpainting_params: {
-        target_width: targetWidth,
-        target_height: targetHeight,
-        // NOTE: 将原图居中放置在目标画布，四周 AI 自动补全
-        x_scale: 0.5,
-        y_scale: 0.5,
-      }
+      function: "expand",
+      // NOTE: Prompt 引导扩展后的背景风格，提升广告素材质量
+      prompt: finalPrompt,
+      base_image_url: base64Image
     },
     parameters: {
-      style: "natural",
-      prompt: "professional advertising photo, clean background, visually balanced layout"
+      // NOTE: 四方向统一使用相同比例（图片居中扩展），将来可按模板方向差异化配置
+      top_scale: yScale,
+      bottom_scale: yScale,
+      left_scale: xScale,
+      right_scale: xScale,
+      n: 1,
+      watermark: false
     }
   };
 
-  console.log(`[TongyiOutpaint] Requesting outpaint: ${targetWidth}x${targetHeight}`);
-
+  console.log(`[TongyiOutpaint] 提交 wanx2.1-imageedit expand 任务...`);
   const submitResponse = await axios.post(
     "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
     requestBody,
@@ -726,7 +793,8 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey)
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "X-DashScope-Async": "enable" // 异步模式
+        // NOTE: 图像处理耗时较长，必须启用异步模式
+        "X-DashScope-Async": "enable"
       },
       timeout: 30000
     }
@@ -734,12 +802,11 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey)
 
   const taskId = submitResponse.data?.output?.task_id;
   if (!taskId) {
-    throw new Error(`[TongyiOutpaint] No task_id in response: ${JSON.stringify(submitResponse.data)}`);
+    throw new Error(`[TongyiOutpaint] 未获取到 task_id: ${JSON.stringify(submitResponse.data)}`);
   }
+  console.log(`[TongyiOutpaint] 任务已提交: ${taskId}，轮询结果中...`);
 
-  console.log(`[TongyiOutpaint] Task submitted: ${taskId}, polling...`);
-
-  // Step 3: 轮询任务状态，最多等待 120 秒
+  // Step 4: 轮询任务状态，最多等待 120 秒
   const maxWait = 120000;
   const pollInterval = 3000;
   const startTime = Date.now();
@@ -759,16 +826,20 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey)
     console.log(`[TongyiOutpaint] Task ${taskId} status: ${taskStatus}`);
 
     if (taskStatus === "SUCCEEDED") {
+      // NOTE: wanx2.1-imageedit 的结果在 output.results[0].url（与 image-out-painting 不同）
       const outputUrl = statusResponse.data?.output?.results?.[0]?.url;
-      if (!outputUrl) throw new Error("[TongyiOutpaint] No output URL in result");
+      if (!outputUrl) {
+        throw new Error(`[TongyiOutpaint] 结果中无图片 URL: ${JSON.stringify(statusResponse.data?.output)}`);
+      }
 
-      // Step 4: 下载结果图并保存到本地
-      const imgResponse = await axios.get(outputUrl, { responseType: "arraybuffer", timeout: 30000 });
+      // Step 5: 下载结果图并保存到本地
+      console.log(`[TongyiOutpaint] 下载结果图: ${outputUrl}`);
+      const imgResponse = await axios.get(outputUrl, { responseType: "arraybuffer", timeout: 60000 });
       const outputFilename = `tongyi_outpaint_${Date.now()}.png`;
       const outputPath = path.join(STORAGE_DIR, outputFilename);
-      await fsp.writeFile(outputPath, Buffer.from(imgResponse.data));
+      await fs.writeFile(outputPath, Buffer.from(imgResponse.data));
 
-      console.log(`[TongyiOutpaint] Done! Saved to ${outputPath}`);
+      console.log(`[TongyiOutpaint] 完成！已保存至 ${outputPath}`);
       return {
         url: `/static/${outputFilename}`,
         width: targetWidth,
@@ -777,13 +848,119 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey)
       };
 
     } else if (taskStatus === "FAILED") {
-      throw new Error(`[TongyiOutpaint] Task failed: ${JSON.stringify(statusResponse.data?.output)}`);
+      const errInfo = statusResponse.data?.output;
+      throw new Error(`[TongyiOutpaint] 任务失败: code=${errInfo?.code}, message=${errInfo?.message}`);
     }
     // PENDING / RUNNING 继续等待
   }
 
-  throw new Error("[TongyiOutpaint] Timeout waiting for task");
+  throw new Error(`[TongyiOutpaint] 超时：任务 ${taskId} 在 ${maxWait / 1000} 秒内未完成`);
 }
+
+/**
+ * [已弃用，保留为备用]
+ * 上传本地图片到百炼临时存储，获取可公网访问的 oss:// URL
+ * NOTE: wanx2.1-imageedit 已支持 base64，此函数不再主动使用
+ * 保留以备 image-out-painting 等不支持 base64 的模型使用
+ */
+async function uploadImageToBailianStorage(imagePath, apiKey) {
+  const FormData = (await import('form-data')).default;
+  const filename = path.basename(imagePath);
+  const ext = path.extname(filename).toLowerCase();
+
+  // Step 1: 获取 OSS 上传凭证
+  console.log(`[TongyiUpload] 获取上传凭证: ${filename}`);
+  const policyResp = await axios.get(
+    `https://dashscope.aliyuncs.com/api/v1/uploads?action=getPolicy&model=image-out-painting`,
+    {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      timeout: 15000
+    }
+  );
+
+  const ossData = policyResp.data?.data;
+  if (!ossData?.upload_host || !ossData?.policy) {
+    throw new Error(`[TongyiUpload] 获取上传凭证失败: ${JSON.stringify(policyResp.data)}`);
+  }
+
+  const ossKey = `${ossData.upload_dir}/${filename}`;
+
+  // Step 2: 上传图片到 OSS 临时存储
+  console.log(`[TongyiUpload] 上传中: ${ossKey}`);
+  const imageBuffer = await fs.readFile(imagePath);
+  const formData = new FormData();
+  formData.append('OSSAccessKeyId', ossData.oss_access_key_id);
+  formData.append('policy', ossData.policy);
+  formData.append('Signature', ossData.signature);
+  formData.append('x-oss-object-acl', ossData.x_oss_object_acl);
+  formData.append('x-oss-forbid-overwrite', ossData.x_oss_forbid_overwrite);
+  formData.append('key', ossKey);
+  formData.append('success_action_status', '200');
+  // NOTE: file 字段必须是最后一个
+  formData.append('file', imageBuffer, {
+    filename,
+    contentType: ext === '.png' ? 'image/png' : (ext === '.webp' ? 'image/webp' : 'image/jpeg')
+  });
+
+  await axios.post(ossData.upload_host, formData, {
+    headers: formData.getHeaders(),
+    timeout: 60000,
+    maxBodyLength: Infinity
+  });
+
+  // Step 3: 拼接最终 oss:// URL（有效期 48 小时）
+  const ossUrl = `oss://${ossKey}`;
+  console.log(`[TongyiUpload] 上传成功: ${ossUrl}`);
+  return ossUrl;
+}
+
+
+
+// ---- API: 通义万象连通性测试 ----
+// NOTE: 提供独立的测试接口，方便用户在 Admin 面板验证 API Key 是否正确配置
+app.post("/api/tongyi/test", async (req, res) => {
+  try {
+    const settings = await readJson(SETTINGS_FILE, { tongyiApiKey: "" });
+    const apiKey = req.body?.apiKey || settings.tongyiApiKey;
+
+    if (!apiKey || apiKey === "***configured***") {
+      return res.status(400).json({ ok: false, error: "未配置 DashScope API Key" });
+    }
+
+    // NOTE: 用获取上传凭证接口测试 API Key 有效性（轻量，无计费）
+    const testResp = await axios.get(
+      `https://dashscope.aliyuncs.com/api/v1/uploads?action=getPolicy&model=wanx2.1-imageedit`,
+      {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 10000
+      }
+    );
+
+    if (testResp.data?.data?.upload_host) {
+      return res.json({
+        ok: true,
+        message: "API Key 验证成功，通义万象服务连接正常",
+        quota: testResp.data?.data?.capacity_limit_mb ? `每日上传配额 ${testResp.data.data.capacity_limit_mb}MB` : null
+      });
+    } else {
+      return res.status(400).json({ ok: false, error: "API 响应异常", details: testResp.data });
+    }
+  } catch (err) {
+    const status = err.response?.status;
+    const errMsg = err.response?.data?.message || err.message;
+    if (status === 401) {
+      return res.status(401).json({ ok: false, error: "API Key 无效或已过期，请检查后重试" });
+    }
+    console.error("[TongyiTest] 连通性测试失败:", err.message);
+    return res.status(500).json({ ok: false, error: `连接失败: ${errMsg}` });
+  }
+});
 
 
 // ---- API: Smart Crop & Compress (不依赖 ComfyUI) ----
@@ -801,17 +978,71 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
 
     // NOTE: 检查 AI 增强模式开关，如果开启则路由到对应 AI 服务
     const settings = await readJson(SETTINGS_FILE, { aiEnhancedMode: false, aiProvider: "tongyi", tongyiApiKey: "" });
+    console.log(`[SmartCrop DEBUG] settings.aiEnhancedMode=${settings.aiEnhancedMode}, aiProvider=${settings.aiProvider}, hasKey=${!!settings.tongyiApiKey}, keyLen=${settings.tongyiApiKey?.length}`);
     if (settings.aiEnhancedMode && settings.aiProvider === "tongyi" && settings.tongyiApiKey) {
       try {
         console.log(`[SmartCrop] AI 增强模式开启，使用通义万象 Outpaint: ${targetWidth}x${targetHeight}`);
-        const result = await tongyiOutpaint(file.path, targetWidth, targetHeight, settings.tongyiApiKey);
+        const aiPrompt = settings.tongyiExpandPrompt || "专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻";
+        const aiResult = await tongyiOutpaint(file.path, targetWidth, targetHeight, settings.tongyiApiKey, aiPrompt);
+
+        // NOTE: wanx2.1-imageedit 有输出分辨率上限（约 1M 像素），实际输出尺寸不等于目标尺寸
+        // 例如目标 1440x2340 (336万像素) → API 实际可能输出 1152x1792 (206万像素)
+        // 因此必须读取实际输出尺寸，再根据情况决定缩放策略
+        const aiRawPath = path.join(STORAGE_DIR, path.basename(aiResult.url));
+        const aiMeta = await sharp(aiRawPath).metadata();
+        const aiWidth = aiMeta.width;
+        const aiHeight = aiMeta.height;
+        console.log(`[SmartCrop] AI 输出实际尺寸: ${aiWidth}x${aiHeight}，目标: ${targetWidth}x${targetHeight}`);
+
+        const basename = path.basename(file.originalname, path.extname(file.originalname));
+        const outputFilename = `ai_processed_${Date.now()}_${basename}.jpg`;
+        const outputPath = path.join(STORAGE_DIR, outputFilename);
+
+        const maxSizeBytes = limitKB * 1024;
+        let quality = 85;
+        let buffer;
+
+        // NOTE: 根据 AI 实际输出与目标尺寸的关系选择 resize 策略：
+        // - AI 输出比目标小（常见，API 有输出分辨率上限）→ fit:fill 强制拉伸，保留全部 AI 扩图内容
+        // - AI 输出比目标大 → fit:cover 居中裁剪，保留画面主体
+        const aiAspect = aiWidth / aiHeight;
+        const targetAspect = targetWidth / targetHeight;
+        const fitStrategy = (Math.abs(aiAspect - targetAspect) < 0.05) ? 'fill' : 'cover';
+        console.log(`[SmartCrop] AI 后处理策略: fit=${fitStrategy} (AI比例=${aiAspect.toFixed(3)}, 目标比例=${targetAspect.toFixed(3)})`);
+
+        while (quality >= 10) {
+          buffer = await sharp(aiRawPath)
+            .resize({
+              width: targetWidth,
+              height: targetHeight,
+              fit: fitStrategy,
+              position: 'center',
+              kernel: sharp.kernel.lanczos3
+            })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+
+          console.log(`[SmartCrop] AI 后处理 quality=${quality}: ${(buffer.length / 1024).toFixed(1)}KB / ${limitKB}KB`);
+          if (buffer.length <= maxSizeBytes) break;
+          quality -= 5;
+        }
+
+        if (buffer.length > maxSizeBytes) {
+          console.warn(`[SmartCrop] AI 后处理：即使 quality=${quality} 仍超出 ${limitKB}KB，当前 ${(buffer.length / 1024).toFixed(1)}KB`);
+        }
+
+        await fs.writeFile(outputPath, buffer);
+
+        // 清理 AI 原始临时文件
+        fs.unlink(aiRawPath).catch(() => { });
+
         return res.json({
           ok: true,
-          url: result.url,
-          width: result.width,
-          height: result.height,
-          sizeKB: (result.size / 1024).toFixed(2),
-          message: "通义万象 AI 增强完成",
+          url: `/static/${outputFilename}`,
+          width: targetWidth,
+          height: targetHeight,
+          sizeKB: (buffer.length / 1024).toFixed(2),
+          message: `通义万象 AI 增强完成 (AI输出 ${aiWidth}x${aiHeight})`,
           aiEnhanced: true
         });
       } catch (aiErr) {

@@ -1,0 +1,8 @@
+{
+  "aiEnhancedMode": true,
+  "aiProvider": "tongyi",
+  "tongyiApiKey": "sk-13ce79edd99e4b2794078a93cb3e5281",
+  "comfyuiUrl": "http://127.0.0.1:8188",
+  "tongyiApiKeyConfigured": true,
+  "tongyiExpandPrompt": "保持画面中心的主体产品边缘不变形不拉伸，仅向外扩展与原图风格一致的背景。"
+}

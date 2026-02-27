@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdTemplate, AdAsset } from '../types';
-import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, createTemplate, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, SystemSettings } from '../services/api';
+import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, createTemplate, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, SystemSettings } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminDashboardProps {
     onClose: () => void;
 }
+
+const PROMPT_PRESETS = [
+    { label: '广告摄影', value: '专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻' },
+    { label: '纯色简约', value: '纯色高级背景，极简现代设计风格，干净整洁，专业质感' },
+    { label: '渐变时尚', value: '流行时尚风格，柔和渐变背景，光线优雅，高端品牌感' },
+    { label: '自然户外', value: '自然光线，户外场景延伸，阳光明媚，清新自然' },
+    { label: '商务办公', value: '商务风格，简洁干净的办公环境，专业正式' },
+];
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const { t } = useLanguage();
@@ -25,6 +33,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     });
     const [aiSettingsSaving, setAiSettingsSaving] = useState(false);
     const [aiSettingsSaved, setAiSettingsSaved] = useState(false);
+    // NOTE: 连接测试状态：idle 未测试，testing 测试中，success 成功，error 失败
+    const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+    const [testMessage, setTestMessage] = useState<string>('');
 
     // Advanced Management State
     const [filterApp, setFilterApp] = useState<string>('ALL');
@@ -58,6 +69,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             alert('保存失败，请重试');
         } finally {
             setAiSettingsSaving(false);
+        }
+    };
+
+    /**
+     * 测试通义万象 API Key 连通性
+     * NOTE: 调用 /api/tongyi/test，使用获取上传凭证接口验证 key，无计费
+     */
+    const handleTestConnection = async () => {
+        setTestStatus('testing');
+        setTestMessage('');
+        try {
+            // 优先使用当前输入框中的 key（未保存的），其次使用已配置的
+            const keyToTest = aiSettings.tongyiApiKey && aiSettings.tongyiApiKey !== '***configured***'
+                ? aiSettings.tongyiApiKey
+                : undefined;
+            const result = await testTongyiConnection(keyToTest);
+            if (result.ok) {
+                setTestStatus('success');
+                setTestMessage(result.quota ? `${result.message}（${result.quota}）` : (result.message || '连接成功'));
+            } else {
+                setTestStatus('error');
+                setTestMessage(result.error || '连接失败');
+            }
+        } catch (err: any) {
+            setTestStatus('error');
+            const msg = err?.response?.data?.error || err.message || '未知错误';
+            setTestMessage(msg);
         }
     };
 
@@ -247,480 +285,541 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 {t('admin.workflows')}
                             </button>
                         </div>
-
-
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-all active:scale-95"
+                    >
+                        <span className="material-symbols-outlined font-bold">close</span>
+                    </button>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full transition-all active:scale-95"
-                >
-                    <span className="material-symbols-outlined font-bold">close</span>
-                </button>
-            </div>
 
 
-            {/* Content Area */}
-            <div className="flex-1 overflow-auto bg-slate-50/50 p-6 md:p-8 custom-scrollbar">
-                {activeTab === 'templates' ? (
-                    <div className="space-y-6 max-w-[1400px] mx-auto">
-                        {/* Premium Create Form - Compact Version */}
-                        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300">
-                            <div className="flex flex-col xl:flex-row xl:items-end gap-5">
-                                <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="group">
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.templateName')}</label>
-                                        <input
-                                            required
-                                            className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300"
-                                            placeholder="例如：618大促开屏"
-                                            value={newTemplate.name}
-                                            onChange={(e) => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
-                                        />
+                {/* Content Area */}
+                <div className="flex-1 overflow-auto bg-slate-50/50 p-6 md:p-8 custom-scrollbar">
+                    {activeTab === 'templates' ? (
+                        <div className="space-y-6 max-w-[1400px] mx-auto">
+                            {/* Premium Create Form - Compact Version */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300">
+                                <div className="flex flex-col xl:flex-row xl:items-end gap-5">
+                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        <div className="group">
+                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.templateName')}</label>
+                                            <input
+                                                required
+                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300"
+                                                placeholder="例如：618大促开屏"
+                                                value={newTemplate.name}
+                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="group">
+                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.appName')}</label>
+                                            <select
+                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
+                                                value={newTemplate.app}
+                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, app: e.target.value }))}
+                                            >
+                                                <option>美图秀秀</option>
+                                                <option disabled value="美颜">美颜 (待开放)</option>
+                                                <option disabled value="wink">wink (待开放)</option>
+                                            </select>
+                                        </div>
+                                        <div className="group">
+                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.category')}</label>
+                                            <select
+                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
+                                                value={newTemplate.category}
+                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, category: e.target.value }))}
+                                            >
+                                                <option>开屏</option>
+                                                <option>焦点视窗</option>
+                                                <option>信息流</option>
+                                                <option>icon/banner</option>
+                                                <option>弹窗</option>
+                                            </select>
+                                        </div>
+                                        <div className="group">
+                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.dimensions')}</label>
+                                            <input
+                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all text-center font-mono"
+                                                placeholder="1080 x 1920"
+                                                value={newTemplate.dimensions}
+                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, dimensions: e.target.value }))}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="group">
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.appName')}</label>
-                                        <select
-                                            className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
-                                            value={newTemplate.app}
-                                            onChange={(e) => setNewTemplate(prev => ({ ...prev, app: e.target.value }))}
-                                        >
-                                            <option>美图秀秀</option>
-                                            <option disabled value="美颜">美颜 (待开放)</option>
-                                            <option disabled value="wink">wink (待开放)</option>
-                                        </select>
-                                    </div>
-                                    <div className="group">
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.category')}</label>
-                                        <select
-                                            className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
-                                            value={newTemplate.category}
-                                            onChange={(e) => setNewTemplate(prev => ({ ...prev, category: e.target.value }))}
-                                        >
-                                            <option>开屏</option>
-                                            <option>焦点视窗</option>
-                                            <option>信息流</option>
-                                            <option>icon/banner</option>
-                                            <option>弹窗</option>
-                                        </select>
-                                    </div>
-                                    <div className="group">
-                                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.dimensions')}</label>
-                                        <input
-                                            className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all text-center font-mono"
-                                            placeholder="1080 x 1920"
-                                            value={newTemplate.dimensions}
-                                            onChange={(e) => setNewTemplate(prev => ({ ...prev, dimensions: e.target.value }))}
-                                        />
-                                    </div>
+                                    <button
+                                        onClick={handleCreateTemplate}
+                                        className="h-[42px] px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">add</span>
+                                        {t('admin.add')}
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={handleCreateTemplate}
-                                    className="h-[42px] px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap"
-                                >
-                                    <span className="material-symbols-outlined text-[18px]">add</span>
-                                    {t('admin.add')}
-                                </button>
                             </div>
-                        </div>
 
-                        {/* App Filter Tabs */}
-                        <div className="flex items-center gap-2 pb-2">
-                            {['ALL', '美图秀秀', '美颜', 'wink'].map(app => (
-                                <button
-                                    key={app}
-                                    onClick={() => setFilterApp(app)}
-                                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${filterApp === app
-                                        ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-md'
-                                        : 'bg-white text-slate-500 hover:bg-slate-100'
-                                        }`}
-                                >
-                                    {app === 'ALL' ? '全部' : app}
-                                </button>
-                            ))}
-                        </div>
+                            {/* App Filter Tabs */}
+                            <div className="flex items-center gap-2 pb-2">
+                                {['ALL', '美图秀秀', '美颜', 'wink'].map(app => (
+                                    <button
+                                        key={app}
+                                        onClick={() => setFilterApp(app)}
+                                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${filterApp === app
+                                            ? 'bg-indigo-600 text-white shadow-indigo-500/30 shadow-md'
+                                            : 'bg-white text-slate-500 hover:bg-slate-100'
+                                            }`}
+                                    >
+                                        {app === 'ALL' ? '全部' : app}
+                                    </button>
+                                ))}
+                            </div>
 
-                        {/* Templates Row Layout */}
-                        <div className="flex flex-col gap-4 pb-20 px-2">
-                            {filteredTemplates.map(tpl => {
-                                const duplicate = isDuplicate(tpl);
-                                const isDisabled = tpl.app === '美颜' || tpl.app === 'wink';
-                                return (
-                                    <div
-                                        key={tpl.id}
-                                        draggable={!isDisabled}
-                                        onDragStart={(e) => !isDisabled && handleDragStart(e, tpl.id)}
-                                        onDragEnd={handleDragEnd}
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => !isDisabled && handleDrop(e, tpl.id)}
-                                        className={`bg-white rounded-xl border shadow-sm flex items-center gap-4 p-3 pr-6 relative group transition-all duration-200
+                            {/* Templates Row Layout */}
+                            <div className="flex flex-col gap-4 pb-20 px-2">
+                                {filteredTemplates.map(tpl => {
+                                    const duplicate = isDuplicate(tpl);
+                                    const isDisabled = tpl.app === '美颜' || tpl.app === 'wink';
+                                    return (
+                                        <div
+                                            key={tpl.id}
+                                            draggable={!isDisabled}
+                                            onDragStart={(e) => !isDisabled && handleDragStart(e, tpl.id)}
+                                            onDragEnd={handleDragEnd}
+                                            onDragOver={handleDragOver}
+                                            onDrop={(e) => !isDisabled && handleDrop(e, tpl.id)}
+                                            className={`bg-white rounded-xl border shadow-sm flex items-center gap-4 p-3 pr-6 relative group transition-all duration-200
                                                 ${duplicate ? 'border-red-300 bg-red-50/10' : isDisabled ? 'border-slate-100 bg-slate-50 opacity-60 grayscale' : 'border-slate-100 hover:border-indigo-200'}
                                                 ${draggedId === tpl.id ? 'opacity-40 border-dashed border-indigo-400' : ''}
                                             `}
-                                    >
-                                        {/* Disabled Overlay */}
-                                        {isDisabled && <div className="absolute inset-0 z-20 cursor-not-allowed" title="该应用暂不支持配置"></div>}
+                                        >
+                                            {/* Disabled Overlay */}
+                                            {isDisabled && <div className="absolute inset-0 z-20 cursor-not-allowed" title="该应用暂不支持配置"></div>}
 
-                                        {/* Duplicate Warning Indicator */}
-                                        {duplicate && (
-                                            <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] px-1.5 rounded-br-lg z-10" title="重复配置">
-                                                !
+                                            {/* Duplicate Warning Indicator */}
+                                            {duplicate && (
+                                                <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] px-1.5 rounded-br-lg z-10" title="重复配置">
+                                                    !
+                                                </div>
+                                            )}
+
+                                            {/* 1. Drag Handle & App Badge */}
+                                            <div className="flex items-center gap-3 pl-2">
+                                                <span className="material-symbols-outlined text-slate-300 cursor-move hover:text-indigo-400" title="Drag to reorder">drag_indicator</span>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${tpl.app === '美图秀秀' ? 'bg-pink-50 text-pink-600 border-pink-100' :
+                                                    tpl.app === '美颜' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                        'bg-purple-50 text-purple-600 border-purple-100'
+                                                    }`}>
+                                                    {tpl.app}
+                                                </span>
                                             </div>
-                                        )}
 
-                                        {/* 1. Drag Handle & App Badge */}
-                                        <div className="flex items-center gap-3 pl-2">
-                                            <span className="material-symbols-outlined text-slate-300 cursor-move hover:text-indigo-400" title="Drag to reorder">drag_indicator</span>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${tpl.app === '美图秀秀' ? 'bg-pink-50 text-pink-600 border-pink-100' :
-                                                tpl.app === '美颜' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                                    'bg-purple-50 text-purple-600 border-purple-100'
-                                                }`}>
-                                                {tpl.app}
-                                            </span>
-                                        </div>
-
-                                        {/* 2. Name & Category */}
-                                        <div className="flex flex-col gap-1 w-48">
-                                            <input
-                                                className="bg-transparent border-none p-0 text-sm font-bold text-slate-800 focus:ring-0 w-full hover:text-indigo-600 transition-colors"
-                                                defaultValue={tpl.name}
-                                                onBlur={(e) => handleUpdateField(tpl.id, 'name', e.target.value)}
-                                                placeholder="模板名称"
-                                            />
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-[10px] text-slate-500 bg-slate-100 px-1.5 rounded flex items-center gap-1">
-                                                    <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-                                                    {tpl.category}
+                                            {/* 2. Name & Category */}
+                                            <div className="flex flex-col gap-1 w-48">
+                                                <input
+                                                    className="bg-transparent border-none p-0 text-sm font-bold text-slate-800 focus:ring-0 w-full hover:text-indigo-600 transition-colors"
+                                                    defaultValue={tpl.name}
+                                                    onBlur={(e) => handleUpdateField(tpl.id, 'name', e.target.value)}
+                                                    placeholder="模板名称"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-[10px] text-slate-500 bg-slate-100 px-1.5 rounded flex items-center gap-1">
+                                                        <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                                                        {tpl.category}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        {/* 3. Dimensions */}
-                                        <div className="w-24">
-                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">尺寸</label>
-                                            <input
-                                                className="w-full bg-slate-50 border-slate-100 rounded px-2 py-1 text-xs font-mono text-slate-600 focus:ring-1 focus:ring-indigo-500 border-none"
-                                                defaultValue={tpl.dimensions || ''}
-                                                onBlur={(e) => handleUpdateField(tpl.id, 'dimensions', e.target.value)}
-                                                placeholder="W x H"
-                                            />
-                                        </div>
-
-                                        {/* Divider */}
-                                        <div className="h-8 w-[1px] bg-slate-100"></div>
-
-                                        {/* 4. Assets (Inline) */}
-                                        <div className="flex items-center gap-3 flex-1">
-                                            {/* Asset: Mask */}
-                                            <div className="relative group/asset">
-                                                <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                    {tpl.mask_path ? (
-                                                        <img src={`${ASSETS_URL}${tpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Mask" />
-                                                    ) : (
-                                                        <span className="material-symbols-outlined text-slate-300 text-sm">texture</span>
-                                                    )}
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                        onChange={(e) => e.target.files?.[0] && handleMaskUpload(tpl.id, e.target.files[0])}
-                                                        title="Upload Mask"
-                                                    />
-                                                </div>
-                                                <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">蒙版</span>
+                                            {/* 3. Dimensions */}
+                                            <div className="w-24">
+                                                <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">尺寸</label>
+                                                <input
+                                                    className="w-full bg-slate-50 border-slate-100 rounded px-2 py-1 text-xs font-mono text-slate-600 focus:ring-1 focus:ring-indigo-500 border-none"
+                                                    defaultValue={tpl.dimensions || ''}
+                                                    onBlur={(e) => handleUpdateField(tpl.id, 'dimensions', e.target.value)}
+                                                    placeholder="W x H"
+                                                />
                                             </div>
 
-                                            {/* Asset: Crop (Splash Only) */}
-                                            {(tpl.category === '开屏') && (
+                                            {/* Divider */}
+                                            <div className="h-8 w-[1px] bg-slate-100"></div>
+
+                                            {/* 4. Assets (Inline) */}
+                                            <div className="flex items-center gap-3 flex-1">
+                                                {/* Asset: Mask */}
                                                 <div className="relative group/asset">
                                                     <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                        {tpl.crop_overlay_path ? (
-                                                            <img src={`${ASSETS_URL}${tpl.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
+                                                        {tpl.mask_path ? (
+                                                            <img src={`${ASSETS_URL}${tpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Mask" />
                                                         ) : (
-                                                            <span className="material-symbols-outlined text-slate-300 text-sm">crop</span>
+                                                            <span className="material-symbols-outlined text-slate-300 text-sm">texture</span>
                                                         )}
                                                         <input
                                                             type="file"
                                                             accept="image/*"
                                                             className="absolute inset-0 opacity-0 cursor-pointer"
-                                                            onChange={(e) => e.target.files?.[0] && handleCropOverlayUpload(tpl.id, e.target.files[0])}
-                                                            title="Upload Crop Overlay"
+                                                            onChange={(e) => e.target.files?.[0] && handleMaskUpload(tpl.id, e.target.files[0])}
+                                                            title="Upload Mask"
                                                         />
                                                     </div>
-                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">裁剪</span>
+                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">蒙版</span>
                                                 </div>
-                                            )}
 
-                                            {/* Asset: Badge (Focal or icon/banner or 弹窗 or 信息流) */}
-                                            {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
-                                                <div className="relative group/asset">
-                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                        {tpl.badge_overlay_path ? (
-                                                            <img src={`${ASSETS_URL}${tpl.badge_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Badge" />
-                                                        ) : (
-                                                            <span className="material-symbols-outlined text-slate-300 text-sm">verified</span>
-                                                        )}
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            className="absolute inset-0 opacity-0 cursor-pointer"
-                                                            onChange={(e) => e.target.files?.[0] && handleBadgeOverlayUpload(tpl.id, e.target.files[0])}
-                                                            title="Upload Badge"
-                                                        />
+                                                {/* Asset: Crop (Splash Only) */}
+                                                {(tpl.category === '开屏') && (
+                                                    <div className="relative group/asset">
+                                                        <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                            {tpl.crop_overlay_path ? (
+                                                                <img src={`${ASSETS_URL}${tpl.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
+                                                            ) : (
+                                                                <span className="material-symbols-outlined text-slate-300 text-sm">crop</span>
+                                                            )}
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                onChange={(e) => e.target.files?.[0] && handleCropOverlayUpload(tpl.id, e.target.files[0])}
+                                                                title="Upload Crop Overlay"
+                                                            />
+                                                        </div>
+                                                        <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">裁剪</span>
                                                     </div>
-                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">角标</span>
-                                                </div>
-                                            )}
-                                        </div>
+                                                )}
 
-                                        {/* 5. Workflow */}
-                                        <div className="w-48">
-                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">ComfyUI 工作流</label>
-                                            <select
-                                                className="w-full bg-slate-50 border-none rounded text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-1 pl-2 pr-6 cursor-pointer hover:bg-slate-100 transition-colors"
-                                                value={tpl.workflow_id || ''}
-                                                onChange={(e) => handleUpdateField(tpl.id, 'workflow_id', e.target.value)}
+                                                {/* Asset: Badge (Focal or icon/banner or 弹窗 or 信息流) */}
+                                                {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
+                                                    <div className="relative group/asset">
+                                                        <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                            {tpl.badge_overlay_path ? (
+                                                                <img src={`${ASSETS_URL}${tpl.badge_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Badge" />
+                                                            ) : (
+                                                                <span className="material-symbols-outlined text-slate-300 text-sm">verified</span>
+                                                            )}
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                onChange={(e) => e.target.files?.[0] && handleBadgeOverlayUpload(tpl.id, e.target.files[0])}
+                                                                title="Upload Badge"
+                                                            />
+                                                        </div>
+                                                        <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">角标</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* 5. Workflow */}
+                                            <div className="w-48">
+                                                <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">ComfyUI 工作流</label>
+                                                <select
+                                                    className="w-full bg-slate-50 border-none rounded text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-1 pl-2 pr-6 cursor-pointer hover:bg-slate-100 transition-colors"
+                                                    value={tpl.workflow_id || ''}
+                                                    onChange={(e) => handleUpdateField(tpl.id, 'workflow_id', e.target.value)}
+                                                >
+                                                    <option value="">选择工作流...</option>
+                                                    {workflows.map(wf => (
+                                                        <option key={wf.id} value={wf.id}>{wf.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* 6. Delete Action */}
+                                            <button
+                                                onClick={() => handleDeleteTemplate(tpl.id)}
+                                                className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90 ml-auto"
+                                                title="Delete Template"
                                             >
-                                                <option value="">选择工作流...</option>
-                                                {workflows.map(wf => (
-                                                    <option key={wf.id} value={wf.id}>{wf.name}</option>
-                                                ))}
-                                            </select>
+                                                <span className="material-symbols-outlined text-lg">delete</span>
+                                            </button>
                                         </div>
-
-                                        {/* 6. Delete Action */}
-                                        <button
-                                            onClick={() => handleDeleteTemplate(tpl.id)}
-                                            className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90 ml-auto"
-                                            title="Delete Template"
-                                        >
-                                            <span className="material-symbols-outlined text-lg">delete</span>
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ) : null}
-
-                {/* Workflows Tab */}
-                {activeTab === 'workflows' && (
-                    <div className="space-y-8 max-w-[1400px] mx-auto">
-                        {/* Premium Upload Zone */}
-                        <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10 transition-all duration-300 cursor-pointer relative group overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 to-indigo-50/0 group-hover:from-indigo-50/20 group-hover:to-purple-50/20 transition-all duration-500"></div>
-                            <input
-                                type="file"
-                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                accept=".json"
-                                onChange={(e) => e.target.files?.[0] && handleWorkflowUpload(e.target.files[0])}
-                            />
-                            <div className="flex flex-col items-center justify-center relative z-20">
-                                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                                    <span className="material-symbols-outlined text-5xl text-indigo-500">cloud_upload</span>
-                                </div>
-                                <h3 className="text-xl font-black text-slate-700 mb-2">点击上传 ComfyUI 工作流</h3>
-                                <p className="text-sm font-medium text-slate-400">支持 .json 格式的标准工作流文件</p>
+                                    );
+                                })}
                             </div>
                         </div>
+                    ) : null}
 
-                        {/* Workflows Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                            {workflows.map(w => (
-                                <div key={w.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
-                                                <span className="material-symbols-outlined text-purple-600">account_tree</span>
+                    {/* Workflows Tab */}
+                    {activeTab === 'workflows' && (
+                        <div className="space-y-8 max-w-[1400px] mx-auto">
+                            {/* Premium Upload Zone */}
+                            <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10 transition-all duration-300 cursor-pointer relative group overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 to-indigo-50/0 group-hover:from-indigo-50/20 group-hover:to-purple-50/20 transition-all duration-500"></div>
+                                <input
+                                    type="file"
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                    accept=".json"
+                                    onChange={(e) => e.target.files?.[0] && handleWorkflowUpload(e.target.files[0])}
+                                />
+                                <div className="flex flex-col items-center justify-center relative z-20">
+                                    <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                                        <span className="material-symbols-outlined text-5xl text-indigo-500">cloud_upload</span>
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-700 mb-2">点击上传 ComfyUI 工作流</h3>
+                                    <p className="text-sm font-medium text-slate-400">支持 .json 格式的标准工作流文件</p>
+                                </div>
+                            </div>
+
+                            {/* Workflows Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                {workflows.map(w => (
+                                    <div key={w.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full group">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
+                                                    <span className="material-symbols-outlined text-purple-600">account_tree</span>
+                                                </div>
+                                                <h3 className="font-bold text-slate-800 text-sm truncate">{w.name}</h3>
                                             </div>
-                                            <h3 className="font-bold text-slate-800 text-sm truncate">{w.name}</h3>
+                                            <span className="bg-emerald-50 text-emerald-600 text-[10px] px-2.5 py-1 rounded-md font-black shadow-sm">v{w.version}</span>
                                         </div>
-                                        <span className="bg-emerald-50 text-emerald-600 text-[10px] px-2.5 py-1 rounded-md font-black shadow-sm">v{w.version}</span>
-                                    </div>
 
-                                    <div className="bg-slate-900 rounded-xl p-4 flex-1 mb-4 overflow-hidden relative group-code">
-                                        <div className="absolute top-2 right-2 text-[10px] text-slate-500 font-mono">JSON</div>
-                                        <pre className="text-[10px] text-slate-400 font-mono overflow-hidden h-32 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">
-                                            {JSON.stringify(w.content, null, 2)}
-                                        </pre>
-                                        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-900 to-transparent"></div>
-                                    </div>
-
-                                    <div className="flex justify-between items-center pt-2">
-                                        <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                                            <span className="material-symbols-outlined text-sm">calendar_today</span>
-                                            {new Date(w.created_at).toLocaleDateString()}
+                                        <div className="bg-slate-900 rounded-xl p-4 flex-1 mb-4 overflow-hidden relative group-code">
+                                            <div className="absolute top-2 right-2 text-[10px] text-slate-500 font-mono">JSON</div>
+                                            <pre className="text-[10px] text-slate-400 font-mono overflow-hidden h-32 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">
+                                                {JSON.stringify(w.content, null, 2)}
+                                            </pre>
+                                            <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-900 to-transparent"></div>
                                         </div>
-                                        <button className="text-slate-300 hover:text-indigo-600 transition-colors p-2 hover:bg-indigo-50 rounded-full">
-                                            <span className="material-symbols-outlined text-lg">download</span>
-                                        </button>
+
+                                        <div className="flex justify-between items-center pt-2">
+                                            <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-sm">calendar_today</span>
+                                                {new Date(w.created_at).toLocaleDateString()}
+                                            </div>
+                                            <button className="text-slate-300 hover:text-indigo-600 transition-colors p-2 hover:bg-indigo-50 rounded-full">
+                                                <span className="material-symbols-outlined text-lg">download</span>
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* AI Settings Tab */}
-                {activeTab === 'settings' && (
-                    // NOTE: AI 增强模式设置面板
-                    <div className="max-w-2xl mx-auto space-y-6">
-                        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                                    <span className="material-symbols-outlined text-white text-xl">auto_awesome</span>
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-bold text-slate-800">AI 图像增强模式</h3>
-                                    <p className="text-xs text-slate-400 mt-0.5">开启后，上传图片将先经过 AI 服务智能扩展至模版尺寸，自动补充背景</p>
-                                </div>
-                            </div>
-
-                            {/* 主开关 */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl mb-4">
-                                <div>
-                                    <p className="text-sm font-bold text-slate-700">启用 AI 增强</p>
-                                    <p className="text-xs text-slate-400 mt-0.5">
-                                        {aiSettings.aiEnhancedMode
-                                            ? '✅ 已开启 — 图片将通过 AI 服务处理'
-                                            : '⚪ 已关闭 — 使用常规智能裁剪'
-                                        }
-                                    </p>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only peer"
-                                        checked={aiSettings.aiEnhancedMode}
-                                        onChange={e => setAiSettings(prev => ({ ...prev, aiEnhancedMode: e.target.checked }))}
-                                    />
-                                    <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600 transition-all"></div>
-                                </label>
-                            </div>
-
-                            {/* 服务商选择 */}
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">AI 服务商</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'tongyi' }))}
-                                            className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'tongyi'
-                                                ? 'border-violet-500 bg-violet-50'
-                                                : 'border-slate-200 hover:border-slate-300'
-                                                }`}
-                                        >
-                                            <p className="text-sm font-bold text-slate-800">阿里云通义万象</p>
-                                            <p className="text-xs text-slate-400 mt-1">无需 GPU，按次计费</p>
-                                            <p className="text-xs text-violet-500 font-bold mt-1">约 ¥0.14/张</p>
-                                        </button>
-                                        <button
-                                            onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'comfyui' }))}
-                                            className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'comfyui'
-                                                ? 'border-violet-500 bg-violet-50'
-                                                : 'border-slate-200 hover:border-slate-300'
-                                                }`}
-                                        >
-                                            <p className="text-sm font-bold text-slate-800">自建 ComfyUI</p>
-                                            <p className="text-xs text-slate-400 mt-1">需要 GPU 服务器</p>
-                                            <p className="text-xs text-slate-400 font-bold mt-1">（即将支持）</p>
-                                        </button>
+                    {/* AI Settings Tab */}
+                    {activeTab === 'settings' && (
+                        // NOTE: AI 增强模式设置面板
+                        <div className="max-w-2xl mx-auto space-y-6">
+                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                                        <span className="material-symbols-outlined text-white text-xl">auto_awesome</span>
                                     </div>
-                                </div>
-
-                                {/* 通义万象 API Key */}
-                                {aiSettings.aiProvider === 'tongyi' && (
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                            DashScope API Key
-                                            <span className="ml-2 text-slate-300 normal-case font-normal">（阿里云控制台 → API-KEY）</span>
-                                        </label>
-                                        <input
-                                            type="password"
-                                            placeholder={aiSettings.tongyiApiKeyConfigured ? '已配置（输入新值可覆盖）' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'}
-                                            value={aiSettings.tongyiApiKey === '***configured***' ? '' : aiSettings.tongyiApiKey}
-                                            onChange={e => setAiSettings(prev => ({ ...prev, tongyiApiKey: e.target.value }))}
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
-                                        />
-                                        {aiSettings.tongyiApiKeyConfigured && aiSettings.tongyiApiKey !== '***configured***' && !aiSettings.tongyiApiKey && (
-                                            <p className="text-xs text-green-500 mt-1.5 flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                API Key 已配置
-                                            </p>
-                                        )}
+                                        <h3 className="text-base font-bold text-slate-800">AI 图像增强模式</h3>
+                                        <p className="text-xs text-slate-400 mt-0.5">开启后，上传图片将先经过 AI 服务智能扩展至模版尺寸，自动补充背景</p>
                                     </div>
-                                )}
+                                </div>
 
-                                {/* ComfyUI 地址（占位，后续实现）*/}
-                                {aiSettings.aiProvider === 'comfyui' && (
+                                {/* 主开关 */}
+                                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl mb-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ComfyUI 服务地址</label>
-                                        <input
-                                            type="text"
-                                            placeholder="http://your-gpu-server:8188"
-                                            value={aiSettings.comfyuiUrl}
-                                            onChange={e => setAiSettings(prev => ({ ...prev, comfyuiUrl: e.target.value }))}
-                                            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
-                                        />
-                                        <p className="text-xs text-amber-500 mt-1.5">⚠️ ComfyUI 集成即将推出，当前选择将在有 GPU 服务器后生效</p>
+                                        <p className="text-sm font-bold text-slate-700">启用 AI 增强</p>
+                                        <p className="text-xs text-slate-400 mt-0.5">
+                                            {aiSettings.aiEnhancedMode
+                                                ? '✅ 已开启 — 图片将通过 AI 服务处理'
+                                                : '⚪ 已关闭 — 使用常规智能裁剪'
+                                            }
+                                        </p>
                                     </div>
-                                )}
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={aiSettings.aiEnhancedMode}
+                                            onChange={e => setAiSettings(prev => ({ ...prev, aiEnhancedMode: e.target.checked }))}
+                                        />
+                                        <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-600 transition-all"></div>
+                                    </label>
+                                </div>
+
+                                {/* 服务商选择 */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">AI 服务商</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'tongyi' }))}
+                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'tongyi'
+                                                    ? 'border-violet-500 bg-violet-50'
+                                                    : 'border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                            >
+                                                <p className="text-sm font-bold text-slate-800">阿里云通义万象</p>
+                                                <p className="text-xs text-slate-400 mt-1">无需 GPU，按次计费</p>
+                                                <p className="text-xs text-violet-500 font-bold mt-1">约 ¥0.14/张</p>
+                                            </button>
+                                            <button
+                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'comfyui' }))}
+                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'comfyui'
+                                                    ? 'border-violet-500 bg-violet-50'
+                                                    : 'border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                            >
+                                                <p className="text-sm font-bold text-slate-800">自建 ComfyUI</p>
+                                                <p className="text-xs text-slate-400 mt-1">需要 GPU 服务器</p>
+                                                <p className="text-xs text-slate-400 font-bold mt-1">（即将支持）</p>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 通义万象 API Key */}
+                                    {aiSettings.aiProvider === 'tongyi' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                DashScope API Key
+                                                <span className="ml-2 text-slate-300 normal-case font-normal">（阿里云控制台 → API-KEY）</span>
+                                            </label>
+                                            <input
+                                                type="password"
+                                                placeholder={aiSettings.tongyiApiKeyConfigured ? '已配置（输入新值可覆盖）' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'}
+                                                value={aiSettings.tongyiApiKey === '***configured***' ? '' : aiSettings.tongyiApiKey}
+                                                onChange={e => {
+                                                    setAiSettings(prev => ({ ...prev, tongyiApiKey: e.target.value }));
+                                                    // NOTE: key 变化时重置测试状态，避免显示旧结果
+                                                    setTestStatus('idle');
+                                                }}
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                                            />
+                                            {aiSettings.tongyiApiKeyConfigured && aiSettings.tongyiApiKey !== '***configured***' && !aiSettings.tongyiApiKey && (
+                                                <p className="text-xs text-green-500 mt-1.5 flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                                    API Key 已配置
+                                                </p>
+                                            )}
+
+                                            {/* 测试连接按钮 */}
+                                            <div className="mt-3 flex items-center gap-3">
+                                                <button
+                                                    onClick={handleTestConnection}
+                                                    disabled={testStatus === 'testing' || (!aiSettings.tongyiApiKey && !aiSettings.tongyiApiKeyConfigured)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {testStatus === 'testing' ? (
+                                                        <><span className="material-symbols-outlined text-[14px] animate-spin">sync</span>测试中...</>
+                                                    ) : (
+                                                        <><span className="material-symbols-outlined text-[14px]">wifi</span>测试连接</>
+                                                    )}
+                                                </button>
+
+                                                {/* 测试结果状态显示 */}
+                                                {testStatus === 'success' && (
+                                                    <span className="flex items-center gap-1 text-xs text-green-600 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                                {testStatus === 'error' && (
+                                                    <span className="flex items-center gap-1 text-xs text-red-500 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">error</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* 扩图 Prompt 配置 */}
+                                            <div className="mt-4">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    扩图 Prompt
+                                                    <span className="ml-2 text-slate-300 normal-case font-normal">（引导 AI 生成扩展区域的背景风格）</span>
+                                                </label>
+                                                <textarea
+                                                    rows={3}
+                                                    placeholder="例如：专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻"
+                                                    value={aiSettings.tongyiExpandPrompt ?? ''}
+                                                    onChange={e => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: e.target.value }))}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none leading-relaxed"
+                                                />
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {PROMPT_PRESETS.map(preset => (
+                                                        <button
+                                                            key={preset.label}
+                                                            onClick={() => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: preset.value }))}
+                                                            className="px-3 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 rounded-full text-xs font-bold transition-colors border border-violet-200"
+                                                        >
+                                                            {preset.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2">💡 Prompt 越具体，AI 生成的扩展背景越符合预期。建议描述场景氛围、色调、风格。</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+
+
+                                    {/* ComfyUI 地址（占位，后续实现）*/}
+                                    {aiSettings.aiProvider === 'comfyui' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ComfyUI 服务地址</label>
+                                            <input
+                                                type="text"
+                                                placeholder="http://your-gpu-server:8188"
+                                                value={aiSettings.comfyuiUrl}
+                                                onChange={e => setAiSettings(prev => ({ ...prev, comfyuiUrl: e.target.value }))}
+                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                                            />
+                                            <p className="text-xs text-amber-500 mt-1.5">⚠️ ComfyUI 集成即将推出，当前选择将在有 GPU 服务器后生效</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 保存按钮 */}
+                                <button
+                                    onClick={handleSaveAiSettings}
+                                    disabled={aiSettingsSaving}
+                                    className="mt-6 w-full py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:brightness-110 text-white rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {aiSettingsSaving ? (
+                                        <><span className="material-symbols-outlined text-lg animate-spin">sync</span>保存中...</>
+                                    ) : aiSettingsSaved ? (
+                                        <><span className="material-symbols-outlined text-lg">check_circle</span>已保存！</>
+                                    ) : (
+                                        <><span className="material-symbols-outlined text-lg">save</span>保存设置</>
+                                    )}
+                                </button>
                             </div>
 
-                            {/* 保存按钮 */}
-                            <button
-                                onClick={handleSaveAiSettings}
-                                disabled={aiSettingsSaving}
-                                className="mt-6 w-full py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:brightness-110 text-white rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {aiSettingsSaving ? (
-                                    <><span className="material-symbols-outlined text-lg animate-spin">sync</span>保存中...</>
-                                ) : aiSettingsSaved ? (
-                                    <><span className="material-symbols-outlined text-lg">check_circle</span>已保存！</>
-                                ) : (
-                                    <><span className="material-symbols-outlined text-lg">save</span>保存设置</>
-                                )}
-                            </button>
+                            {/* 说明卡片 */}
+                            <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 p-5 rounded-2xl">
+                                <p className="text-xs font-bold text-violet-600 uppercase tracking-wider mb-3">💡 工作原理</p>
+                                <ul className="space-y-2 text-xs text-slate-600">
+                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关关闭时：图片经过常规智能裁剪（当前默认行为）</li>
+                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关开启时：图片被发送给通义万象 AI，智能扩展并补充背景</li>
+                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>AI 处理失败时自动降级到常规裁剪，不影响业务</li>
+                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>每张开屏图预计费用约 ¥0.14，可在阿里云 DashScope 控制台查看用量</li>
+                                </ul>
+                            </div>
                         </div>
+                    )}
+                </div>
 
-                        {/* 说明卡片 */}
-                        <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 p-5 rounded-2xl">
-                            <p className="text-xs font-bold text-violet-600 uppercase tracking-wider mb-3">💡 工作原理</p>
-                            <ul className="space-y-2 text-xs text-slate-600">
-                                <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关关闭时：图片经过常规智能裁剪（当前默认行为）</li>
-                                <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关开启时：图片被发送给通义万象 AI，智能扩展并补充背景</li>
-                                <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>AI 处理失败时自动降级到常规裁剪，不影响业务</li>
-                                <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>每张开屏图预计费用约 ¥0.14，可在阿里云 DashScope 控制台查看用量</li>
-                            </ul>
+                {/* Premium Image Preview Modal */}
+                {previewImage && (
+                    <div
+                        className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-8 animate-in fade-in duration-300"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <button
+                            onClick={() => setPreviewImage(null)}
+                            className="absolute top-8 right-8 text-white/50 hover:text-white transition-all hover:rotate-90 duration-300 bg-white/10 hover:bg-white/20 p-3 rounded-full backdrop-blur-md"
+                        >
+                            <span className="material-symbols-outlined text-3xl">close</span>
+                        </button>
+                        <div
+                            className="relative max-w-5xl max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl ring-4 ring-white/10"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="absolute inset-0 bg-chess-pattern opacity-20 pointer-events-none"></div>
+                            <img
+                                src={previewImage}
+                                className="w-full h-full object-contain relative z-10"
+                                alt="Preview"
+                            />
                         </div>
                     </div>
                 )}
             </div>
-
-            {/* Premium Image Preview Modal */}
-            {previewImage && (
-                <div
-                    className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-8 animate-in fade-in duration-300"
-                    onClick={() => setPreviewImage(null)}
-                >
-                    <button
-                        onClick={() => setPreviewImage(null)}
-                        className="absolute top-8 right-8 text-white/50 hover:text-white transition-all hover:rotate-90 duration-300 bg-white/10 hover:bg-white/20 p-3 rounded-full backdrop-blur-md"
-                    >
-                        <span className="material-symbols-outlined text-3xl">close</span>
-                    </button>
-                    <div
-                        className="relative max-w-5xl max-h-[85vh] rounded-3xl overflow-hidden shadow-2xl ring-4 ring-white/10"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="absolute inset-0 bg-chess-pattern opacity-20 pointer-events-none"></div>
-                        <img
-                            src={previewImage}
-                            className="w-full h-full object-contain relative z-10"
-                            alt="Preview"
-                        />
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

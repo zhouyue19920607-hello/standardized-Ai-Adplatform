@@ -101,6 +101,8 @@ export interface SystemSettings {
     tongyiApiKey: string;
     tongyiApiKeyConfigured?: boolean;
     comfyuiUrl: string;
+    /** 通义万象扩图时的 Prompt，引导 AI 生成的背景风格 */
+    tongyiExpandPrompt?: string;
 }
 
 export const getSettings = async (): Promise<SystemSettings> => {
@@ -110,4 +112,16 @@ export const getSettings = async (): Promise<SystemSettings> => {
 
 export const updateSettings = async (settings: Partial<SystemSettings>): Promise<void> => {
     await api.put('/settings', settings);
+};
+
+/**
+ * 测试通义万象 API Key 连通性（无计费）
+ * @param apiKey 可选，不传则使用后端已配置的 key
+ */
+export const testTongyiConnection = async (apiKey?: string): Promise<{ ok: boolean; message?: string; error?: string; quota?: string }> => {
+    const response = await api.post<{ ok: boolean; message?: string; error?: string; quota?: string }>(
+        '/tongyi/test',
+        apiKey ? { apiKey } : {}
+    );
+    return response.data;
 };
