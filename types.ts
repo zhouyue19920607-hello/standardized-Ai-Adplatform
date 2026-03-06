@@ -20,6 +20,7 @@ export interface AdTemplate {
   iconColor?: string;
   gradientColor?: string;
   palette?: ColorScheme[];
+  processedCount?: number;
 }
 
 export interface AdAsset {

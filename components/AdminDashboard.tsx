@@ -427,6 +427,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                         <span className="w-1 h-1 rounded-full bg-slate-400"></span>
                                                         {tpl.category}
                                                     </div>
+                                                    <div className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 rounded flex items-center gap-1 font-medium" title="累积处理图片数">
+                                                        <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                                                        {tpl.processedCount || 0}
+                                                    </div>
                                                 </div>
                                             </div>
 

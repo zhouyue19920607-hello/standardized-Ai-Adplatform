@@ -157,7 +157,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         </span>
                                         {tpl.mask_path && <span className="material-symbols-outlined text-[14px] text-slate-400" title="支持MR遮罩">visibility</span>}
                                       </div>
-                                      <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{tpl.dimensions}</span>
+                                      <div className="flex items-center justify-between mt-0.5">
+                                        <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{tpl.dimensions}</span>
+                                        <span className="text-[10px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium" title="累积处理图片数">
+                                          <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                                          {tpl.processedCount || 0}
+                                        </span>
+                                      </div>
                                     </div>
                                   </label>
 

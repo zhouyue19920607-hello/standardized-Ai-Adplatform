@@ -31,6 +31,11 @@ export const reorderTemplates = async (templates: AdTemplate[]): Promise<void> =
     await api.post('/templates/reorder', { templates });
 };
 
+export const incrementTemplateUsage = async (id: string): Promise<{ success: boolean; processedCount: number }> => {
+    const response = await api.post(`/templates/${id}/increment`);
+    return response.data;
+};
+
 export const uploadMask = async (id: string, file: File): Promise<{ mask_path: string }> => {
     const formData = new FormData();
     formData.append('mask', file);

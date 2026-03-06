@@ -210,6 +210,26 @@ app.post("/api/templates/reorder", async (req, res) => {
   res.json({ success: true, count: newOrderTemplates.length });
 });
 
+// 模版使用次数递增
+app.post("/api/templates/:id/increment", async (req, res) => {
+  const { id } = req.params;
+  const templates = await readJson(TEMPLATES_FILE, []);
+  const index = templates.findIndex(t => t.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Template not found" });
+  }
+
+  const currentCount = templates[index].processedCount || 0;
+  templates[index] = {
+    ...templates[index],
+    processedCount: currentCount + 1
+  };
+
+  await writeJson(TEMPLATES_FILE, templates);
+  res.json({ success: true, processedCount: templates[index].processedCount });
+});
+
 // 模版遮罩 PNG 上传 / 更新
 app.post("/api/templates/:id/mask", upload.single("mask"), async (req, res) => {
   const { id } = req.params;

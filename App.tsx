@@ -6,7 +6,7 @@ import Sidebar from './components/Sidebar';
 import PreviewGrid from './components/PreviewGrid';
 import Footer from './components/Footer';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, incrementTemplateUsage } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -786,6 +786,21 @@ const App: React.FC = () => {
     if (hasFocalWindow) {
       setTimeout(() => setConfig(prev => ({ ...prev, showMask: true })), 0);
     }
+
+    // Increment usage metrics for all active templates
+    Promise.all(activeTemplates.map(async (tpl) => {
+      try {
+        // Increment once for each raw file processed by this template
+        let latestCount = tpl.processedCount || 0;
+        for (let i = 0; i < rawFiles.length; i++) {
+          const res = await incrementTemplateUsage(tpl.id);
+          latestCount = res.processedCount;
+        }
+        setTemplates(prev => prev.map(t => t.id === tpl.id ? { ...t, processedCount: latestCount } : t));
+      } catch (e) {
+        console.error(`Failed to increment usage for template ${tpl.id}`, e);
+      }
+    }));
 
     console.log(`[App] Generation complete. Results:`, results.map(r => ({ name: r.name, color: r.aiExtractedColor })));
 
