@@ -194,6 +194,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                                       {/* Focal Window Options */}
                                       {tpl.category === '焦点视窗' && (
                                         <>
+                                          {/* NOTE: mt-f-1 动态焦点视窗专属：截取视频最后一帧 */}
+                                          {tpl.id === 'mt-f-1' && (
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-bold text-ios-gray-1">截取最后一帧</span>
+                                              <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  className="sr-only peer"
+                                                  checked={config.captureLastFrameMtF1}
+                                                  onChange={(e) => onConfigChange({ captureLastFrameMtF1: e.target.checked })}
+                                                />
+                                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                              </label>
+                                            </div>
+                                          )}
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.smartExtract')}</span>
                                             <div className="flex items-center gap-2 shrink-0">

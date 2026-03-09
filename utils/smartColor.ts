@@ -175,12 +175,15 @@ async function extractColorsFromRegion(
 
 /**
  * 增强版智能取色：提取一组高质量配色方案
+ *
+ * 策略说明：
+ * - Icon 底色：直接取图片中心主体区域的支配色（不做美学过滤），确保金黄色主体 → 金黄色 icon
+ * - 渐变带：取底部区域颜色后强制压暗（darken 3.0+），保证渐变带偏暗偏黑
  */
 export async function extractSmartPalette(imageUrl: string, options?: { bottomRegionHeight?: number, strictDominance?: boolean }): Promise<ColorScheme[]> {
     console.log('[SmartColor] 🎨 提取智能配色方案...');
     const bottomHeight = options?.bottomRegionHeight || 0.2;
     const bottomStart = 1.0 - bottomHeight;
-    const strictDominance = options?.strictDominance || false;
 
     return new Promise((resolve) => {
         const img = new Image();
@@ -188,71 +191,49 @@ export async function extractSmartPalette(imageUrl: string, options?: { bottomRe
         img.src = imageUrl;
         img.onload = async () => {
             try {
-                // 定义不同的提取区域
-                const centerRegion = { name: '主体', startY: img.height * 0.3, height: img.height * 0.4 };
-                const bottomRegion = { name: '底部', startY: img.height * bottomStart, height: img.height * bottomHeight };
+                // NOTE: 主体区域从图片 20%~80% 高度提取，覆盖主体物
+                const subjectRegion = { startY: img.height * 0.1, height: img.height * 0.7 };
+                const bottomRegion = { startY: img.height * bottomStart, height: img.height * bottomHeight };
 
-                // 提取各区域颜色候选集
-                const [centerRawColors, bottomRawColors] = await Promise.all([
-                    extractColorsFromRegion(img, centerRegion.startY, centerRegion.height),
+                const [subjectRawColors, bottomRawColors] = await Promise.all([
+                    extractColorsFromRegion(img, subjectRegion.startY, subjectRegion.height),
                     extractColorsFromRegion(img, bottomRegion.startY, bottomRegion.height)
                 ]);
 
-                // 评分并排序
-                const scoredCenter = centerRawColors
-                    .map(rgb => ({ rgb, score: getAestheticScore(rgb) }))
-                    .sort((a, b) => b.score - a.score);
-
-                // 对于底部颜色，如果要求严格匹配（用于无缝衔接），则优先保留支配色（即ColorThief提取的顺序）
-                // 否则按美学评分排序
-                let scoredBottom;
-                if (strictDominance) {
-                    scoredBottom = bottomRawColors.map(rgb => ({ rgb, score: 1.0 })); // Keep original dominance order
-                } else {
-                    scoredBottom = bottomRawColors
-                        .map(rgb => ({ rgb, score: getAestheticScore(rgb) }))
-                        .sort((a, b) => b.score - a.score);
-                }
-
                 const finalPalette: ColorScheme[] = [];
 
-                // 策略：Icon 取自中心主体，Gradient 严格取自底部
+                // NOTE: Icon 取色：直接用支配色（ColorThief 返回顺序就是支配度排序），
+                // 不做美学评分过滤，确保主体物颜色（金黄、橘红等）能被正确提取
+                // 生成 5 组候选方案，每组用不同的候选色
                 for (let i = 0; i < 5; i++) {
-                    const cIdx = i % Math.max(1, scoredCenter.length);
-                    // Cycle through bottom candidates 
-                    const bIdx = i % Math.max(1, scoredBottom.length);
+                    // Icon：主体区域第 i 个支配色，饱和度拉高
+                    const subjectRgb = subjectRawColors[i % Math.max(1, subjectRawColors.length)] || [0, 122, 255];
+                    const iconColor = optimizeColor(subjectRgb, 'icon');
 
-                    const centerRgb = scoredCenter[cIdx]?.rgb || [0, 122, 255];
-                    // Cycle through bottom candidates 
-                    // Previously locked to [0] for strict mode, now allow cycling but prefer top 3 to avoid noise
-                    const bottomRgb = strictDominance
-                        ? (scoredBottom[bIdx % Math.min(3, scoredBottom.length)]?.rgb || [255, 255, 255])
-                        : (scoredBottom[bIdx]?.rgb || [255, 255, 255]);
-
-                    // Icon: High saturation, readable
-                    const iconColor = optimizeColor(centerRgb, 'icon');
-
-                    // Gradient: 
-                    // If strict dominance (seamless mode), use raw color but DARKEN it STRONGLY as requested.
-                    // Darken by 2.0 (was 1.0) ensures it's very dark.
-                    let gradientColor: string;
-                    if (strictDominance) {
-                        gradientColor = chroma(bottomRgb).darken(2.5).hex().toUpperCase();
-                    } else {
-                        gradientColor = optimizeColor(bottomRgb, 'gradient');
-                    }
+                    // NOTE: 渐变带：强制压暗。取底部颜色后叠加暗化，使渐变带偏暗偏黑
+                    // - 基础暗化 3.0（相当于降低约 3 级亮度），保证视觉上接近深色
+                    // - 最终 clamp 亮度上限为 HCL L=35，确保不超过中灰
+                    const bIdx = i % Math.max(1, bottomRawColors.length);
+                    const bottomRgb = bottomRawColors[bIdx] || [30, 30, 30];
+                    const baseGradient = chroma(bottomRgb);
+                    const darkenedGradient = baseGradient.darken(4.5);
+                    // NOTE: 强制 HCL 亮度上限 20，使渐变带非常接近黑色
+                    const hcl = darkenedGradient.hcl();
+                    const finalLuminance = Math.min(hcl[2], 20);
+                    const finalChroma = Math.min(hcl[1] * 0.6, 25); // 色度大幅降低，更沉稳深邃
+                    const gradientColor = chroma.hcl(hcl[0], finalChroma, finalLuminance).hex().toUpperCase();
 
                     finalPalette.push({ iconColor, gradientColor });
                 }
 
-                console.log(`[SmartColor] 提取了 ${finalPalette.length} 组配色方案 (Bottom 20% Strict)`);
+                console.log(`[SmartColor] 提取了 ${finalPalette.length} 组配色方案`);
                 resolve(finalPalette);
             } catch (e) {
                 console.error('[SmartColor] Palette extraction failed:', e);
-                resolve([{ iconColor: '#007AFF', gradientColor: '#003F80' }]);
+                resolve([{ iconColor: '#007AFF', gradientColor: '#0A0A1A' }]);
             }
         };
-        img.onerror = () => resolve([{ iconColor: '#007AFF', gradientColor: '#003F80' }]);
+        img.onerror = () => resolve([{ iconColor: '#007AFF', gradientColor: '#0A0A1A' }]);
     });
 }
 

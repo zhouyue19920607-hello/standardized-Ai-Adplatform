@@ -154,6 +154,7 @@ const App: React.FC = () => {
     showCrop: false,
     splashText: '跳转至第三方平台',
     captureFirstFrame: false,
+    captureLastFrameMtF1: false,
     assetsVersion: Date.now(),
   });
   const [rawFiles, setRawFiles] = useState<RawFile[]>([]);
@@ -724,18 +725,31 @@ const App: React.FC = () => {
             console.error("Direct Smart Crop (Recipe Content) failed", e);
           }
         }
-        // 11. Video Handling
-        // 10. Video Handling (Dynamic Focal etc.)
+        // 11. Video Handling (Dynamic Focal etc.)
         else if (raw.file.type.startsWith('video/')) {
-          // If it's Dynamic Focal (isDynamicFocal), we keep it as video unless splash capture logic intervenes (handled above).
-          // Here we act as fallback for other videos or generic dynamic focal logic if not handled above.
-          if (isSplash && isDynamicFocal && config.captureFirstFrame) {
-            // Already handled above? Yes, but just in case block order changes or specific conditions fail
-            // ... logic similar to block 3 ...
-            // For brevity, we assume handled.
-            finalUrl = raw.previewUrl;
+          // NOTE: mt-f-1 动态焦点视窗 + 开启「截取最后一帧」→ 截取视频最后一帧并合成为静态图
+          if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) {
+            try {
+              console.log(`[mt-f-1] captureLastFrameMtF1 enabled, seeking to end...`);
+              const lastFrame = await captureVideoFrame(raw.file, 'end');
+              if (lastFrame) {
+                const resp = await fetch(lastFrame);
+                const blob = await resp.blob();
+                const frameFile = new File([blob], 'last_frame_mtf1.png', { type: 'image/png' });
+                const smart = await smartCropImage(frameFile, 1126, 900, 250);
+                if (smart?.url) {
+                  finalUrl = `${ASSETS_URL}${smart.url}`;
+                  console.log(`[mt-f-1] Last frame captured and cropped to 1126x900: ${finalUrl}`);
+                } else {
+                  finalUrl = lastFrame;
+                }
+              }
+            } catch (e) {
+              console.error('[mt-f-1] Last frame capture failed, falling back to video', e);
+              finalUrl = raw.previewUrl;
+            }
           } else {
-            // Dynamic Focal stays as video
+            // Dynamic Focal stays as video (default)
             finalUrl = raw.previewUrl;
           }
         }
@@ -749,6 +763,8 @@ const App: React.FC = () => {
           type: (() => {
             if (!raw.file.type.startsWith('video/')) return raw.file.type;
             if (isStaticFocal || isImmersive) return 'image/png';
+            // NOTE: mt-f-1 截取最后一帧时，输出为静态图
+            if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) return 'image/png';
             if (isSplash && template.name.includes('动态') && config.captureFirstFrame) {
               return template.id === 'mt-s-1' ? 'image/jpeg' : 'image/png';
             }
@@ -765,13 +781,15 @@ const App: React.FC = () => {
           aiExtractedColors: analysis.colors,
           dimensions:
             (isSplash && raw.file.type.startsWith('image/')) ? (isNonFullscreenSplash ? '1440 x 1938' : '1440 x 2340') :
-              (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' : // Immersive always static image now
-                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' : // Static Focal always static image now
-                  ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
-                    (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
-                      (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
-                        (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
-                          (template.dimensions || '1080 x 1920'),
+              (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' :
+                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' :
+                  // NOTE: mt-f-1 截取最后一帧时使用 1126×900 尺寸
+                  (template.id === 'mt-f-1' && config.captureLastFrameMtF1 && raw.file.type.startsWith('video/')) ? '1126 x 900' :
+                    ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                      (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
+                        (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
+                          (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                            (template.dimensions || '1080 x 1920'),
           splashText: (template.category === '开屏' || template.id === 'mt-p-1') ? config.splashText : undefined,
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,

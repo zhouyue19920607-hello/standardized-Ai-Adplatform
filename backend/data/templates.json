@@ -67,7 +67,8 @@
     "name": "动态焦点视窗",
     "checked": true,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/1770005102685_____________.png.png"
+    "badge_overlay_path": "/static/1770005102685_____________.png.png",
+    "processedCount": 9
   },
   {
     "id": "mt-f-2",
@@ -76,7 +77,8 @@
     "name": "静态焦点视窗",
     "checked": true,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/1770005108546_____________.png.png"
+    "badge_overlay_path": "/static/1770005108546_____________.png.png",
+    "processedCount": 6
   },
   {
     "id": "mt-f-3",

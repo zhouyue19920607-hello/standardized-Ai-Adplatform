@@ -54,5 +54,7 @@ export interface AdConfig {
   showCrop: boolean;
   splashText: string;
   captureFirstFrame: boolean;
+  // NOTE: mt-f-1 动态焦点视窗专属：是否截取视频最后一帧作为静态图输出
+  captureLastFrameMtF1: boolean;
   assetsVersion: number;
 }
