@@ -379,6 +379,27 @@ const App: React.FC = () => {
     setProcessedAssets([]);
     setGenerationProgress({ current: 0, total: rawFiles.length * activeTemplates.length });
 
+    // NOTE: 先插入所有占位 loading 卡，让用户即时看到即将生成的卡片数量
+    const placeholders: AdAsset[] = [];
+    for (const raw of rawFiles) {
+      for (const template of activeTemplates) {
+        placeholders.push({
+          id: `${raw.id}-${template.id}`,
+          url: '',
+          name: raw.file.name,
+          size: '',
+          isCompressed: false,
+          type: raw.file.type,
+          category: template.category,
+          app: template.app,
+          templateName: template.name,
+          dimensions: template.dimensions || '1080 x 1920',
+          isLoading: true,
+        });
+      }
+    }
+    setProcessedAssets(placeholders);
+
     const results: AdAsset[] = [];
 
     for (const raw of rawFiles) {
@@ -758,7 +779,8 @@ const App: React.FC = () => {
         };
 
         results.push(newAsset);
-        setProcessedAssets(prev => [...prev, newAsset]);
+        // NOTE: 替换对应 id 的占位 loading 卡为真实结果，保持顺序不变
+        setProcessedAssets(prev => prev.map(a => a.id === newAsset.id ? newAsset : a));
         setGenerationProgress(prev => prev ? { ...prev, current: prev.current + 1 } : null);
 
         if (template.id === 'mt-f-2' || template.id === 'mt-s-1') {

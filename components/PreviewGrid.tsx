@@ -165,7 +165,20 @@ const AdCard: React.FC<{
       >
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-full h-full relative transition-transform duration-700 group-hover/preview:scale-[1.02]">
-            {asset.type.startsWith('video') ? (
+            {/* NOTE: 生成等待时显示骨架屏动画 */}
+            {asset.isLoading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                <div className="relative">
+                  <div className="w-10 h-10 border-3 border-slate-300 border-t-primary rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-4 h-4 bg-primary/20 rounded-full animate-pulse" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 font-bold mt-3 animate-pulse tracking-widest uppercase">生成中</p>
+                {/* 闪烁光效 */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+              </div>
+            ) : asset.type.startsWith('video') ? (
               <video
                 src={asset.url}
                 className={`w-full h-full ${localShowMask && isImmersiveFocal ? 'absolute inset-0 z-0 object-cover' : (localShowMask && (asset.category === '开屏' || asset.category === '焦点视窗' || asset.category === '弹窗' || asset.id.includes('mt-ib-4')) ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
