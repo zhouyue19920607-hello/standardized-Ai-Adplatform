@@ -28,6 +28,12 @@ const BADGES_DIR = path.join(STORAGE_DIR, "badges");
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 const WORKFLOWS_FILE = path.join(DATA_DIR, "workflows.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+// NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
+// 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
+const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
+// NOTE: 遇罩/裁剪层/角标路径单独存储，不随代码更新被覆盖
+// 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path } }
+const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
 
 // ---- 辅助函数：简易 JSON“库”读写 ----
 async function ensureDir(dir) {
@@ -155,7 +161,16 @@ app.get("/api/health", (req, res) => {
 
 app.get("/api/templates", async (req, res) => {
   const templates = await readJson(TEMPLATES_FILE, []);
-  res.json(templates);
+  // NOTE: 动态合并使用次数，usage-stats.json 不受 git 更新影响
+  const usageStats = await readJson(USAGE_STATS_FILE, {});
+  // NOTE: 动态合并遇罩/角标路径，asset-overrides.json 不受 git 更新影响
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  const merged = templates.map(t => ({
+    ...t,
+    ...(assetOverrides[t.id] || {}),
+    processedCount: usageStats[t.id] ?? t.processedCount ?? 0
+  }));
+  res.json(merged);
 });
 
 app.put("/api/templates/:id", async (req, res) => {
@@ -210,24 +225,21 @@ app.post("/api/templates/reorder", async (req, res) => {
   res.json({ success: true, count: newOrderTemplates.length });
 });
 
-// 模版使用次数递增
+// 模版使用次数递增（写入独立的 usage-stats.json，不修改 templates.json）
 app.post("/api/templates/:id/increment", async (req, res) => {
   const { id } = req.params;
   const templates = await readJson(TEMPLATES_FILE, []);
-  const index = templates.findIndex(t => t.id === id);
-
-  if (index === -1) {
+  const exists = templates.some(t => t.id === id);
+  if (!exists) {
     return res.status(404).json({ error: "Template not found" });
   }
 
-  const currentCount = templates[index].processedCount || 0;
-  templates[index] = {
-    ...templates[index],
-    processedCount: currentCount + 1
-  };
+  // NOTE: 读写 usage-stats.json，确保次数跨版本持久化
+  const usageStats = await readJson(USAGE_STATS_FILE, {});
+  usageStats[id] = (usageStats[id] || 0) + 1;
+  await writeJson(USAGE_STATS_FILE, usageStats);
 
-  await writeJson(TEMPLATES_FILE, templates);
-  res.json({ success: true, processedCount: templates[index].processedCount });
+  res.json({ success: true, processedCount: usageStats[id] });
 });
 
 // 模版遮罩 PNG 上传 / 更新
@@ -250,10 +262,21 @@ app.post("/api/templates/:id/mask", upload.single("mask"), async (req, res) => {
   templates[index] = {
     ...templates[index],
     maskPath: relativePath,
-    mask_path: maskUrl, // Ensuring compatibility if frontend expects mask_path
+    mask_path: maskUrl,
     maskUrl
   };
   await writeJson(TEMPLATES_FILE, templates);
+
+  // NOTE: 同步写入 asset-overrides.json，确保路径跨版本持久化
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  assetOverrides[id] = {
+    ...(assetOverrides[id] || {}),
+    maskPath: relativePath,
+    mask_path: maskUrl,
+    maskUrl
+  };
+  await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
+
   res.json(templates[index]);
 });
 
@@ -278,6 +301,15 @@ app.post("/api/templates/:id/crop-overlay", upload.single("image"), async (req, 
     crop_overlay_path: overlayUrl
   };
   await writeJson(TEMPLATES_FILE, templates);
+
+  // NOTE: 同步写入 asset-overrides.json
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  assetOverrides[id] = {
+    ...(assetOverrides[id] || {}),
+    crop_overlay_path: overlayUrl
+  };
+  await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
+
   res.json(templates[index]);
 });
 
@@ -315,6 +347,15 @@ app.post("/api/templates/:id/badge-overlay", upload.single("image"), async (req,
     badge_overlay_path: overlayUrl
   };
   await writeJson(TEMPLATES_FILE, templates);
+
+  // NOTE: 同步写入 asset-overrides.json
+  const assetOverridesB = await readJson(ASSET_OVERRIDES_FILE, {});
+  assetOverridesB[id] = {
+    ...(assetOverridesB[id] || {}),
+    badge_overlay_path: overlayUrl
+  };
+  await writeJson(ASSET_OVERRIDES_FILE, assetOverridesB);
+
   res.json(templates[index]);
 });
 

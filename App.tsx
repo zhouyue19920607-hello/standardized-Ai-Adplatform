@@ -122,6 +122,10 @@ const App: React.FC = () => {
   const { t } = useLanguage();
   const [templates, setTemplates] = useState<AdTemplate[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
+  // NOTE: 后台密码验证弹窗状态
+  const [showAdminPasswordModal, setShowAdminPasswordModal] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminPasswordError, setAdminPasswordError] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
@@ -934,7 +938,77 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-brand-bg transition-colors duration-300">
-      <Header onOpenAdmin={() => setShowAdmin(true)} />
+      <Header onOpenAdmin={() => {
+        setAdminPasswordInput('');
+        setAdminPasswordError(false);
+        setShowAdminPasswordModal(true);
+      }} />
+
+      {/* NOTE: 后台密码验证弹窗 */}
+      {showAdminPasswordModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowAdminPasswordModal(false); } }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-80 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-[22px]">lock</span>
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">管理后台</h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">请输入访问密码</p>
+              </div>
+            </div>
+            <input
+              id="admin-password-input"
+              type="password"
+              autoFocus
+              placeholder="请输入密码"
+              className={`w-full px-4 py-2.5 rounded-xl border text-sm outline-none transition-all ${adminPasswordError
+                  ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-300'
+                  : 'border-slate-200 bg-slate-50 focus:ring-2 focus:ring-primary/30 focus:border-primary'
+                }`}
+              value={adminPasswordInput}
+              onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(false); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  // NOTE: 密码为一个空格字符
+                  if (adminPasswordInput === ' ') {
+                    setShowAdminPasswordModal(false);
+                    setShowAdmin(true);
+                  } else {
+                    setAdminPasswordError(true);
+                  }
+                }
+              }}
+            />
+            {adminPasswordError && (
+              <p className="text-xs text-red-500 font-semibold -mt-2">密码错误，请重试</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAdminPasswordModal(false)}
+                className="flex-1 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  if (adminPasswordInput === ' ') {
+                    setShowAdminPasswordModal(false);
+                    setShowAdmin(true);
+                  } else {
+                    setAdminPasswordError(true);
+                  }
+                }}
+                className="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-all active:scale-95"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       <main className="flex-1 w-full flex">

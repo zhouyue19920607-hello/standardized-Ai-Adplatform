@@ -39,4 +39,7 @@ backend/storage/
 backend/static/uploads/
 dist/
 ai-platform.tar.gz
-
+# NOTE: 模版使用次数持久化文件，不随代码更新覆盖
+backend/data/usage-stats.json
+# NOTE: 遮罩/裁剪层/角标路径持久化文件，不随代码更新覆盖
+backend/data/asset-overrides.json
