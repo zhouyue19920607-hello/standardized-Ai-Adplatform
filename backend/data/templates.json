@@ -104,7 +104,7 @@
     "category": "icon/banner",
     "name": "热推第三位",
     "checked": false,
-    "dimensions": "1126 x 2436",
+    "dimensions": "720 x 960",
     "badge_overlay_path": "/static/1770618696316_______________________.png.png",
     "maskPath": "backend/storage/masks/1770618693115_______________________.png.png",
     "mask_path": "/static/masks/1770618693115_______________________.png.png",

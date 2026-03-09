@@ -119,7 +119,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         (isPopup && showBadge && asset.badgeOverlayUrl) ||
         (isRecipeContent && showBadge && asset.badgeOverlayUrl);
 
-    if (!needsComposite && !isMts1) {
+    // NOTE: mt-ib-1 always goes through compositor to guarantee 720×960 canvas output
+    if (!needsComposite && !isMts1 && !isHotRecommend) {
         const resp = await fetch(asset.url);
         return await resp.blob();
     }
@@ -240,7 +241,45 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             drawImageContain(ctx, badgeImg, 0, 0, targetW, bH, 'top');
         }
 
-    } else if (isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup) {
+    } else if (isHotRecommend) {
+        // NOTE: mt-ib-1 热推第三位 → 720×960 所见即所得，蒙版 + 角标均按此尺寸合成
+        const loadList: Promise<HTMLImageElement | null>[] = [loadImg(asset.url)];
+        if (showMask && asset.maskUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+        } else {
+            loadList.push(Promise.resolve(null));
+        }
+        if (showBadge && asset.badgeOverlayUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`));
+        } else {
+            loadList.push(Promise.resolve(null));
+        }
+
+        const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
+        const targetW = 720;
+        const targetH = 960;
+        canvas.width = targetW;
+        canvas.height = targetH;
+
+        if (!isPng) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, targetW, targetH);
+        }
+
+        // 底层：主图铺满画布（cover）
+        drawImageCover(ctx, mainImg!, 0, 0, targetW, targetH);
+
+        // 蒙版层（可选）
+        if (maskImg) {
+            ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+        }
+
+        // 角标层（可选）
+        if (showBadge && badgeImg) {
+            drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH, 'top');
+        }
+
+    } else if (isHotSearch || isTopicBg || isTopicBanner || isPopup) {
         // Shared logic for standard 1126x2436 background based templates
         const loadList = [loadImg(asset.url)];
         if (showMask && asset.maskUrl) {
@@ -267,8 +306,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
         // Define region
         let rect = { x: 0, y: 0, w: targetW, h: targetH, r: 0, fit: 'cover' as 'cover' | 'contain' };
-        if (isHotRecommend) rect = { x: 708, y: 1779, w: 288, h: 384, r: 10, fit: 'cover' };
-        else if (isHotSearch) rect = { x: 168, y: 1293, w: 156, h: 156, r: 10, fit: 'cover' };
+        if (isHotSearch) rect = { x: 168, y: 1293, w: 156, h: 156, r: 10, fit: 'cover' };
         else if (isScorePopup) rect = { x: 0, y: 0, w: 960, h: 1440, r: 0, fit: 'cover' };
         else if (isHomePopup) rect = { x: 83, y: 738, w: 960, h: 960, r: 0, fit: 'contain' };
         else if (isTopicBanner) rect = { x: 48, y: 980, w: 1030, h: 288, r: 5, fit: 'cover' };

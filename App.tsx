@@ -916,7 +916,7 @@ const App: React.FC = () => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[5000px]'}`}
+            className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[260px] overflow-y-auto custom-scrollbar'}`}
           >
             {/* Contextual Drag Overlay - Minimal */}
             {isDragging && !isCollapsed && (
