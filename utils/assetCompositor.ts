@@ -117,7 +117,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
     // Check if we need compositing (usually when mask is shown or badge is enabled)
     const showMask = config.showMask;
-    const showBadge = config.showBadge !== undefined ? config.showBadge : true;
+    // NOTE: Priority: explicit config (from individual download) > asset state (from batch) > default false
+    const showBadge = (config as any).showBadge !== undefined ? (config as any).showBadge : (asset.showBadge ?? false);
 
     const needsComposite = showMask ||
         (asset.category === '焦点视窗' && showBadge && asset.badgeOverlayUrl) ||
@@ -297,12 +298,13 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             const imgW = Math.round(0.2557 * fullW);                // ≈ 288px
             const imgH = Math.round(0.1576 * fullH);                // ≈ 384px
 
-            // 主图按 cover + 10px 圆角绘制到对应格子
-            // NOTE: Ensure mainImg is drawn BEFORE mask
-            drawImageRounded(ctx, mainImg!, imgX, imgY, imgW, imgH, 10, 'cover');
-
-            // 全屏遮罩叠加
+            // NOTE: For Zoom templates like mt-ib-1, mask is the background (z-0 in preview)
+            // and the ad image is the foreground (z-10 in preview).
+            // So we MUST draw mask FIRST, then image on top.
             ctx.drawImage(maskImg, 0, 0, fullW, fullH);
+
+            // 主图按 cover + 10px 圆角绘制到对应格子
+            drawImageRounded(ctx, mainImg!, imgX, imgY, imgW, imgH, 10, 'cover');
 
             // 角标（可选，同样按照全屏坐标叠加）
             if (showBadge && badgeImg) {
@@ -417,7 +419,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             }
 
             // Add Hot Search Text (mt-ib-2)
-            if (isHotSearch && asset.splashText) {
+            const splashText = asset.splashText || config.splashText;
+            if (isHotSearch && splashText) {
                 ctx.save();
                 // 对应 PreviewGrid 中的 left: '31.08%', top: '54.19%', fontSize: '1.64cqh' (≈ 40px)
                 const textX = Math.round(targetW * 0.3108);
@@ -427,7 +430,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'top';
                 ctx.font = `500 ${textFontSize}px -apple-system, "PingFang SC", "Helvetica Neue", sans-serif`;
-                ctx.fillText(asset.splashText, textX, textY);
+                ctx.fillText(splashText, textX, textY);
                 ctx.restore();
             }
         } else {

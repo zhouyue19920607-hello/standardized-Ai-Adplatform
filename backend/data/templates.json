@@ -11,7 +11,7 @@
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
     "maskUrl": "/static/masks/1770618508446____________________-.png.png",
-    "processedCount": 5
+    "processedCount": 6
   },
   {
     "id": "mt-s-5",
@@ -24,7 +24,7 @@
     "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
     "mask_path": "/static/masks/1770618676230_______________________-.png.png",
     "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
-    "processedCount": 4
+    "processedCount": 7
   },
   {
     "id": "mt-s-2",
@@ -37,7 +37,7 @@
     "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
     "mask_path": "/static/masks/1770618519624__________________________.png.png",
     "maskUrl": "/static/masks/1770618519624__________________________.png.png",
-    "processedCount": 5
+    "processedCount": 8
   },
   {
     "id": "mt-s-4",
@@ -50,7 +50,7 @@
     "maskPath": "backend/storage/masks/1770618528800____________________-.png.png",
     "mask_path": "/static/masks/1770618528800____________________-.png.png",
     "maskUrl": "/static/masks/1770618528800____________________-.png.png",
-    "processedCount": 3
+    "processedCount": 4
   },
   {
     "id": "mt-s-3",
@@ -63,7 +63,7 @@
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
     "maskUrl": "/static/masks/1770618641086____________________-.png.png",
-    "processedCount": 5
+    "processedCount": 7
   },
   {
     "id": "mt-f-1",
@@ -73,7 +73,7 @@
     "checked": true,
     "dimensions": "1126 x 2436",
     "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
-    "processedCount": 9
+    "processedCount": 13
   },
   {
     "id": "mt-f-2",
@@ -83,7 +83,7 @@
     "checked": true,
     "dimensions": "1126 x 2436",
     "badge_overlay_path": "/static/badges/mt-f-2_badge.png",
-    "processedCount": 8
+    "processedCount": 11
   },
   {
     "id": "mt-f-3",
@@ -92,7 +92,8 @@
     "name": "沉浸式焦点视窗",
     "checked": false,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/badges/mt-f-3_badge.png"
+    "badge_overlay_path": "/static/badges/mt-f-3_badge.png",
+    "processedCount": 1
   },
   {
     "id": "mt-fe-1",
@@ -103,7 +104,8 @@
     "dimensions": "720 x 960",
     "maskPath": "backend/storage/masks/1771914229879____________________00000.jpg.jpg",
     "mask_path": "/static/masks/1771914229879____________________00000.jpg.jpg",
-    "maskUrl": "/static/masks/1771914229879____________________00000.jpg.jpg"
+    "maskUrl": "/static/masks/1771914229879____________________00000.jpg.jpg",
+    "processedCount": 1
   },
   {
     "id": "mt-ib-1",
@@ -116,7 +118,7 @@
     "maskPath": "backend/storage/masks/1770618693115_______________________.png.png",
     "mask_path": "/static/masks/1770618693115_______________________.png.png",
     "maskUrl": "/static/masks/1770618693115_______________________.png.png",
-    "processedCount": 4
+    "processedCount": 6
   },
   {
     "id": "mt-ib-2",
@@ -129,7 +131,7 @@
     "mask_path": "/static/masks/1770623311229__________________________.jpg.jpg",
     "maskUrl": "/static/masks/1770623311229__________________________.jpg.jpg",
     "badge_overlay_path": "/static/1770623316420__________________________.png.png",
-    "processedCount": 1
+    "processedCount": 4
   },
   {
     "id": "mt-ib-3",
@@ -141,7 +143,8 @@
     "badge_overlay_path": "/static/1770618703897_________________.png.png",
     "maskPath": "backend/storage/masks/1770618700596_________________.png.png",
     "mask_path": "/static/masks/1770618700596_________________.png.png",
-    "maskUrl": "/static/masks/1770618700596_________________.png.png"
+    "maskUrl": "/static/masks/1770618700596_________________.png.png",
+    "processedCount": 2
   },
   {
     "id": "mt-ib-4",
@@ -153,7 +156,8 @@
     "maskPath": "backend/storage/masks/1770619559716_________________banner.jpg.jpg",
     "mask_path": "/static/masks/1770619559716_________________banner.jpg.jpg",
     "maskUrl": "/static/masks/1770619559716_________________banner.jpg.jpg",
-    "badge_overlay_path": "/static/badges/mt-ib-4_badge.png"
+    "badge_overlay_path": "/static/badges/mt-ib-4_badge.png",
+    "processedCount": 1
   },
   {
     "id": "mt-p-1",
@@ -166,7 +170,7 @@
     "mask_path": "/static/masks/1771985640223_________________.jpg",
     "maskUrl": "/static/masks/1771985640223_________________.jpg",
     "badge_overlay_path": "/static/badges/mt-p-1_badge.png",
-    "processedCount": 8
+    "processedCount": 10
   },
   {
     "id": "mt-p-2",
@@ -178,7 +182,7 @@
     "maskPath": "backend/storage/masks/1770699760569______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699760569______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699760569______________-.jpg.jpg",
-    "processedCount": 5
+    "processedCount": 6
   },
   {
     "id": "mt-p-3",

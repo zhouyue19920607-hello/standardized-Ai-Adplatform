@@ -35,7 +35,7 @@ const AdCard: React.FC<{
   const [isEditingText, setIsEditingText] = useState(false);
   const [localSplashText, setLocalSplashText] = useState(asset.splashText || t('preview.defaultSplashText'));
   const [localShowCrop, setLocalShowCrop] = useState(config.showCrop);
-  const [localShowBadge, setLocalShowBadge] = useState(false);
+  const [localShowBadge, setLocalShowBadge] = useState(asset.showBadge ?? false);
 
   const isHotRecommend = asset.id.includes('mt-ib-1');
   const isHotSearch = asset.id.includes('mt-ib-2');
@@ -59,6 +59,10 @@ const AdCard: React.FC<{
   useEffect(() => {
     setLocalShowMask(globalShowMask);
   }, [globalShowMask]);
+
+  useEffect(() => {
+    setLocalShowBadge(asset.showBadge ?? false);
+  }, [asset.showBadge]);
 
   // NOTE: 监听全局「全显裁剪」开关，同步到每张卡片的本地状态
   useEffect(() => {
@@ -372,7 +376,11 @@ const AdCard: React.FC<{
 
           {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
             <button
-              onClick={() => setLocalShowBadge(!localShowBadge)}
+              onClick={() => {
+                const next = !localShowBadge;
+                setLocalShowBadge(next);
+                onUpdate?.({ showBadge: next });
+              }}
               className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.brandComponent')}
             >

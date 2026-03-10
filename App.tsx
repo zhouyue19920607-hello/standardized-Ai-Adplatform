@@ -891,7 +891,11 @@ const App: React.FC = () => {
         if (asset.type.startsWith('video')) continue;
 
         try {
-          const blob = await compositeAsset(asset, config);
+          // Pass the individual asset's showBadge state if available
+          const blob = await compositeAsset(asset, {
+            ...config,
+            showBadge: asset.showBadge
+          } as any);
 
           // Determine actual extension based on blob type or asset info
           let ext = 'jpg';
