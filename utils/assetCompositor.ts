@@ -117,7 +117,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
     // Check if we need compositing (usually when mask is shown or badge is enabled)
     const showMask = config.showMask;
-    const showBadge = true; // Use badge if available in batch
+    const showBadge = config.showBadge !== undefined ? config.showBadge : true;
 
     const needsComposite = showMask ||
         (asset.category === '焦点视窗' && showBadge && asset.badgeOverlayUrl) ||
@@ -138,7 +138,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         return await resp.blob();
     }
 
-    const isPng = isMts1 ? false : (asset.type === 'image/png' || asset.url.toLowerCase().endsWith('.png'));
+    const categoryRequiresJpeg = isMts1 || asset.category === '开屏' || asset.category === '焦点视窗';
+    const isPng = categoryRequiresJpeg ? false : (asset.type === 'image/png' || asset.url.toLowerCase().endsWith('.png'));
     const outputMime = isPng ? 'image/png' : 'image/jpeg';
 
     const canvas = document.createElement('canvas');
@@ -250,8 +251,14 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         if (showBadge && badgeImg) {
-            const bH = (showMask && isImmersiveFocal) ? 2436 : (showMask ? 900 : targetH);
-            drawImageContain(ctx, badgeImg, 0, 0, targetW, bH, 'top');
+            if (showMask && isImmersiveFocal) {
+                // 对于沉浸式，角标应与主图对齐 (主图是 dw, dh 绘制)
+                // 沉浸式焦点视窗的角标是 object-cover object-top
+                drawImageCover(ctx, badgeImg, 0, 0, targetW, (badgeImg.naturalHeight / badgeImg.naturalWidth) * targetW);
+            } else {
+                const bH = (showMask && isImmersiveFocal) ? 2436 : (showMask ? 900 : targetH);
+                drawImageContain(ctx, badgeImg, 0, 0, targetW, bH, 'top');
+            }
         }
 
     } else if (isHotRecommend) {
@@ -291,6 +298,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             const imgH = Math.round(0.1576 * fullH);                // ≈ 384px
 
             // 主图按 cover + 10px 圆角绘制到对应格子
+            // NOTE: Ensure mainImg is drawn BEFORE mask
             drawImageRounded(ctx, mainImg!, imgX, imgY, imgW, imgH, 10, 'cover');
 
             // 全屏遮罩叠加
@@ -405,6 +413,21 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
                 const fontSize = 40; // 30pt is approx 40px
                 ctx.font = `normal ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
                 ctx.fillText(asset.splashText, targetW / 2, targetH - 188);
+                ctx.restore();
+            }
+
+            // Add Hot Search Text (mt-ib-2)
+            if (isHotSearch && asset.splashText) {
+                ctx.save();
+                // 对应 PreviewGrid 中的 left: '31.08%', top: '54.19%', fontSize: '1.64cqh' (≈ 40px)
+                const textX = Math.round(targetW * 0.3108);
+                const textY = Math.round(targetH * 0.5419);
+                const textFontSize = 40;
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.font = `500 ${textFontSize}px -apple-system, "PingFang SC", "Helvetica Neue", sans-serif`;
+                ctx.fillText(asset.splashText, textX, textY);
                 ctx.restore();
             }
         } else {
@@ -549,13 +572,13 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             canvas.toBlob(async (blob) => {
                 if (!blob) return reject(new Error('Failed to create blob'));
 
-                if (isPng || blob.size <= targetSizeBytes || quality <= 0.1) {
+                if (isPng || blob.size <= targetSizeBytes || quality <= 0.05) {
                     if (!isPng && blob.size > targetSizeBytes) {
                         console.warn(`[Compositor] Warning: Could not compress ${asset.category} under ${targetSizeBytes / 1024}KB. Final size: ${(blob.size / 1024).toFixed(1)}KB`);
                     }
                     resolve(blob);
                 } else {
-                    quality -= 0.15; // 加快压缩步长
+                    quality -= 0.2; // 进一步加快压缩步长
                     attempt();
                 }
             }, outputMime, isPng ? undefined : quality);

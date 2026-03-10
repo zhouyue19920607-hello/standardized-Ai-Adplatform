@@ -441,7 +441,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               selectedAsset.type.startsWith('video') ? (
                 <video
                   src={selectedAsset.url}
-                  className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-0 object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '开屏' || selectedAsset.category === '焦点视窗') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
+                  className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-[15] object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
                   controls
                   playsInline
                   loop
@@ -451,7 +451,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐以匹配蒙版的图片区域
                 (selectedAssetInfo.showMask && selectedAsset.id.includes('mt-s-5'))
                   ? <img src={selectedAsset.url} alt="zoom" className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
-                  : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
+                  : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-[15]' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
               )
             )}
 
@@ -562,7 +562,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                               selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
                                 { top: 0, left: 0, width: '100%', height: selectedAsset.templateName.includes('沉浸式') ? '100%' : '37%' }
                 ) : { inset: 0 }}>
-                <img src={`${ASSETS_URL}${selectedAsset.badgeOverlayUrl}`} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.category === '弹窗' ? (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : 'object-contain') : (selectedAsset.id.includes('mt-ib-4') ? 'object-contain' : (selectedAsset.id.includes('mt-fe-1') ? 'object-contain object-top' : 'object-contain object-top'))) : 'object-contain'}`} />
+                <img src={`${ASSETS_URL}${selectedAsset.badgeOverlayUrl}`} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.category === '弹窗' ? (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : 'object-contain') : (selectedAsset.id.includes('mt-ib-4') ? 'object-contain' : (selectedAsset.id.includes('mt-fe-1') ? 'object-contain object-top' : (selectedAsset.templateName.includes('沉浸式') ? 'object-cover object-top' : 'object-contain object-top')))) : 'object-contain'}`} />
               </div>
             )}
 

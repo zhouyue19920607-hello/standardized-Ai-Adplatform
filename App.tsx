@@ -490,7 +490,8 @@ const App: React.FC = () => {
             if (thumb) {
               const resp = await fetch(thumb);
               const blob = await resp.blob();
-              const file = new File([blob], "captured_frame.png", { type: "image/png" });
+              const forceJpeg = isSplash || template.category === '焦点视窗';
+              const file = new File([blob], forceJpeg ? "captured_frame.jpg" : "captured_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
               const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
               if (compressed?.url) {
                 finalUrl = `${ASSETS_URL}${compressed.url}`;
@@ -525,7 +526,8 @@ const App: React.FC = () => {
                   console.log(`[App] Compressing generated result: ${finalUrl}`);
                   const resp = await fetch(finalUrl);
                   const blob = await resp.blob();
-                  const file = new File([blob], "generated_output.png", { type: blob.type });
+                  const forceJpeg = isSplash || template.category === '焦点视窗';
+                  const file = new File([blob], forceJpeg ? "generated_output.jpg" : "generated_output.png", { type: forceJpeg ? "image/jpeg" : blob.type });
 
                   // Determine target size
                   const targetW = isImmersive ? 1440 : (isStaticFocal ? 1126 : (isHotRecommend ? 720 : 1440));
@@ -576,7 +578,8 @@ const App: React.FC = () => {
                   try {
                     const resp = await fetch(thumb);
                     const blob = await resp.blob();
-                    const file = new File([blob], "fallback_frame.png", { type: "image/png" });
+                    const forceJpeg = isSplash || template.category === '焦点视窗';
+                    const file = new File([blob], forceJpeg ? "fallback_frame.jpg" : "fallback_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
                     const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
                     if (compressed?.url) {
                       finalUrl = `${ASSETS_URL}${compressed.url}`;
@@ -617,8 +620,8 @@ const App: React.FC = () => {
               try {
                 const resp = await fetch(thumb);
                 const blob = await resp.blob();
-                const isMts1 = template.id === 'mt-s-1';
-                const file = new File([blob], isMts1 ? "first_frame.jpg" : "first_frame.png", { type: isMts1 ? "image/jpeg" : "image/png" });
+                const forceJpeg = isSplash || template.category === '焦点视窗';
+                const file = new File([blob], forceJpeg ? "first_frame.jpg" : "first_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
                 const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
                 if (compressed?.url) finalUrl = `${ASSETS_URL}${compressed.url}`;
                 else finalUrl = thumb;
@@ -651,7 +654,8 @@ const App: React.FC = () => {
             if (thumb) {
               const resp = await fetch(thumb);
               const blob = await resp.blob();
-              const file = new File([blob], "first_frame_focal.png", { type: "image/png" });
+              const forceJpeg = isSplash || template.category === '焦点视窗';
+              const file = new File([blob], forceJpeg ? "first_frame_focal.jpg" : "first_frame_focal.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
 
               const w = isImmersive ? 1440 : 1126;
               const h = isImmersive ? 2340 : 900;
@@ -739,7 +743,8 @@ const App: React.FC = () => {
               if (lastFrame) {
                 const resp = await fetch(lastFrame);
                 const blob = await resp.blob();
-                const frameFile = new File([blob], 'last_frame_mtf1.png', { type: 'image/png' });
+                const forceJpeg = isSplash || template.category === '焦点视窗';
+                const frameFile = new File([blob], forceJpeg ? 'last_frame_mtf1.jpg' : 'last_frame_mtf1.png', { type: forceJpeg ? 'image/jpeg' : 'image/png' });
                 const smart = await smartCropImage(frameFile, 1126, 900, 250);
                 if (smart?.url) {
                   finalUrl = `${ASSETS_URL}${smart.url}`;
