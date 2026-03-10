@@ -10,7 +10,8 @@
     "crop_overlay_path": "/static/badges/1772078200648_________________.png",
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
-    "maskUrl": "/static/masks/1770618508446____________________-.png.png"
+    "maskUrl": "/static/masks/1770618508446____________________-.png.png",
+    "processedCount": 5
   },
   {
     "id": "mt-s-5",
@@ -22,7 +23,8 @@
     "crop_overlay_path": "/static/badges/1772092608779____________________.png",
     "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
     "mask_path": "/static/masks/1770618676230_______________________-.png.png",
-    "maskUrl": "/static/masks/1770618676230_______________________-.png.png"
+    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "processedCount": 4
   },
   {
     "id": "mt-s-2",
@@ -34,7 +36,8 @@
     "crop_overlay_path": "/static/badges/1772078204835_________________.png",
     "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
     "mask_path": "/static/masks/1770618519624__________________________.png.png",
-    "maskUrl": "/static/masks/1770618519624__________________________.png.png"
+    "maskUrl": "/static/masks/1770618519624__________________________.png.png",
+    "processedCount": 5
   },
   {
     "id": "mt-s-4",
@@ -46,7 +49,8 @@
     "crop_overlay_path": "/static/badges/1772078206724_________________.png",
     "maskPath": "backend/storage/masks/1770618528800____________________-.png.png",
     "mask_path": "/static/masks/1770618528800____________________-.png.png",
-    "maskUrl": "/static/masks/1770618528800____________________-.png.png"
+    "maskUrl": "/static/masks/1770618528800____________________-.png.png",
+    "processedCount": 3
   },
   {
     "id": "mt-s-3",
@@ -58,7 +62,8 @@
     "crop_overlay_path": "/static/badges/1772078210121_________________.png",
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
-    "maskUrl": "/static/masks/1770618641086____________________-.png.png"
+    "maskUrl": "/static/masks/1770618641086____________________-.png.png",
+    "processedCount": 5
   },
   {
     "id": "mt-f-1",
@@ -67,7 +72,7 @@
     "name": "动态焦点视窗",
     "checked": true,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/1770005102685_____________.png.png",
+    "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
     "processedCount": 9
   },
   {
@@ -77,8 +82,8 @@
     "name": "静态焦点视窗",
     "checked": true,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/1770005108546_____________.png.png",
-    "processedCount": 6
+    "badge_overlay_path": "/static/badges/mt-f-2_badge.png",
+    "processedCount": 8
   },
   {
     "id": "mt-f-3",
@@ -87,7 +92,7 @@
     "name": "沉浸式焦点视窗",
     "checked": false,
     "dimensions": "1126 x 2436",
-    "badge_overlay_path": "/static/1770032402720___________________.png.png"
+    "badge_overlay_path": "/static/badges/mt-f-3_badge.png"
   },
   {
     "id": "mt-fe-1",
@@ -161,7 +166,7 @@
     "mask_path": "/static/masks/1771985640223_________________.jpg",
     "maskUrl": "/static/masks/1771985640223_________________.jpg",
     "badge_overlay_path": "/static/badges/mt-p-1_badge.png",
-    "processedCount": 4
+    "processedCount": 8
   },
   {
     "id": "mt-p-2",
@@ -173,7 +178,7 @@
     "maskPath": "backend/storage/masks/1770699760569______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699760569______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699760569______________-.jpg.jpg",
-    "processedCount": 4
+    "processedCount": 5
   },
   {
     "id": "mt-p-3",
@@ -185,7 +190,7 @@
     "maskPath": "backend/storage/masks/1770699763404______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699763404______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699763404______________-.jpg.jpg",
-    "processedCount": 11
+    "processedCount": 15
   },
   {
     "id": "my-s-1",

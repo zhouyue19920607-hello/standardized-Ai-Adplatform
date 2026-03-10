@@ -491,7 +491,7 @@ const App: React.FC = () => {
               const resp = await fetch(thumb);
               const blob = await resp.blob();
               const file = new File([blob], "captured_frame.png", { type: "image/png" });
-              const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 500);
+              const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
               if (compressed?.url) {
                 finalUrl = `${ASSETS_URL}${compressed.url}`;
                 console.log(`[Splash Debug] First frame captured and processed: ${finalUrl}`);
@@ -531,7 +531,7 @@ const App: React.FC = () => {
                   const targetW = isImmersive ? 1440 : (isStaticFocal ? 1126 : (isHotRecommend ? 720 : 1440));
                   const targetH = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : (isHotRecommend ? 960 : 2340)));
 
-                  const limitKB = isMts1 ? 200 : (isSplash ? 500 : 250);
+                  const limitKB = (isSplash || template.category === '焦点视窗') ? 200 : 250;
                   const compressed = await smartCropImage(file, targetW, targetH, limitKB);
                   if (compressed?.url) {
                     finalUrl = `${ASSETS_URL}${compressed.url}`;
@@ -554,7 +554,7 @@ const App: React.FC = () => {
                 const w = isImmersive ? 1440 : (isStaticFocal ? 1126 : ((isHotRecommend || isHomePopup) ? 720 : 1440));
                 const h = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : ((isHotRecommend || isHomePopup) ? 960 : 2340)));
 
-                const limitKB = isMts1 ? 200 : (isSplash ? 500 : 250);
+                const limitKB = (isSplash || template.category === '焦点视窗') ? 200 : 250;
                 const smart = await smartCropImage(raw.file, w, h, limitKB);
                 if (smart?.url) {
                   finalUrl = `${ASSETS_URL}${smart.url}`;
@@ -577,7 +577,7 @@ const App: React.FC = () => {
                     const resp = await fetch(thumb);
                     const blob = await resp.blob();
                     const file = new File([blob], "fallback_frame.png", { type: "image/png" });
-                    const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 500);
+                    const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
                     if (compressed?.url) {
                       finalUrl = `${ASSETS_URL}${compressed.url}`;
                       console.log(`[Splash Debug] First frame captured: ${finalUrl}`);
@@ -601,7 +601,7 @@ const App: React.FC = () => {
         else if (isSplash && raw.file.type.startsWith('image/')) {
           try {
             const h = isNonFullscreenSplash ? 1938 : 2340;
-            const smart = await smartCropImage(raw.file, 1440, h, 500);
+            const smart = await smartCropImage(raw.file, 1440, h, 200);
             if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
           } catch (e) {
             console.error("Direct Smart Crop failed", e);
@@ -619,7 +619,7 @@ const App: React.FC = () => {
                 const blob = await resp.blob();
                 const isMts1 = template.id === 'mt-s-1';
                 const file = new File([blob], isMts1 ? "first_frame.jpg" : "first_frame.png", { type: isMts1 ? "image/jpeg" : "image/png" });
-                const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, isMts1 ? 200 : 500);
+                const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
                 if (compressed?.url) finalUrl = `${ASSETS_URL}${compressed.url}`;
                 else finalUrl = thumb;
               } catch (e) { finalUrl = thumb; }
@@ -965,8 +965,8 @@ const App: React.FC = () => {
               autoFocus
               placeholder="请输入密码"
               className={`w-full px-4 py-2.5 rounded-xl border text-sm outline-none transition-all ${adminPasswordError
-                  ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-300'
-                  : 'border-slate-200 bg-slate-50 focus:ring-2 focus:ring-primary/30 focus:border-primary'
+                ? 'border-red-400 bg-red-50 focus:ring-2 focus:ring-red-300'
+                : 'border-slate-200 bg-slate-50 focus:ring-2 focus:ring-primary/30 focus:border-primary'
                 }`}
               value={adminPasswordInput}
               onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(false); }}

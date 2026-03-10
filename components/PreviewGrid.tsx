@@ -119,6 +119,7 @@ const AdCard: React.FC<{
         ...config,
         showMask: localShowMask,
         showCrop: localShowCrop,
+        showBadge: localShowBadge
       });
 
       // Determine extension from MIME type
@@ -291,7 +292,7 @@ const AdCard: React.FC<{
               <div
                 className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
                 style={{
-                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
+                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '20.44%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
                   containerType: 'size'
                 }}
               >
@@ -339,20 +340,20 @@ const AdCard: React.FC<{
         )}
       </div>
 
-      <div className="px-3 py-2.5 border-t border-slate-100 flex items-center justify-between mt-auto bg-slate-50/30">
-        <div className="flex items-center gap-1.5">
+      <div className="px-2.5 py-2 border-t border-slate-100 flex items-center justify-between mt-auto bg-slate-50/30 gap-1.5">
+        <div className="flex items-center gap-1 flex-1 min-w-0">
           <button
             onClick={() => setLocalShowMask(!localShowMask)}
-            className={`h-8 px-2.5 rounded-lg flex items-center gap-1.5 transition-all text-[10px] font-bold shadow-sm ${localShowMask ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
+            className={`h-8 px-2 rounded-lg flex items-center shrink gap-1 transition-all text-[11px] font-bold shadow-sm min-w-0 ${localShowMask ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
           >
-            <span className="material-symbols-outlined text-[16px]">{localShowMask ? 'visibility' : 'visibility_off'}</span>
-            <span>{localShowMask ? t('preview.adMask') : t('preview.rawAsset')}</span>
+            <span className="material-symbols-outlined text-[16px] shrink-0">{localShowMask ? 'visibility' : 'visibility_off'}</span>
+            <span className="truncate">{localShowMask ? t('preview.adMask') : t('preview.rawAsset')}</span>
           </button>
 
           {asset.cropOverlayUrl && (
             <button
               onClick={() => setLocalShowCrop(!localShowCrop)}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowCrop ? 'bg-orange-500 text-white shadow-orange-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowCrop ? 'bg-orange-500 text-white shadow-orange-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.cropPreview')}
             >
               <span className="material-symbols-outlined text-[18px]">crop</span>
@@ -362,7 +363,7 @@ const AdCard: React.FC<{
           {(asset.category === '开屏' || isHotSearch || isScorePopup) && localShowMask && (
             <button
               onClick={() => setIsEditingText(!isEditingText)}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${isEditingText ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${isEditingText ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.editText')}
             >
               <span className="material-symbols-outlined text-[18px]">edit_note</span>
@@ -372,7 +373,7 @@ const AdCard: React.FC<{
           {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
             <button
               onClick={() => setLocalShowBadge(!localShowBadge)}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
               title={t('preview.brandComponent')}
             >
               <span className="material-symbols-outlined text-[18px]">verified</span>
@@ -381,7 +382,7 @@ const AdCard: React.FC<{
         </div>
         <button
           onClick={handleDownload}
-          className="w-8 h-8 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
+          className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
           title={t('preview.download')}
         >
           <span className="material-symbols-outlined text-[18px]">download</span>
@@ -554,7 +555,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 style={selectedAssetInfo.showMask ? (
                   selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                     selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
-                      selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
+                      selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '20.44%' } :
                         (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', left: '7.37%', top: '30.30%', height: '39.41%' } :
                           selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
                             selectedAsset.id.includes('mt-ib-3') ? { width: '100%', height: '26.27%', left: 0, top: 0 } :
@@ -592,10 +593,11 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   ...(selectedAssetInfo.showMask ? (
                     selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                       selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
-                        (selectedAsset.id.includes('mt-p-1') || selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
-                          selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
-                            selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
-                              { width: '100%', height: '26.27%', left: 0, top: 0 }
+                        selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '20.44%' } :
+                          (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
+                            selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
+                              selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
+                                { width: '100%', height: '26.27%', left: 0, top: 0 }
                   ) : { inset: 0 }),
                   containerType: 'size'
                 }}
@@ -609,7 +611,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <div
                 className="absolute pointer-events-none z-[75]"
                 style={{
-                  ...(selectedAssetInfo.showMask ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : { inset: 0 }),
+                  ...(selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '20.44%' } : { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' }) : { inset: 0 }),
                   containerType: 'size'
                 }}
               >
