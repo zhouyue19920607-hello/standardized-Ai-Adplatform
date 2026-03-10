@@ -8,10 +8,14 @@ import { getDerivedGradientColor, hexToRgb } from './colorUtils';
 const loadImg = (src: string): Promise<HTMLImageElement | null> => {
     return new Promise((resolve) => {
         const img = new Image();
-        img.crossOrigin = "anonymous";
-        const isDataUrl = src.startsWith('data:');
+        // NOTE: blob: 和 data: URL 不需要 crossOrigin，设置后浏览器反而会拒绝加载（无 CORS 头）
+        // 只对远程 HTTP URL 设置 crossOrigin=anonymous 以允许 canvas 导出
+        const isLocalUrl = src.startsWith('data:') || src.startsWith('blob:');
+        if (!isLocalUrl) {
+            img.crossOrigin = "anonymous";
+        }
         const separator = src.includes('?') ? '&' : '?';
-        const finalSrc = isDataUrl ? src : `${src}${separator}t=${Date.now()}`;
+        const finalSrc = isLocalUrl ? src : `${src}${separator}t=${Date.now()}`;
         img.src = finalSrc;
         img.onload = () => resolve(img);
         // NOTE: 加载失败时返回 null 而非 reject，防止单图失败中断整个合成流程
@@ -124,8 +128,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         (isPopup && showBadge && asset.badgeOverlayUrl) ||
         (isRecipeContent && showBadge && asset.badgeOverlayUrl);
 
+    // DEBUG: 打印关键变量帮助排查
+    console.log(`[Compositor] id=${asset.id} category=${asset.category} isPopup=${isPopup} isScorePopup=${isScorePopup} showMask=${showMask} needsComposite=${needsComposite} maskUrl=${asset.maskUrl} url.slice0-20=${asset.url?.slice(0, 20)}`);
+
     // NOTE: mt-ib-1 always goes through compositor to guarantee 720×960 canvas output
     if (!needsComposite && !isMts1 && !isHotRecommend) {
+        console.log('[Compositor] EARLY RETURN - fetching asset.url directly');
         const resp = await fetch(asset.url);
         return await resp.blob();
     }
@@ -326,8 +334,16 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        const targetW = isScorePopup ? 960 : 1126; // mt-p-1 use 960x1440
-        const targetH = isScorePopup ? 1440 : 2436;
+
+        // NOTE: 若主图加载失败，直接返回后端原图（保证能下载）
+        if (!mainImg) {
+            console.warn('[Compositor] mainImg failed to load, falling back to original asset URL');
+            const resp = await fetch(asset.url);
+            return await resp.blob();
+        }
+
+        const targetW = 1126;
+        const targetH = 2436;
         canvas.width = targetW;
         canvas.height = targetH;
 
@@ -339,7 +355,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         // Define region
         let rect = { x: 0, y: 0, w: targetW, h: targetH, r: 0, fit: 'cover' as 'cover' | 'contain' };
         if (isHotSearch) rect = { x: 168, y: 1293, w: 156, h: 156, r: 10, fit: 'cover' };
-        else if (isScorePopup) rect = { x: 0, y: 0, w: 960, h: 1440, r: 0, fit: 'cover' };
+        else if (isScorePopup) rect = { x: 83, y: 738, w: 960, h: 960, r: 10, fit: 'contain' };
         else if (isHomePopup) rect = { x: 83, y: 738, w: 960, h: 960, r: 0, fit: 'contain' };
         else if (isTopicBanner) rect = { x: 48, y: 980, w: 1030, h: 288, r: 5, fit: 'cover' };
         else if (isTopicBg) rect = { x: 0, y: 0, w: 1126, h: 640, r: 0, fit: 'cover' };
@@ -353,10 +369,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
                 if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, rect.x, rect.y, rect.w, rect.h, 'top');
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
-            } else if (isHomePopup) {
-                // NOTE: Home Popup (mt-p-2/mt-p-3): 先画全屏蒙版（背景），再在中间叠加用户图
+            } else if (isHomePopup || isScorePopup) {
+                // NOTE: Popup Templates: Draw full-screen Mask as background first, then overlay Image on top
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
-                drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+                if (rect.r > 0) drawImageRounded(ctx, mainImg, rect.x, rect.y, rect.w, rect.h, rect.r, rect.fit);
+                else if (rect.fit === 'cover') drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
+                else drawImageContain(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
             } else {
                 // Normal: Mask → Image → Badge
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);

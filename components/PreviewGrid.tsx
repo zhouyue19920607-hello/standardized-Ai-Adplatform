@@ -229,8 +229,8 @@ const AdCard: React.FC<{
             )}
 
 
-            {/* Home Popup Mask (Background - below user image) */}
-            {isHomePopup && localShowMask && asset.maskUrl && (
+            {/* Popup Mask (Background - below user image) */}
+            {localShowMask && asset.maskUrl && (isHomePopup || isScorePopup) && (
               <div className="absolute inset-0 z-10 pointer-events-none mix-blend-normal">
                 <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Popup Background" />
               </div>
@@ -291,7 +291,7 @@ const AdCard: React.FC<{
               <div
                 className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
                 style={{
-                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
+                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
                   containerType: 'size'
                 }}
               >
@@ -504,8 +504,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
 
-            {/* Modal: Home Popup Mask (Background - below user image) */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && selectedAsset.category === '弹窗' && (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) && (
+            {/* Modal: Popup Mask (Background - below user image) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && (selectedAsset.id.includes('mt-p-1') || selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) && (
               <div className="absolute inset-0 pointer-events-none z-10 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="popup background" />
               </div>
@@ -554,8 +554,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 style={selectedAssetInfo.showMask ? (
                   selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                     selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
-                      selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } :
-                        (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } :
+                      selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
+                        (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', left: '7.37%', top: '30.30%', height: '39.41%' } :
                           selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
                             selectedAsset.id.includes('mt-ib-3') ? { width: '100%', height: '26.27%', left: 0, top: 0 } :
                               selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
@@ -592,11 +592,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   ...(selectedAssetInfo.showMask ? (
                     selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                       selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
-                        selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } :
-                          (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
-                            selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
-                              selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
-                                { width: '100%', height: '26.27%', left: 0, top: 0 }
+                        (selectedAsset.id.includes('mt-p-1') || selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
+                          selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
+                            selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
+                              { width: '100%', height: '26.27%', left: 0, top: 0 }
                   ) : { inset: 0 }),
                   containerType: 'size'
                 }}
@@ -610,7 +609,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <div
                 className="absolute pointer-events-none z-[75]"
                 style={{
-                  ...(selectedAssetInfo.showMask ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : { inset: 0 }),
+                  ...(selectedAssetInfo.showMask ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : { inset: 0 }),
                   containerType: 'size'
                 }}
               >
