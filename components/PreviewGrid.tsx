@@ -229,10 +229,10 @@ const AdCard: React.FC<{
             )}
 
 
-            {/* Home Popup Mask (Lower Layer - below popup image) */}
+            {/* Home Popup Mask (Background - below user image) */}
             {isHomePopup && localShowMask && asset.maskUrl && (
               <div className="absolute inset-0 z-10 pointer-events-none mix-blend-normal">
-                <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Popup Mask" />
+                <img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" alt="Popup Background" />
               </div>
             )}
 
@@ -291,11 +291,11 @@ const AdCard: React.FC<{
               <div
                 className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
                 style={{
-                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
+                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
                   containerType: 'size'
                 }}
               >
-                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-cover rounded-[5px]' : (isHomePopup ? 'object-contain' : (isScorePopup ? 'object-cover rounded-[10px]' : (isRecipeContent ? 'object-cover rounded-[10px]' : (isHotRecommend || isHotSearch) ? 'object-cover rounded-[10px]' : 'object-cover')))) : 'object-contain'}`} />
+                <img src={asset.url} alt={asset.name} className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-cover rounded-[5px]' : (isHomePopup ? 'object-contain' : (isScorePopup ? 'object-cover rounded-[10px]' : (isRecipeContent ? 'object-cover rounded-[10px]' : (isHotRecommend || isHotSearch) ? 'object-cover rounded-[10px]' : 'object-cover')))) : (isHotRecommend ? 'object-contain rounded-[10px]' : 'object-contain')}`} />
               </div>
             )}
           </div>
@@ -504,10 +504,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
 
-            {/* Modal: Home Popup Mask (Lower Layer - below popup image) */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && selectedAsset.category === '弹窗' && !selectedAsset.id.startsWith('mt-p-1') && (
+            {/* Modal: Home Popup Mask (Background - below user image) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && selectedAsset.category === '弹窗' && (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) && (
               <div className="absolute inset-0 pointer-events-none z-10 mix-blend-normal">
-                <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="popup mask" />
+                <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="popup background" />
               </div>
             )}
 
@@ -593,7 +593,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                     selectedAsset.id.includes('mt-ib-1') ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } :
                       selectedAsset.id.includes('mt-ib-2') ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } :
                         selectedAsset.id.includes('mt-p-1') ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '19.91%' } :
-                          (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', left: '7.37%', top: '50%', transform: 'translateY(-50%)' } :
+                          (selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } :
                             selectedAsset.id.includes('mt-ib-4') ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } :
                               selectedAsset.id.includes('mt-fe-1') ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } :
                                 { width: '100%', height: '26.27%', left: 0, top: 0 }
@@ -601,7 +601,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   containerType: 'size'
                 }}
               >
-                <img src={selectedAsset.url} alt={selectedAsset.name} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-cover rounded-[5px]' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-fe-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2')) ? 'object-cover rounded-[10px]' : 'object-cover'))) : 'object-contain'}`} />
+                <img src={selectedAsset.url} alt={selectedAsset.name} className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-cover rounded-[5px]' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-fe-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-p-2') || selectedAsset.id.includes('mt-p-3')) ? 'object-contain rounded-[10px]' : 'object-cover'))) : 'object-contain'}`} />
               </div>
             )}
 

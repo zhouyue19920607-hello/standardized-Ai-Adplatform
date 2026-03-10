@@ -5,15 +5,20 @@ import { getDerivedGradientColor, hexToRgb } from './colorUtils';
 /**
  * Helper to load image with cache-busting
  */
-const loadImg = (src: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
+const loadImg = (src: string): Promise<HTMLImageElement | null> => {
+    return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
         const isDataUrl = src.startsWith('data:');
         const separator = src.includes('?') ? '&' : '?';
-        img.src = isDataUrl ? src : `${src}${separator}t=${Date.now()}`;
+        const finalSrc = isDataUrl ? src : `${src}${separator}t=${Date.now()}`;
+        img.src = finalSrc;
         img.onload = () => resolve(img);
-        img.onerror = reject;
+        // NOTE: 加载失败时返回 null 而非 reject，防止单图失败中断整个合成流程
+        img.onerror = (e) => {
+            console.error('[Compositor] Image load failed:', finalSrc, e);
+            resolve(null);
+        };
     });
 };
 
@@ -242,7 +247,9 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
     } else if (isHotRecommend) {
-        // NOTE: mt-ib-1 热推第三位 → 720×960 所见即所得，蒙版 + 角标均按此尺寸合成
+        // NOTE: mt-ib-1 热推第三位 - 双模式合成：
+        //   - showMask=true  → 1126×2436 全屏，主图放到小格子位置，叠全屏遮罩
+        //   - showMask=false → 720×960 主图铺满（纯素材导出）
         const loadList: Promise<HTMLImageElement | null>[] = [loadImg(asset.url)];
         if (showMask && asset.maskUrl) {
             loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
@@ -256,27 +263,52 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        const targetW = 720;
-        const targetH = 960;
-        canvas.width = targetW;
-        canvas.height = targetH;
 
-        if (!isPng) {
+        if (showMask && maskImg) {
+            // NOTE: 开遮罩 → 1126×2436 全屏合成
+            // 图片区域位置与 PreviewGrid 中完全一致：
+            //   left: 62.87%, top: 73.02%, width: 25.57%, height: 15.76%
+            const fullW = 1126;
+            const fullH = 2436;
+            canvas.width = fullW;
+            canvas.height = fullH;
+
             ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, targetW, targetH);
-        }
+            ctx.fillRect(0, 0, fullW, fullH);
 
-        // 底层：主图铺满画布（cover）
-        drawImageCover(ctx, mainImg!, 0, 0, targetW, targetH);
+            // 计算主图在全屏中的像素坐标
+            const imgX = Math.round(0.6287 * fullW);                // ≈ 708px
+            const imgY = Math.round(0.7302 * fullH);                // ≈ 1779px
+            const imgW = Math.round(0.2557 * fullW);                // ≈ 288px
+            const imgH = Math.round(0.1576 * fullH);                // ≈ 384px
 
-        // 蒙版层（可选）
-        if (maskImg) {
-            ctx.drawImage(maskImg, 0, 0, targetW, targetH);
-        }
+            // 主图按 cover + 10px 圆角绘制到对应格子
+            drawImageRounded(ctx, mainImg!, imgX, imgY, imgW, imgH, 10, 'cover');
 
-        // 角标层（可选）
-        if (showBadge && badgeImg) {
-            drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH, 'top');
+            // 全屏遮罩叠加
+            ctx.drawImage(maskImg, 0, 0, fullW, fullH);
+
+            // 角标（可选，同样按照全屏坐标叠加）
+            if (showBadge && badgeImg) {
+                ctx.drawImage(badgeImg, imgX, imgY, imgW, imgH);
+            }
+        } else {
+            // NOTE: 不开遮罩 → 720×960 主图铺满（纯素材导出）
+            const targetW = 720;
+            const targetH = 960;
+            canvas.width = targetW;
+            canvas.height = targetH;
+
+            if (!isPng) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, targetW, targetH);
+            }
+
+            drawImageRounded(ctx, mainImg!, 0, 0, targetW, targetH, 10, 'cover');
+
+            if (showBadge && badgeImg) {
+                drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH, 'top');
+            }
         }
 
     } else if (isHotSearch || isTopicBg || isTopicBanner || isPopup) {
@@ -321,166 +353,165 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
                 if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, rect.x, rect.y, rect.w, rect.h, 'top');
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+            } else if (isHomePopup) {
+                // NOTE: Home Popup (mt-p-2/mt-p-3): 先画全屏蒙版（背景），再在中间叠加用户图
+                ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+                drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
             } else {
-                // Normal: Mask -> Image -> Badge
+                // Normal: Mask → Image → Badge
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
                 if (rect.r > 0) drawImageRounded(ctx, mainImg, rect.x, rect.y, rect.w, rect.h, rect.r, rect.fit);
                 else if (rect.fit === 'cover') drawImageCover(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
                 else drawImageContain(ctx, mainImg, rect.x, rect.y, rect.w, rect.h);
-
                 if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, rect.x, rect.y, rect.w, rect.h, 'top');
             }
-        } else {
-            if (rect.r > 0) drawImageRounded(ctx, mainImg, 0, 0, targetW, targetH, rect.r, rect.fit);
-            else drawImageContain(ctx, mainImg, 0, 0, targetW, targetH);
-            if (showBadge && badgeImg) drawImageContain(ctx, badgeImg, 0, 0, targetW, targetH);
-        }
 
-        // Add Score Popup Text (mt-p-1)
-        if (isScorePopup && asset.splashText) {
-            ctx.save();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            const fontSize = 40; // 30pt is approx 40px
-            ctx.font = `normal ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
-            ctx.fillText(asset.splashText, targetW / 2, targetH - 188);
-            ctx.restore();
-        }
-
-    } else if (asset.category === '开屏') {
-        const isNonFullscreenSplash = asset.id.includes('mt-s-5');
-        // Load main image, mask, and potential crop overlay
-        const loadList = [loadImg(asset.url)];
-
-        if (showMask && asset.maskUrl) {
-            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
-        } else {
-            loadList.push(Promise.resolve(null as any));
-        }
-
-        if (config.showCrop && asset.cropOverlayUrl) {
-            loadList.push(loadImg(`${ASSETS_URL}${asset.cropOverlayUrl}`));
-        } else {
-            loadList.push(Promise.resolve(null as any));
-        }
-
-        const [mainImg, maskImg, cropImg] = await Promise.all(loadList);
-        const targetW = 1440;
-        // Match preview aspectRatio: 2340 if mask is on, otherwise template default
-        const targetH = showMask ? 2340 : (isNonFullscreenSplash ? 1938 : 2340);
-        canvas.width = targetW;
-        canvas.height = targetH;
-
-        if (!isPng) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, targetW, targetH);
-        }
-
-        // Drawing alignment: object-top if mask is on, middle if mask is off
-        const scale = Math.min(targetW / mainImg.naturalWidth, targetH / mainImg.naturalHeight);
-        const dw = mainImg.naturalWidth * scale;
-        const dh = mainImg.naturalHeight * scale;
-        const dx = (targetW - dw) / 2;
-        const dy = showMask ? 0 : (targetH - dh) / 2;
-        ctx.drawImage(mainImg, dx, dy, dw, dh);
-
-        // Draw Mask or Crop on TOP if they exist
-        if (maskImg) {
-            ctx.drawImage(maskImg, 0, 0, targetW, targetH);
-        }
-        if (cropImg) {
-            // Replicate object-contain rendering for crop overlay
-            const cScale = Math.min(targetW / cropImg.naturalWidth, targetH / cropImg.naturalHeight);
-            const cdw = cropImg.naturalWidth * cScale;
-            const cdh = cropImg.naturalHeight * cScale;
-            const cdx = (targetW - cdw) / 2;
-            const cdy = (targetH - cdh) / 2;
-            ctx.drawImage(cropImg, cdx, cdy, cdw, cdh);
-        }
-
-        if (showMask) {
-            const isUpDownSliding = asset.templateName === '上下滑动开屏';
-            const fontSize = (isUpDownSliding || isNonFullscreenSplash) ? 58 : 42;
-            let bottomOffset = isNonFullscreenSplash ? 610 : (isUpDownSliding ? 285 : targetH * 0.0897);
-            if (asset.id.includes('mt-s-2')) {
-                bottomOffset += 2; // 向上移动
-            } else if (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-3') || asset.id.includes('mt-s-4')) {
-                bottomOffset -= 2; // 向下移动
+            // Add Score Popup Text (mt-p-1)
+            if (isScorePopup && asset.splashText) {
+                ctx.save();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                const fontSize = 40; // 30pt is approx 40px
+                ctx.font = `normal ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+                ctx.fillText(asset.splashText, targetW / 2, targetH - 188);
+                ctx.restore();
             }
 
-            ctx.fillStyle = '#FFFFFF';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            if ('letterSpacing' in ctx) { (ctx as any).letterSpacing = `${0.1 * fontSize}px`; }
-            ctx.font = `bold ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
-            ctx.fillText(asset.splashText || config.splashText, targetW / 2, targetH - bottomOffset);
-        }
-    } else if (isRecipeContent) {
-        // 一键配方图文: 图片 -> 蒙版 -> 角标
-        const loadList: Promise<HTMLImageElement | null>[] = [loadImg(asset.url)];
-        if (showMask && asset.maskUrl) {
-            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
-        } else {
-            loadList.push(Promise.resolve(null));
-        }
-        if (showBadge && asset.badgeOverlayUrl) {
-            loadList.push(loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`));
-        } else {
-            loadList.push(Promise.resolve(null));
-        }
+        } else if (asset.category === '开屏') {
+            const isNonFullscreenSplash = asset.id.includes('mt-s-5');
+            // Load main image, mask, and potential crop overlay
+            const loadList = [loadImg(asset.url)];
 
-        const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
-        canvas.width = 1126;
-        canvas.height = 2436;
+            if (showMask && asset.maskUrl) {
+                loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+            } else {
+                loadList.push(Promise.resolve(null as any));
+            }
 
-        if (!isPng) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+            if (config.showCrop && asset.cropOverlayUrl) {
+                loadList.push(loadImg(`${ASSETS_URL}${asset.cropOverlayUrl}`));
+            } else {
+                loadList.push(Promise.resolve(null as any));
+            }
 
-        // 计算定位 (基于 1126x2436)
-        const dw = 506; // 1034 * 0.49
-        const dh = 675; // 1378 * 0.49
-        const dx = 46;
-        const dy = 1489; // 2436 - 675 - 272
+            const [mainImg, maskImg, cropImg] = await Promise.all(loadList);
+            const targetW = 1440;
+            // Match preview aspectRatio: 2340 if mask is on, otherwise template default
+            const targetH = showMask ? 2340 : (isNonFullscreenSplash ? 1938 : 2340);
+            canvas.width = targetW;
+            canvas.height = targetH;
 
-        if (maskImg) {
-            ctx.drawImage(maskImg, 0, 0, 1126, 2436);
-        }
+            if (!isPng) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, targetW, targetH);
+            }
 
-        // Layer 2: 用户图片（盖在蒙版上方）带 10px 圆角
-        drawImageRounded(ctx, mainImg!, dx, dy, dw, dh, 10, 'cover');
+            // Drawing alignment: object-top if mask is on, middle if mask is off
+            const scale = Math.min(targetW / mainImg.naturalWidth, targetH / mainImg.naturalHeight);
+            const dw = mainImg.naturalWidth * scale;
+            const dh = mainImg.naturalHeight * scale;
+            const dx = (targetW - dw) / 2;
+            const dy = showMask ? 0 : (targetH - dh) / 2;
+            ctx.drawImage(mainImg, dx, dy, dw, dh);
 
-        // Layer 3: 角标（最上层）
-        if (badgeImg) {
-            ctx.drawImage(badgeImg, dx, dy, dw, dh);
-        }
+            // Draw Mask or Crop on TOP if they exist
+            if (maskImg) {
+                ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+            }
+            if (cropImg) {
+                // Replicate object-contain rendering for crop overlay
+                const cScale = Math.min(targetW / cropImg.naturalWidth, targetH / cropImg.naturalHeight);
+                const cdw = cropImg.naturalWidth * cScale;
+                const cdh = cropImg.naturalHeight * cScale;
+                const cdx = (targetW - cdw) / 2;
+                const cdy = (targetH - cdh) / 2;
+                ctx.drawImage(cropImg, cdx, cdy, cdw, cdh);
+            }
 
-    } else {
-        const img = await loadImg(asset.url);
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        ctx.drawImage(img, 0, 0);
-    }
-
-    const targetSizeBytes = 200 * 1024;
-    return new Promise((resolve, reject) => {
-        let quality = 0.9;
-
-        async function attempt() {
-            canvas.toBlob(async (blob) => {
-                if (!blob) return reject(new Error('Failed to create blob'));
-
-                if (isPng || blob.size <= targetSizeBytes || quality <= 0.1) {
-                    resolve(blob);
-                } else {
-                    quality -= 0.1;
-                    attempt();
+            if (showMask) {
+                const isUpDownSliding = asset.templateName === '上下滑动开屏';
+                const fontSize = (isUpDownSliding || isNonFullscreenSplash) ? 58 : 42;
+                let bottomOffset = isNonFullscreenSplash ? 610 : (isUpDownSliding ? 285 : targetH * 0.0897);
+                if (asset.id.includes('mt-s-2')) {
+                    bottomOffset += 2; // 向上移动
+                } else if (asset.id.includes('mt-s-1') || asset.id.includes('mt-s-3') || asset.id.includes('mt-s-4')) {
+                    bottomOffset -= 2; // 向下移动
                 }
-            }, outputMime, isPng ? undefined : quality);
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                if ('letterSpacing' in ctx) { (ctx as any).letterSpacing = `${0.1 * fontSize}px`; }
+                ctx.font = `bold ${fontSize}px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+                ctx.fillText(asset.splashText || config.splashText, targetW / 2, targetH - bottomOffset);
+            }
+        } else if (isRecipeContent) {
+            // 一键配方图文: 图片 -> 蒙版 -> 角标
+            const loadList: Promise<HTMLImageElement | null>[] = [loadImg(asset.url)];
+            if (showMask && asset.maskUrl) {
+                loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+            } else {
+                loadList.push(Promise.resolve(null));
+            }
+            if (showBadge && asset.badgeOverlayUrl) {
+                loadList.push(loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`));
+            } else {
+                loadList.push(Promise.resolve(null));
+            }
+
+            const [mainImg, maskImg, badgeImg] = await Promise.all(loadList);
+            canvas.width = 1126;
+            canvas.height = 2436;
+
+            if (!isPng) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // 计算定位 (基于 1126x2436)
+            const dw = 506; // 1034 * 0.49
+            const dh = 675; // 1378 * 0.49
+            const dx = 46;
+            const dy = 1489; // 2436 - 675 - 272
+
+            if (maskImg) {
+                ctx.drawImage(maskImg, 0, 0, 1126, 2436);
+            }
+
+            // Layer 2: 用户图片（盖在蒙版上方）带 10px 圆角
+            drawImageRounded(ctx, mainImg!, dx, dy, dw, dh, 10, 'cover');
+
+            // Layer 3: 角标（最上层）
+            if (badgeImg) {
+                ctx.drawImage(badgeImg, dx, dy, dw, dh);
+            }
+
+        } else {
+            const img = await loadImg(asset.url);
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            ctx.drawImage(img, 0, 0);
         }
 
-        attempt();
-    });
+        const targetSizeBytes = 200 * 1024;
+        return new Promise((resolve, reject) => {
+            let quality = 0.9;
+
+            async function attempt() {
+                canvas.toBlob(async (blob) => {
+                    if (!blob) return reject(new Error('Failed to create blob'));
+
+                    if (isPng || blob.size <= targetSizeBytes || quality <= 0.1) {
+                        resolve(blob);
+                    } else {
+                        quality -= 0.1;
+                        attempt();
+                    }
+                }, outputMime, isPng ? undefined : quality);
+            }
+
+            attempt();
+        });
+    }
 }
