@@ -451,6 +451,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   src={selectedAsset.url}
                   className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-[15] object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
                   controls
+                  autoPlay
                   playsInline
                   loop
                   muted
@@ -480,6 +481,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   src={selectedAsset.url}
                   className={`w-full h-full ${selectedAssetInfo.showMask ? (selectedAsset.id.includes('mt-ib-4') ? 'object-cover rounded-[5px]' : (selectedAsset.id.includes('mt-p-1') ? 'object-cover rounded-[10px]' : (selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2')) ? 'object-cover rounded-[10px]' : 'object-contain')) : 'object-contain'}`}
                   controls
+                  autoPlay
                   playsInline
                   loop
                   muted
