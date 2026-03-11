@@ -792,8 +792,8 @@ const App: React.FC = () => {
             (isSplash && raw.file.type.startsWith('image/')) ? (isNonFullscreenSplash ? '1440 x 1938' : '1440 x 2340') :
               (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' :
                 (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' :
-                  // NOTE: mt-f-1 截取最后一帧时使用 1126×900 尺寸
-                  (template.id === 'mt-f-1' && config.captureLastFrameMtF1 && raw.file.type.startsWith('video/')) ? '1126 x 900' :
+                  // NOTE: mt-f-1 尺寸固定为 1126×900
+                  (template.id === 'mt-f-1') ? '1126 x 900' :
                     ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
                       (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
                         (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :

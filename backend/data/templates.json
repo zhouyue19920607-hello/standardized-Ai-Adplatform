@@ -73,7 +73,7 @@
     "checked": true,
     "dimensions": "1126 x 2436",
     "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
-    "processedCount": 14
+    "processedCount": 16
   },
   {
     "id": "mt-f-2",
@@ -83,7 +83,7 @@
     "checked": true,
     "dimensions": "1126 x 2436",
     "badge_overlay_path": "/static/badges/mt-f-2_badge.png",
-    "processedCount": 11
+    "processedCount": 12
   },
   {
     "id": "mt-f-3",
