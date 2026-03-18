@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdTemplate, AdAsset } from '../types';
-import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, createTemplate, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, SystemSettings } from '../services/api';
+import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, createTemplate, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminDashboardProps {
@@ -29,6 +29,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         aiEnhancedMode: false,
         aiProvider: 'tongyi',
         tongyiApiKey: '',
+        roboneoApiKey: '',
+        roboneoApiSecret: '',
+        nanobannerApiKey: '',
+        nanobannerBaseUrl: '',
         comfyuiUrl: 'http://127.0.0.1:8188'
     });
     const [aiSettingsSaving, setAiSettingsSaving] = useState(false);
@@ -80,17 +84,55 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         setTestStatus('testing');
         setTestMessage('');
         try {
-            // 优先使用当前输入框中的 key（未保存的），其次使用已配置的
-            const keyToTest = aiSettings.tongyiApiKey && aiSettings.tongyiApiKey !== '***configured***'
-                ? aiSettings.tongyiApiKey
-                : undefined;
-            const result = await testTongyiConnection(keyToTest);
-            if (result.ok) {
-                setTestStatus('success');
-                setTestMessage(result.quota ? `${result.message}（${result.quota}）` : (result.message || '连接成功'));
+            if (aiSettings.aiProvider === 'tongyi') {
+                // 优先使用当前输入框中的 key（未保存的），其次使用已配置的
+                const keyToTest = aiSettings.tongyiApiKey && aiSettings.tongyiApiKey !== '***configured***'
+                    ? aiSettings.tongyiApiKey
+                    : undefined;
+                const result = await testTongyiConnection(keyToTest);
+                if (result.ok) {
+                    setTestStatus('success');
+                    setTestMessage(result.quota ? `${result.message}（${result.quota}）` : (result.message || '连接成功'));
+                } else {
+                    setTestStatus('error');
+                    setTestMessage(result.error || '连接失败');
+                }
+            } else if (aiSettings.aiProvider === 'roboneo') {
+                const keyToTest = aiSettings.roboneoApiKey && aiSettings.roboneoApiKey !== '***configured***'
+                    ? aiSettings.roboneoApiKey
+                    : undefined;
+                const secretToTest = aiSettings.roboneoApiSecret && aiSettings.roboneoApiSecret !== '***configured***'
+                    ? aiSettings.roboneoApiSecret
+                    : undefined;
+
+                const result = await testRoboneoConnection(keyToTest, secretToTest);
+                if (result.ok) {
+                    setTestStatus('success');
+                    setTestMessage(result.message || '连接成功');
+                } else {
+                    setTestStatus('error');
+                    setTestMessage(result.error || '连接失败');
+                }
+            } else if (aiSettings.aiProvider === 'nanobanner') {
+                const idToTest = aiSettings.nanobannerApiKey && aiSettings.nanobannerApiKey !== '***configured***'
+                    ? aiSettings.nanobannerApiKey
+                    : undefined;
+                const secretToTest = aiSettings.nanobannerBaseUrl && aiSettings.nanobannerBaseUrl !== '***configured***'
+                    ? aiSettings.nanobannerBaseUrl
+                    : undefined;
+
+                const result = await testNanobannerConnection(idToTest, secretToTest);
+                if (result.ok) {
+                    setTestStatus('success');
+                    setTestMessage(result.message || '连接成功');
+                } else {
+                    setTestStatus('error');
+                    setTestMessage(result.error || '连接失败');
+
+                }
             } else {
                 setTestStatus('error');
-                setTestMessage(result.error || '连接失败');
+                setTestMessage('当前服务商暂不支持测试');
             }
         } catch (err: any) {
             setTestStatus('error');
@@ -664,6 +706,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <p className="text-xs text-slate-400 mt-1">需要 GPU 服务器</p>
                                                 <p className="text-xs text-slate-400 font-bold mt-1">（即将支持）</p>
                                             </button>
+                                            <button
+                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'roboneo' }))}
+                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'roboneo'
+                                                    ? 'border-fuchsia-500 bg-fuchsia-50'
+                                                    : 'border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                            >
+                                                <p className="text-sm font-bold text-slate-800">美图 RoboNeo</p>
+                                                <p className="text-xs text-slate-400 mt-1">美图自研图像大模型</p>
+                                                <p className="text-xs text-fuchsia-500 font-bold mt-1">企业级 API</p>
+                                            </button>
+                                            <button
+                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'nanobanner' }))}
+                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'nanobanner'
+                                                    ? 'border-red-500 bg-red-50'
+                                                    : 'border-slate-200 hover:border-slate-300'
+                                                    }`}
+                                            >
+                                                <p className="text-sm font-bold text-slate-800">Nano Banner API</p>
+                                                <p className="text-xs text-slate-400 mt-1">兼容 OpenAI 接口</p>
+                                                <p className="text-xs text-red-500 font-bold mt-1">Gemini Nano / 3.0 Pro</p>
+                                            </button>
                                         </div>
                                     </div>
 
@@ -764,6 +828,175 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
                                             />
                                             <p className="text-xs text-amber-500 mt-1.5">⚠️ ComfyUI 集成即将推出，当前选择将在有 GPU 服务器后生效</p>
+                                        </div>
+                                    )}
+
+                                    {/* 美图 RoboNeo 配置 */}
+                                    {aiSettings.aiProvider === 'roboneo' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    Meitu App Key
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder={aiSettings.roboneoApiKeyConfigured ? '已配置（输入新值可覆盖）' : '在此输入 App Key'}
+                                                    value={aiSettings.roboneoApiKey === '***configured***' ? '' : aiSettings.roboneoApiKey}
+                                                    onChange={e => {
+                                                        setAiSettings(prev => ({ ...prev, roboneoApiKey: e.target.value }));
+                                                        setTestStatus('idle');
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    Meitu App Secret
+                                                </label>
+                                                <input
+                                                    type="password"
+                                                    placeholder={aiSettings.roboneoApiKeyConfigured ? '已配置（输入新值可覆盖）' : '在此输入 App Secret'}
+                                                    value={aiSettings.roboneoApiSecret === '***configured***' ? '' : aiSettings.roboneoApiSecret}
+                                                    onChange={e => {
+                                                        setAiSettings(prev => ({ ...prev, roboneoApiSecret: e.target.value }));
+                                                        setTestStatus('idle');
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono"
+                                                />
+                                            </div>
+
+                                            {/* 测试连接按钮 */}
+                                            <div className="mt-3 flex items-center gap-3">
+                                                <button
+                                                    onClick={handleTestConnection}
+                                                    disabled={testStatus === 'testing' || (!aiSettings.roboneoApiKey && !aiSettings.roboneoApiKeyConfigured) || (!aiSettings.roboneoApiSecret && !aiSettings.roboneoApiKeyConfigured)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {testStatus === 'testing' ? (
+                                                        <><span className="material-symbols-outlined text-[14px] animate-spin">sync</span>测试中...</>
+                                                    ) : (
+                                                        <><span className="material-symbols-outlined text-[14px]">wifi</span>测试连接</>
+                                                    )}
+                                                </button>
+
+                                                {/* 测试结果状态显示 */}
+                                                {testStatus === 'success' && (
+                                                    <span className="flex items-center gap-1 text-xs text-green-600 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                                {testStatus === 'error' && (
+                                                    <span className="flex items-center gap-1 text-xs text-red-500 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">error</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* 扩图 Prompt 配置 */}
+                                            <div className="mt-4">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    扩图 Prompt
+                                                </label>
+                                                <textarea
+                                                    rows={3}
+                                                    placeholder="例如：高级感背景，自然融合，高清细节"
+                                                    value={aiSettings.tongyiExpandPrompt ?? ''}
+                                                    onChange={e => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: e.target.value }))}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 resize-none leading-relaxed"
+                                                />
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {PROMPT_PRESETS.map(preset => (
+                                                        <button
+                                                            key={preset.label}
+                                                            onClick={() => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: preset.value }))}
+                                                            className="px-3 py-1 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-600 rounded-full text-xs font-bold transition-colors border border-fuchsia-200"
+                                                        >
+                                                            {preset.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Nano Banner 配置 */}
+                                    {aiSettings.aiProvider === 'nanobanner' && (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    Nano Banner API Key
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder={aiSettings.nanobannerApiKeyConfigured ? '已配置（输入新值可覆盖）' : '在此输入 API Key'}
+                                                    value={aiSettings.nanobannerApiKey === '***configured***' ? '' : aiSettings.nanobannerApiKey}
+                                                    onChange={e => {
+                                                        setAiSettings(prev => ({ ...prev, nanobannerApiKey: e.target.value }));
+                                                        setTestStatus('idle');
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    API Base URL (可选)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder={'例如: https://api.openai.com/v1 或中转加速地址'}
+                                                    value={aiSettings.nanobannerBaseUrl === '***configured***' ? '' : aiSettings.nanobannerBaseUrl}
+                                                    onChange={e => {
+                                                        setAiSettings(prev => ({ ...prev, nanobannerBaseUrl: e.target.value }));
+                                                        setTestStatus('idle');
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                                                />
+                                            </div>
+
+                                            {/* 测试连接按钮 */}
+                                            <div className="mt-3 flex items-center gap-3">
+                                                <button
+                                                    onClick={handleTestConnection}
+                                                    disabled={testStatus === 'testing' || (!aiSettings.nanobannerApiKey && !aiSettings.nanobannerApiKeyConfigured)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {testStatus === 'testing' ? (
+                                                        <><span className="material-symbols-outlined text-[14px] animate-spin">sync</span>测试中...</>
+                                                    ) : (
+                                                        <><span className="material-symbols-outlined text-[14px]">wifi</span>测试连接</>
+                                                    )}
+                                                </button>
+
+                                                {/* 测试结果状态显示 */}
+                                                {testStatus === 'success' && (
+                                                    <span className="flex items-center gap-1 text-xs text-green-600 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                                {testStatus === 'error' && (
+                                                    <span className="flex items-center gap-1 text-xs text-red-500 font-bold">
+                                                        <span className="material-symbols-outlined text-[14px]">error</span>
+                                                        {testMessage}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* 扩图 Prompt 配置 */}
+                                            <div className="mt-4">
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    扩图 Prompt (建议英文)
+                                                </label>
+                                                <textarea
+                                                    rows={3}
+                                                    placeholder="例如：high quality background, natural fusion, photorealistic"
+                                                    value={aiSettings.tongyiExpandPrompt ?? ''}
+                                                    onChange={e => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: e.target.value }))}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none leading-relaxed"
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>

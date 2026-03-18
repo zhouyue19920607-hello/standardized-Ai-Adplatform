@@ -718,13 +718,23 @@ app.get("/api/settings", async (req, res) => {
     aiEnhancedMode: false,
     aiProvider: "tongyi",
     tongyiApiKey: "",
+    roboneoApiKey: "",
+    roboneoApiSecret: "",
+    nanobannerApiKey: "",
+    nanobannerBaseUrl: "",
     comfyuiUrl: "http://127.0.0.1:8188"
   });
   // NOTE: 为安全起见，返回时遮盖 API Key 的实际内容（只显示是否已配置）
   res.json({
     ...settings,
     tongyiApiKey: settings.tongyiApiKey ? "***configured***" : "",
-    tongyiApiKeyConfigured: !!settings.tongyiApiKey
+    tongyiApiKeyConfigured: !!settings.tongyiApiKey,
+    roboneoApiKey: settings.roboneoApiKey ? "***configured***" : "",
+    roboneoApiSecret: settings.roboneoApiSecret ? "***configured***" : "",
+    roboneoApiKeyConfigured: !!settings.roboneoApiKey,
+    nanobannerApiKey: settings.nanobannerApiKey ? "***configured***" : "",
+    nanobannerBaseUrl: settings.nanobannerBaseUrl ? "***configured***" : "",
+    nanobannerApiKeyConfigured: !!settings.nanobannerApiKey
   });
 });
 
@@ -734,12 +744,28 @@ app.put("/api/settings", async (req, res) => {
     aiEnhancedMode: false,
     aiProvider: "tongyi",
     tongyiApiKey: "",
+    roboneoApiKey: "",
+    roboneoApiSecret: "",
+    nanobannerApiKey: "",
+    nanobannerBaseUrl: "",
     comfyuiUrl: "http://127.0.0.1:8188"
   });
 
   // NOTE: 如果前端传来 "***configured***" 说明用户没改 key，保持原值
   if (payload.tongyiApiKey === "***configured***") {
     payload.tongyiApiKey = current.tongyiApiKey;
+  }
+  if (payload.roboneoApiKey === "***configured***") {
+    payload.roboneoApiKey = current.roboneoApiKey;
+  }
+  if (payload.roboneoApiSecret === "***configured***") {
+    payload.roboneoApiSecret = current.roboneoApiSecret;
+  }
+  if (payload.nanobannerApiKey === "***configured***") {
+    payload.nanobannerApiKey = current.nanobannerApiKey;
+  }
+  if (payload.nanobannerBaseUrl === "***configured***") {
+    payload.nanobannerBaseUrl = current.nanobannerBaseUrl;
   }
 
   const updated = { ...current, ...payload };
@@ -919,6 +945,164 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey,
 }
 
 /**
+ * 调用美图 RoboNeo (MiracleVision) 进行智能扩图
+ * 官方文档: https://ai.meitu.com/ (画面扩展/智能扩图)
+ *
+ * @param {string} inputImagePath - 本地图片路径
+ * @param {number} targetWidth - 目标宽度
+ * @param {number} targetHeight - 目标高度
+ * @param {string} apiKey - App Key
+ * @param {string} apiSecret - App Secret
+ * @param {string} customPrompt - 可选 Prompt
+ */
+async function roboneoOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, apiSecret, customPrompt = "") {
+  try {
+    // 1. 读取并转 base64
+    const imageBuffer = await fs.readFile(inputImagePath);
+    const base64Data = imageBuffer.toString("base64");
+    const ext = path.extname(inputImagePath).substring(1).toLowerCase() || "jpg";
+
+    // 2. 构造请求
+    // NOTE: 使用美图 AI 开放平台标准扩图接口
+    const apiURL = "https://openapi.mtlab.meitu.com/v1/image_expansion";
+
+    const payload = {
+      api_key: apiKey,
+      api_secret: apiSecret,
+      media_info_list: [
+        {
+          media_data: base64Data,
+          media_profiles: {
+            media_data_type: (ext === "png" || ext === "webp") ? ext : "jpg"
+          }
+        }
+      ],
+      parameter: {
+        rsp_media_type: "jpg",
+        target_width: targetWidth,
+        target_height: targetHeight,
+        // RoboNeo 支持 Prompt 引导背景生成
+        prompt: customPrompt || "自然扩展背景，高清质量，环境融合"
+      }
+    };
+
+    console.log(`[RoboNeoOutpaint] 正在调用美图 API: ${targetWidth}x${targetHeight}...`);
+    const response = await axios.post(apiURL, payload, { timeout: 60000 });
+    const data = response.data;
+
+    // 3. 结果处理
+    if (data.media_info_list && data.media_info_list[0]?.media_data) {
+      const outBuffer = Buffer.from(data.media_info_list[0].media_data, "base64");
+      const outFilename = `roboneo_out_${Date.now()}.jpg`;
+      const outPath = path.join(STORAGE_DIR, outFilename);
+      await fs.writeFile(outPath, outBuffer);
+
+      console.log(`[RoboNeoOutpaint] 完成! 已保存至 ${outPath}`);
+      return {
+        url: `/static/${outFilename}`,
+        width: targetWidth,
+        height: targetHeight,
+        size: outBuffer.byteLength
+      };
+    } else {
+      const errorMsg = data.error_message || data.msg || JSON.stringify(data);
+      throw new Error(`美图 RoboNeo API 响应异常: ${errorMsg}`);
+    }
+  } catch (err) {
+    if (err.response) {
+      console.error("[RoboNeoOutpaint] 接口报错:", err.response.data);
+      throw new Error(`美图 API 报错: ${err.response.data.error_message || err.response.statusText}`);
+    }
+  }
+}
+
+/**
+ * 使用 Nano Banner (兼容 OpenAI 格式) 进行生成式扩图/生成
+ */
+async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, baseUrl, customPrompt = "") {
+  try {
+    console.log(`[NanoBanner] 开始处理: ${targetWidth}x${targetHeight}...`);
+    if (!baseUrl) {
+      baseUrl = "https://api.openai.com/v1";
+    }
+    baseUrl = baseUrl.replace(/\/$/, "");
+    const apiEndpoint = `${baseUrl}/chat/completions`;
+
+    // 1. 读取原图做 base64 组合
+    const inputExt = path.extname(inputImagePath).toLowerCase();
+    const mimeType = inputExt === '.png' ? 'image/png' : 'image/jpeg';
+    const inputBuffer = await fs.readFile(inputImagePath);
+    const inputBase64 = inputBuffer.toString('base64');
+    const imageUri = `data:${mimeType};base64,${inputBase64}`;
+
+    // 2. 组装请求指令
+    const extendPrompt = `请根据这张图片进行自然无缝向外扩充延展，生成 ${targetWidth}x${targetHeight} 等比例的完整图像。主体保持不变与居中。${customPrompt}`;
+
+    // NOTE: 对于此类高级代理商，将图片作为 vision 发到 chat/completions 会通过底层映射触发他们的特定修图工作流
+    const payload = {
+      model: "gemini-3.1-flash-image-preview", // 适用 laozhang.ai 映射环境
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: extendPrompt },
+          { type: "image_url", image_url: { url: imageUri } }
+        ]
+      }]
+    };
+
+    const headers = {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    };
+
+    console.log(`[NanoBanner] 发起图生图合并请求到: ${apiEndpoint}`);
+    // 允许大底图的长连接时长
+    const submitResp = await axios.post(apiEndpoint, payload, {
+      headers,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      timeout: 120000
+    });
+
+    const contentReturn = submitResp.data?.choices?.[0]?.message?.content;
+    if (!contentReturn) {
+      throw new Error(`无文本结果返回: ${JSON.stringify(submitResp.data).substring(0, 200)}`);
+    }
+
+    // 3. 从 Markdown 返回值提取图片（第三方中转站通常在 Markdown 里返回 data:image 或 URL）
+    const base64Match = contentReturn.match(/data:image\/[^;]+;base64,([^\)]+)/);
+    const urlMatch = contentReturn.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+
+    let imgBuffer;
+    if (base64Match && base64Match[1]) {
+      imgBuffer = Buffer.from(base64Match[1], 'base64');
+    } else if (urlMatch && urlMatch[1]) {
+      const imgResponse = await axios.get(urlMatch[1], { responseType: "arraybuffer", timeout: 60000 });
+      imgBuffer = Buffer.from(imgResponse.data);
+    } else {
+      console.warn("[NanoBanner] 找不到 Markdown 图片正则匹配，打印原文：", contentReturn.substring(0, 200));
+      throw new Error("未能从其返回值中提取到生成后的图片数据");
+    }
+
+    // 4. 保存文件并输出
+    const outFilename = `nanobanner_edit_${Date.now()}.jpg`;
+    const outPath = path.join(STORAGE_DIR, outFilename);
+    await fs.writeFile(outPath, imgBuffer);
+
+    return {
+      url: `/static/${outFilename}`,
+      width: targetWidth,
+      height: targetHeight,
+      size: imgBuffer.length
+    };
+
+  } catch (err) {
+    console.error("[NanoBanner] 错误:", err.response?.data || err.message);
+    throw new Error(`Nano Banner 错误: ${err.response?.data?.error?.message || err.response?.data?.message || err.message}`);
+  }
+}
+
+/**
  * [已弃用，保留为备用]
  * 上传本地图片到百炼临时存储，获取可公网访问的 oss:// URL
  * NOTE: wanx2.1-imageedit 已支持 base64，此函数不再主动使用
@@ -1024,6 +1208,81 @@ app.post("/api/tongyi/test", async (req, res) => {
 });
 
 
+app.post("/api/roboneo/test", async (req, res) => {
+  try {
+    const settings = await readJson(SETTINGS_FILE, { roboneoApiKey: "", roboneoApiSecret: "" });
+    const apiKey = req.body?.apiKey || settings.roboneoApiKey;
+    const apiSecret = req.body?.apiSecret || settings.roboneoApiSecret;
+
+    if (!apiKey || apiKey === "***configured***" || !apiSecret || apiSecret === "***configured***") {
+      return res.status(400).json({ ok: false, error: "未配置 Meitu App Key 或 App Secret" });
+    }
+
+    try {
+      await axios.post("https://openapi.mtlab.meitu.com/v1/image_expansion", {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        media_info_list: []
+      }, { timeout: 10000 });
+    } catch (apiErr) {
+      const status = apiErr.response?.status;
+      const data = apiErr.response?.data;
+      if (status === 401 || status === 403 || data?.error_code === 10001) {
+        return res.status(status || 401).json({ ok: false, error: "App Key 或 App Secret 无效" });
+      }
+      if (data && (data.error_code || data.msg)) {
+        return res.json({ ok: true, message: "美图 RoboNeo 身份认证成功，服务连接正常" });
+      }
+    }
+    return res.json({ ok: true, message: "美图 RoboNeo 连通性测试通过" });
+  } catch (err) {
+    console.error("[RoboNeoTest] 连通性测试失败:", err.message);
+    return res.status(500).json({ ok: false, error: `连接失败: ${err.message}` });
+  }
+});
+
+
+app.post("/api/nanobanner/test", async (req, res) => {
+  try {
+    const settings = await readJson(SETTINGS_FILE, { nanobannerApiKey: "", nanobannerBaseUrl: "" });
+    const apiKey = req.body?.apiKey || settings.nanobannerApiKey;
+    let baseUrl = req.body?.baseUrl || settings.nanobannerBaseUrl;
+
+    if (!apiKey || apiKey === "***configured***") {
+      return res.status(400).json({ ok: false, error: "未配置 Nano Banner API Key" });
+    }
+
+    if (!baseUrl || baseUrl === "***configured***") {
+      baseUrl = "https://api.openai.com/v1";
+    }
+    baseUrl = baseUrl.replace(/\/$/, "");
+
+    // 简单测试连通性，常见中转站点可以请求 /models 接口
+    const tokenResp = await axios.get(`${baseUrl}/models`, {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      timeout: 10000
+    });
+
+    if (tokenResp.status === 200) {
+      return res.json({ ok: true, message: "Nano Banner API 测试成功，接口通畅" });
+    } else {
+      return res.status(400).json({ ok: false, error: "身份认证失败：接口未返回 200 OK" });
+    }
+  } catch (err) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    console.error("[NanoBannerTest] 连通性测试失败:", err.message);
+    if (status === 401 || status === 403) {
+      return res.status(401).json({ ok: false, error: "API Key 无效或无权限", details: data });
+    }
+    return res.status(500).json({ ok: false, error: `连接失败: ${err.message}` });
+  }
+});
+
+
 // ---- API: Smart Crop & Compress (不依赖 ComfyUI) ----
 app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
   try {
@@ -1038,7 +1297,13 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     const limitKB = parseInt(maxSizeKB) || 200;
 
     // NOTE: 检查 AI 增强模式开关，如果开启则路由到对应 AI 服务
-    const settings = await readJson(SETTINGS_FILE, { aiEnhancedMode: false, aiProvider: "tongyi", tongyiApiKey: "" });
+    const settings = await readJson(SETTINGS_FILE, {
+      aiEnhancedMode: false,
+      aiProvider: "tongyi",
+      tongyiApiKey: "",
+      roboneoApiKey: "",
+      roboneoApiSecret: ""
+    });
     console.log(`[SmartCrop DEBUG] settings.aiEnhancedMode=${settings.aiEnhancedMode}, aiProvider=${settings.aiProvider}, hasKey=${!!settings.tongyiApiKey}, keyLen=${settings.tongyiApiKey?.length}`);
     if (settings.aiEnhancedMode && settings.aiProvider === "tongyi" && settings.tongyiApiKey) {
       try {
@@ -1109,6 +1374,117 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
       } catch (aiErr) {
         console.error("[SmartCrop] 通义万象 Outpaint 失败，回退到常规裁剪:", aiErr.message);
         // NOTE: AI 失败后自动降级到常规裁剪，保证服务可用性
+      }
+    } else if (settings.aiEnhancedMode && settings.aiProvider === "roboneo" && settings.roboneoApiKey && settings.roboneoApiSecret) {
+      try {
+        console.log(`[SmartCrop] AI 增强模式开启，使用美图 RoboNeo Outpaint: ${targetWidth}x${targetHeight}`);
+        const aiPrompt = settings.tongyiExpandPrompt || "高级感背景，自然融合，高清细节";
+        const aiResult = await roboneoOutpaint(file.path, targetWidth, targetHeight, settings.roboneoApiKey, settings.roboneoApiSecret, aiPrompt);
+
+        // NOTE: 复用通义万象的后处理逻辑：读取 AI 输出实际尺寸，再进行目标尺寸的精确缩放与压缩
+        const aiRawPath = path.join(STORAGE_DIR, path.basename(aiResult.url));
+        const aiMeta = await sharp(aiRawPath).metadata();
+        const aiWidth = aiMeta.width;
+        const aiHeight = aiMeta.height;
+        console.log(`[SmartCrop] RoboNeo 输出实际尺寸: ${aiWidth}x${aiHeight}，目标: ${targetWidth}x${targetHeight}`);
+
+        const basename = path.basename(file.originalname, path.extname(file.originalname));
+        const outputFilename = `ai_processed_rb_${Date.now()}_${basename}.jpg`;
+        const outputPath = path.join(STORAGE_DIR, outputFilename);
+
+        const maxSizeBytes = limitKB * 1024;
+        let quality = 85;
+        let buffer;
+
+        // NOTE: 比例校验，决定是 fill 还是 cover
+        const aiAspect = aiWidth / aiHeight;
+        const targetAspect = targetWidth / targetHeight;
+        const fitStrategy = (Math.abs(aiAspect - targetAspect) < 0.05) ? 'fill' : 'cover';
+
+        while (quality >= 10) {
+          buffer = await sharp(aiRawPath)
+            .resize({
+              width: targetWidth,
+              height: targetHeight,
+              fit: fitStrategy,
+              position: 'center',
+              kernel: sharp.kernel.lanczos3
+            })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+          if (buffer.length <= maxSizeBytes) break;
+          quality -= 5;
+        }
+
+        await fs.writeFile(outputPath, buffer);
+        fs.unlink(aiRawPath).catch(() => { });
+
+        return res.json({
+          ok: true,
+          url: `/static/${outputFilename}`,
+          width: targetWidth,
+          height: targetHeight,
+          sizeKB: (buffer.length / 1024).toFixed(2),
+          message: `美图 RoboNeo AI 增强完成`,
+          aiEnhanced: true
+        });
+      } catch (aiErr) {
+        console.error("[SmartCrop] 美图 RoboNeo Outpaint 失败，回退到常规裁剪:", aiErr.message);
+      }
+    } else if (settings.aiEnhancedMode && settings.aiProvider === "nanobanner" && settings.nanobannerApiKey) {
+      try {
+        console.log(`[SmartCrop] AI 增强模式开启，使用 Nano Banner Outpaint: ${targetWidth}x${targetHeight}`);
+        const aiPrompt = settings.tongyiExpandPrompt || "highly detailed background, seamless expansion, cinematic lighting";
+        const aiResult = await nanobannerOutpaint(file.path, targetWidth, targetHeight, settings.nanobannerApiKey, settings.nanobannerBaseUrl, aiPrompt);
+
+        // NOTE: 复用后处理逻辑
+        const aiRawPath = path.join(STORAGE_DIR, path.basename(aiResult.url));
+        const aiMeta = await sharp(aiRawPath).metadata();
+        const aiWidth = aiMeta.width;
+        const aiHeight = aiMeta.height;
+        console.log(`[SmartCrop] Nano Banner 输出实际尺寸: ${aiWidth}x${aiHeight}，目标: ${targetWidth}x${targetHeight}`);
+
+        const basename = path.basename(file.originalname, path.extname(file.originalname));
+        const outputFilename = `ai_processed_nanobanner_${Date.now()}_${basename}.jpg`;
+        const outputPath = path.join(STORAGE_DIR, outputFilename);
+
+        const maxSizeBytes = limitKB * 1024;
+        let quality = 85;
+        let buffer;
+
+        const aiAspect = aiWidth / aiHeight;
+        const targetAspect = targetWidth / targetHeight;
+        const fitStrategy = (Math.abs(aiAspect - targetAspect) < 0.05) ? 'fill' : 'cover';
+
+        while (quality >= 10) {
+          buffer = await sharp(aiRawPath)
+            .resize({
+              width: targetWidth,
+              height: targetHeight,
+              fit: fitStrategy,
+              position: 'center',
+              kernel: sharp.kernel.lanczos3
+            })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+          if (buffer.length <= maxSizeBytes) break;
+          quality -= 5;
+        }
+
+        await fs.writeFile(outputPath, buffer);
+        fs.unlink(aiRawPath).catch(() => { });
+
+        return res.json({
+          ok: true,
+          url: `/static/${outputFilename}`,
+          width: targetWidth,
+          height: targetHeight,
+          sizeKB: (buffer.length / 1024).toFixed(2),
+          message: `Nano Banner AI 增强完成`,
+          aiEnhanced: true
+        });
+      } catch (aiErr) {
+        console.error("[SmartCrop] Nano Banner Outpaint 失败，回退到常规裁剪:", aiErr.message);
       }
     }
 

@@ -1,8 +1,14 @@
 {
-  "aiEnhancedMode": false,
-  "aiProvider": "tongyi",
+  "aiEnhancedMode": true,
+  "aiProvider": "nanobanner",
   "tongyiApiKey": "sk-13ce79edd99e4b2794078a93cb3e5281",
   "comfyuiUrl": "http://127.0.0.1:8188",
   "tongyiApiKeyConfigured": true,
-  "tongyiExpandPrompt": "保持画面中心的主体产品边缘不变形不拉伸，仅向外扩展与原图风格一致的背景。"
+  "tongyiExpandPrompt": "保持画面中心的主体产品边缘不变形不拉伸，仅向外扩展与原图风格一致的背景。文案和logo根据板式进行排版，与画面距离保持10%的距离",
+  "roboneoApiKey": "",
+  "roboneoApiSecret": "",
+  "roboneoApiKeyConfigured": false,
+  "nanobannerApiKey": "sk-4rtjDWFKNZet3tJnDdD2B2B016334f87AeA426E047A35e70",
+  "nanobannerBaseUrl": "https://api.laozhang.ai/v1",
+  "nanobannerApiKeyConfigured": true
 }

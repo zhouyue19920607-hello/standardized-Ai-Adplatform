@@ -102,11 +102,17 @@ export const smartCropImage = async (file: File, width = 1440, height = 2340, ma
 // NOTE: 系统全局设置（AI 增强模式）读取/保存
 export interface SystemSettings {
     aiEnhancedMode: boolean;
-    aiProvider: 'tongyi' | 'comfyui';
+    aiProvider: 'tongyi' | 'comfyui' | 'roboneo' | 'nanobanner';
     tongyiApiKey: string;
     tongyiApiKeyConfigured?: boolean;
+    roboneoApiKey: string;
+    roboneoApiSecret: string;
+    roboneoApiKeyConfigured?: boolean;
+    nanobannerApiKey: string;
+    nanobannerBaseUrl: string;
+    nanobannerApiKeyConfigured?: boolean;
     comfyuiUrl: string;
-    /** 通义万象扩图时的 Prompt，引导 AI 生成的背景风格 */
+    /** 通义万象/美图/Nano Banner 扩图时的 Prompt */
     tongyiExpandPrompt?: string;
 }
 
@@ -127,6 +133,28 @@ export const testTongyiConnection = async (apiKey?: string): Promise<{ ok: boole
     const response = await api.post<{ ok: boolean; message?: string; error?: string; quota?: string }>(
         '/tongyi/test',
         apiKey ? { apiKey } : {}
+    );
+    return response.data;
+};
+
+/**
+ * 测试美图 RoboNeo API Key 连通性
+ */
+export const testRoboneoConnection = async (apiKey?: string, apiSecret?: string): Promise<{ ok: boolean; message?: string; error?: string }> => {
+    const response = await api.post<{ ok: boolean; message?: string; error?: string }>(
+        '/roboneo/test',
+        (apiKey && apiSecret) ? { apiKey, apiSecret } : {}
+    );
+    return response.data;
+};
+
+/**
+ * 测试 Nano Banner API 连通性
+ */
+export const testNanobannerConnection = async (apiKey?: string, baseUrl?: string): Promise<{ ok: boolean; message?: string; error?: string }> => {
+    const response = await api.post<{ ok: boolean; message?: string; error?: string }>(
+        '/nanobanner/test',
+        (apiKey && baseUrl) ? { apiKey, baseUrl } : {}
     );
     return response.data;
 };
