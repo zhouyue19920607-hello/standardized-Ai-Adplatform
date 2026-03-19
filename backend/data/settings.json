@@ -1,5 +1,5 @@
 {
-  "aiEnhancedMode": true,
+  "aiEnhancedMode": false,
   "aiProvider": "nanobanner",
   "tongyiApiKey": "sk-13ce79edd99e4b2794078a93cb3e5281",
   "comfyuiUrl": "http://127.0.0.1:8188",

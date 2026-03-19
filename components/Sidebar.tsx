@@ -212,7 +212,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.smartExtract')}</span>
                                             <div className="flex items-center gap-2 shrink-0">
-                                              {tpl.smartExtract && tpl.palette && tpl.palette.length > 1 && (
+                                              {(tpl.smartExtract !== false) && tpl.palette && tpl.palette.length > 1 && (
                                                 <button
                                                   onClick={() => {
                                                     const currentIdx = tpl.palette?.findIndex(p => p.iconColor === tpl.iconColor) ?? -1;

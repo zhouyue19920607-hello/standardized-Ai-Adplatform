@@ -36,6 +36,7 @@ const AdCard: React.FC<{
   const [localSplashText, setLocalSplashText] = useState(asset.splashText || t('preview.defaultSplashText'));
   const [localShowCrop, setLocalShowCrop] = useState(config.showCrop);
   const [localShowBadge, setLocalShowBadge] = useState(asset.showBadge ?? false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const isHotRecommend = asset.id.includes('mt-ib-1');
   const isHotSearch = asset.id.includes('mt-ib-2');
@@ -70,11 +71,6 @@ const AdCard: React.FC<{
   }, [config.showCrop]);
 
   const handleDownload = async () => {
-    if (asset.type.startsWith('video')) {
-      alert('此网站仅支持视频卡片预览及图片格式保存。');
-      return;
-    }
-
     const safeName = (asset.templateName || asset.name || 'image').replace(/[\/\\:*?"<>|]/g, '_');
 
     const downloadCanvasAsJpg = (canvas: HTMLCanvasElement, filename: string) => {
@@ -117,8 +113,38 @@ const AdCard: React.FC<{
       }
     };
 
+    setIsDownloading(true);
     try {
-      // Use the centralized compositor
+      if (asset.type.startsWith('video')) {
+        // NOTE: Dynamic import to avoid circular logic or initialization errors
+        const { exportVideoElements } = await import('../utils/videoCompositor');
+        const { compositeVideo } = await import('../services/api');
+
+        const vDim = { w: 1080, h: 1920 };
+        const match = asset.dimensions?.match(/(\d+)\s*x\s*(\d+)/i);
+        if (match) { vDim.w = parseInt(match[1]); vDim.h = parseInt(match[2]); }
+
+        const params = await exportVideoElements(asset, {
+          ...config, showMask: localShowMask, showCrop: localShowCrop, showBadge: localShowBadge
+        }, vDim);
+
+        const videoResp = await fetch(asset.url);
+        const videoBlob = await videoResp.blob();
+
+        const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
+          targetW: params.targetW, targetH: params.targetH, videoRect: params.videoRect
+        });
+
+        if (result.ok && result.url) {
+          await downloadAsBlob(`${ASSETS_URL}${result.url}`, `${safeName}.mp4`);
+        } else {
+          throw new Error(result.error || "Video composition failed");
+        }
+        setIsDownloading(false);
+        return;
+      }
+
+      // Use the centralized compositor for images
       const blob = await compositeAsset(asset, {
         ...config,
         showMask: localShowMask,
@@ -151,6 +177,8 @@ const AdCard: React.FC<{
       const fallbackExt = asset.type.startsWith('video') ? 'mp4' : 'jpg';
       link.setAttribute('download', `${safeName}.${fallbackExt}`);
       link.click();
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -374,6 +402,27 @@ const AdCard: React.FC<{
             </button>
           )}
 
+          {asset.aiExtractedColors && asset.aiExtractedColors.length > 1 && (
+            <button
+              onClick={() => {
+                const colors = asset.aiExtractedColors || [];
+                const currentIdx = colors.findIndex(c => c.iconColor === asset.aiExtractedColor) ?? -1;
+                const nextIdx = (currentIdx + 1) % colors.length;
+                const next = colors[nextIdx];
+                if (next) {
+                  onUpdate?.({
+                    aiExtractedColor: next.iconColor,
+                    gradientColor: next.gradientColor
+                  });
+                }
+              }}
+              className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
+              title="切换配色"
+            >
+              <span className="material-symbols-outlined text-[18px]">casino</span>
+            </button>
+          )}
+
           {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
             <button
               onClick={() => {
@@ -390,10 +439,15 @@ const AdCard: React.FC<{
         </div>
         <button
           onClick={handleDownload}
-          className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
+          disabled={isDownloading}
+          className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all active:scale-95 border border-slate-200 shadow-sm ${isDownloading ? 'bg-slate-100 text-slate-300' : 'bg-white text-slate-400 hover:text-primary'}`}
           title={t('preview.download')}
         >
-          <span className="material-symbols-outlined text-[18px]">download</span>
+          {isDownloading ? (
+            <div className="w-4 h-4 border-2 border-slate-300 border-t-primary rounded-full animate-spin" />
+          ) : (
+            <span className="material-symbols-outlined text-[18px]">download</span>
+          )}
         </button>
       </div>
     </div>
@@ -410,9 +464,112 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
   if (assets.length === 0 && !isGenerating) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-slate-300 h-full min-h-[400px]">
-        <span className="material-symbols-outlined text-6xl mb-4">grid_view</span>
-        <p className="font-bold text-lg">{t('preview.noContent')}</p>
+      <div className="flex-1 flex flex-col items-center justify-start pt-16 p-6 h-full min-h-[450px]">
+        <div className="max-w-3xl w-full space-y-0 animate-in fade-in slide-in-from-top-4 duration-1000 font-medium">
+          {/* Top Border */}
+          <div className="h-[1px] w-full bg-slate-200/40 mb-4"></div>
+
+          {/* Title */}
+          <div className="text-center py-4 mb-8">
+            <h2 className="text-lg font-bold text-slate-500/80 tracking-[0.6em] uppercase">操作说明与素材限制</h2>
+          </div>
+
+          {/* Main Grid Content (Single Row) */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-x-8 gap-y-12 pb-12">
+            {/* Sec 1: Core Capabilities */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
+                <span className="material-symbols-outlined text-[16px] opacity-70">bolt</span>
+                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">核心能力</span>
+              </div>
+              <ul className="space-y-2 text-[11px] text-slate-400 leading-snug">
+                <li className="flex items-start gap-1.5 line-clamp-1">
+                  <span className="opacity-40">•</span>
+                  <span>秀秀端广告位全适配</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>图片：智能扩图 & 排版</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>视频：标准尺寸重构</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Sec 2: Template Config */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
+                <span className="material-symbols-outlined text-[16px] opacity-70">settings</span>
+                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">模版配置</span>
+              </div>
+              <ul className="space-y-2 text-[11px] text-slate-400 leading-snug">
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>开屏：文案编辑 / 自检</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>焦点：角标 / 智能配色</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>支持实时预览及下载</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Sec 3: Material Limits */}
+            <div className="space-y-3 md:border-l border-slate-100/30 md:pl-8">
+              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
+                <span className="material-symbols-outlined text-[16px] opacity-70">inventory_2</span>
+                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">素材限制</span>
+              </div>
+              <ul className="space-y-2 text-[11px] text-slate-400">
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>图片下载 ≤ 200KB</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="opacity-40">•</span>
+                  <span>视频下载 ≤ 3MB</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Sec 4: Tips */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
+                <span className="material-symbols-outlined text-[16px] opacity-70">info</span>
+                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">温馨提示</span>
+              </div>
+              <ul className="space-y-2 text-[11px] text-slate-400/80 italic">
+                <li className="flex items-start gap-1.5">
+                  <span>• 效果仅供预览参考</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span>• 最终以上线实测为准</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* AI Banner */}
+          <div className="py-6 px-10 bg-slate-50/50 rounded-2xl border border-slate-100/50 text-slate-400/80 flex items-center justify-between gap-6 hover:bg-white hover:shadow-sm transition-all duration-300 group">
+            <div className="flex items-center gap-4">
+              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-slate-300 border border-slate-100 shadow-sm group-hover:text-indigo-400 transition-colors">
+                <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+              </div>
+              <p className="text-[12px] font-medium tracking-tight">
+                如需开启图片扩图、智能排版等 <span className="text-slate-500 font-bold">AI 增强</span> 核心引擎，请联系管理员激活后台账户权限。
+              </p>
+            </div>
+            <span className="material-symbols-outlined text-slate-200 text-sm">arrow_forward</span>
+          </div>
+
+          <div className="h-[1px] w-full bg-slate-200/40 mt-8"></div>
+        </div>
       </div>
     );
   }

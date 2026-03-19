@@ -158,3 +158,20 @@ export const testNanobannerConnection = async (apiKey?: string, baseUrl?: string
     );
     return response.data;
 };
+
+// API: Composite Video via FFmpeg
+export const compositeVideo = async (
+    videoBlob: Blob,
+    bgBlob: Blob | null,
+    fgBlob: Blob | null,
+    params: { targetW: number, targetH: number, videoRect: { x: number, y: number, w: number, h: number } }
+): Promise<any> => {
+    const formData = new FormData();
+    formData.append('video', videoBlob, 'source.mp4');
+    if (bgBlob) formData.append('bgImage', bgBlob, 'bg.png');
+    if (fgBlob) formData.append('fgImage', fgBlob, 'fg.png');
+    formData.append('params', JSON.stringify(params));
+
+    const response = await api.post('/composite-video', formData);
+    return response.data;
+};

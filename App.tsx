@@ -141,7 +141,7 @@ const App: React.FC = () => {
           return {
             ...tpl,
             checked: old ? old.checked : false,
-            smartExtract: old ? old.smartExtract : true,
+            smartExtract: old ? old.smartExtract : false,
             iconColor: old ? old.iconColor : '#FF00FF',
             gradientColor: old ? old.gradientColor : '#FF6B6B',
             palette: old ? old.palette : []

@@ -8,6 +8,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
+import { compressAndCompositeVideo } from "./ffmpegUtils.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -1282,6 +1283,51 @@ app.post("/api/nanobanner/test", async (req, res) => {
   }
 });
 
+
+// ---- API: Composite Video (FFmpeg) ----
+app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, { name: "bgImage", maxCount: 1 }, { name: "fgImage", maxCount: 1 }]), async (req, res) => {
+  try {
+    const videoFile = req.files?.video?.[0];
+    if (!videoFile) return res.status(400).json({ error: "Missing video file" });
+
+    const bgImage = req.files?.bgImage?.[0];
+    const fgImage = req.files?.fgImage?.[0];
+
+    const paramsStr = req.body.params;
+    if (!paramsStr) return res.status(400).json({ error: "Missing params" });
+    const params = JSON.parse(paramsStr);
+
+    const outputFilename = `video_composite_${Date.now()}.mp4`;
+    const outputPath = path.join(STORAGE_DIR, outputFilename);
+
+    console.log(`[VideoComposite] Starting FFmpeg process for ${videoFile.originalname}... target: ${params.targetW}x${params.targetH}`);
+
+    await compressAndCompositeVideo(
+      videoFile.path,
+      params.targetW,
+      params.targetH,
+      params.videoRect,
+      bgImage?.path,
+      fgImage?.path,
+      outputPath
+    );
+
+    console.log(`[VideoComposite] FFmpeg success: ${outputPath}`);
+
+    // Clean up temp uploads
+    fs.unlink(videoFile.path).catch(() => { });
+    if (bgImage) fs.unlink(bgImage.path).catch(() => { });
+    if (fgImage) fs.unlink(fgImage.path).catch(() => { });
+
+    return res.json({
+      ok: true,
+      url: `/static/${outputFilename}`
+    });
+  } catch (err) {
+    console.error("[VideoComposite] Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ---- API: Smart Crop & Compress (不依赖 ComfyUI) ----
 app.post("/api/smart-crop", upload.single("image"), async (req, res) => {

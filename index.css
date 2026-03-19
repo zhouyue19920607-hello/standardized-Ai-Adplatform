@@ -1,36 +1,43 @@
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.4);
-  --glass-shadow: rgba(0, 0, 0, 0.05);
-  --primary: #007AFF;
-  --text-main: #1C1C1E;
-  --text-muted: #8E8E93;
+  --primary: #6366f1;
+  --primary-glow: rgba(99, 102, 241, 0.4);
+  --secondary: #a855f7;
+  --accent: #f43f5e;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: rgba(31, 38, 135, 0.1);
+  --background: #f8fafc;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
-  background-color: #f5f5f7;
-  /* Dynamic Mesh Gradient Background (Light Apple Aesthetic) */
+  background-color: var(--background);
+  /* Premium Mesh Gradient Background */
   background-image:
-    radial-gradient(at 0% 0%, hsla(210, 100%, 98%, 1) 0, transparent 50%),
-    radial-gradient(at 50% 0%, hsla(220, 100%, 95%, 1) 0, transparent 50%),
-    radial-gradient(at 100% 0%, hsla(240, 100%, 92%, 1) 0, transparent 50%);
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+  background-color: #020617;
+  /* Dark elegant base */
   background-attachment: fixed;
   min-height: 100vh;
   margin: 0;
+  color: #f8fafc;
 }
 
 /* Liquid Glass Utility */
 .liquid-glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(40px) saturate(210%);
-  -webkit-backdrop-filter: blur(40px) saturate(210%);
-  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow:
-    0 8px 32px 0 rgba(0, 0, 0, 0.05),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 24px;
 }
 
 /* Lens Refraction Effect */
@@ -81,12 +88,17 @@ body {
 
 /* 骨架屏光扫动画 (Loading Skeleton Shimmer) */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .animate-shimmer {
   animation: shimmer 2s linear infinite;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.5) 50%, transparent 100%);
   background-size: 200% 100%;
 }
