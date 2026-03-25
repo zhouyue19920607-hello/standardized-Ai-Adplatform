@@ -52,7 +52,7 @@ const AdCard: React.FC<{
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
   const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
-    ? '1126 / 2436'
+    ? (asset.app === 'wink' ? '1126 / 1410' : '1126 / 2436')
     : (localShowMask && asset.category === '开屏')
       ? '1440 / 2340'
       : asset.dimensions?.replace(' x ', ' / ') || '1080 / 1920';
@@ -596,7 +596,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
           <div
             className="relative flex items-center justify-center overflow-hidden shadow-2xl bg-white"
             style={{
-              aspectRatio: (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-p-') || selectedAsset.id.includes('mt-fe-'))) ? '1126 / 2436' : (selectedAssetInfo.showMask && selectedAsset.category === '开屏') ? '1440 / 2340' : parseAspectRatio(selectedAsset.dimensions || '1080x1920'),
+              aspectRatio: (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-p-') || selectedAsset.id.includes('mt-fe-'))) ? (selectedAsset.app === 'wink' ? '1126 / 1410' : '1126 / 2436') : (selectedAssetInfo.showMask && selectedAsset.category === '开屏') ? '1440 / 2340' : parseAspectRatio(selectedAsset.dimensions || '1080x1920'),
               height: '92vh',
               containerType: 'size'
             }}

@@ -71,7 +71,7 @@
     "category": "焦点视窗",
     "name": "动态焦点视窗",
     "checked": true,
-    "dimensions": "1126 x 2436",
+    "dimensions": "1126 x 900",
     "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
     "processedCount": 17
   },
@@ -81,7 +81,7 @@
     "category": "焦点视窗",
     "name": "静态焦点视窗",
     "checked": true,
-    "dimensions": "1126 x 2436",
+    "dimensions": "1126 x 900",
     "badge_overlay_path": "/static/badges/mt-f-2_badge.png",
     "processedCount": 13
   },
@@ -305,15 +305,15 @@
     "app": "wink",
     "category": "焦点视窗",
     "name": "动态焦点视窗",
-    "checked": false,
-    "dimensions": "1126 x 2436"
+    "checked": true,
+    "dimensions": "1126 x 1410"
   },
   {
     "id": "wk-f-2",
     "app": "wink",
     "category": "焦点视窗",
     "name": "静态焦点视窗",
-    "checked": false,
-    "dimensions": "1126 x 2436"
+    "checked": true,
+    "dimensions": "1126 x 1410"
   }
 ]

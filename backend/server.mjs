@@ -195,8 +195,8 @@ app.post("/api/templates", async (req, res) => {
     return res.status(400).json({ error: "id, name, app, category 为必填字段" });
   }
 
-  if (payload.app === "美颜" || payload.app === "wink") {
-    return res.status(400).json({ error: "暂不支持 '美颜' 和 'wink' 应用配置" });
+  if (payload.app === "美颜") {
+    return res.status(400).json({ error: "暂不支持 '美颜' 应用配置" });
   }
 
   const templates = await readJson(TEMPLATES_FILE, []);

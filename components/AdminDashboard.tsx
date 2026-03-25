@@ -364,7 +364,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                             >
                                                 <option>美图秀秀</option>
                                                 <option disabled value="美颜">美颜 (待开放)</option>
-                                                <option disabled value="wink">wink (待开放)</option>
+                                                <option value="wink">wink</option>
                                             </select>
                                         </div>
                                         <div className="group">
@@ -421,7 +421,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             <div className="flex flex-col gap-4 pb-20 px-2">
                                 {filteredTemplates.map(tpl => {
                                     const duplicate = isDuplicate(tpl);
-                                    const isDisabled = tpl.app === '美颜' || tpl.app === 'wink';
+                                    const isDisabled = tpl.app === '美颜';
                                     return (
                                         <div
                                             key={tpl.id}

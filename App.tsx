@@ -85,7 +85,8 @@ const captureVideoFrame = (file: File, seekPoint: 'start' | 'end' = 'start'): Pr
       if (seekPoint === 'end' && isFinite(video.duration) && video.duration > 0) {
         video.currentTime = Math.max(0, video.duration - 0.2);
       } else {
-        video.currentTime = 0.1;
+        // NOTE: seek 到 0 确保截取真正的第 1 帧，而非 0.1s 处的帧
+        video.currentTime = 0;
       }
     };
 
@@ -256,6 +257,7 @@ const App: React.FC = () => {
   // NOTE: 允许的视频尺寸白名单，图片不受此限制
   const ALLOWED_VIDEO_DIMENSIONS = [
     { width: 1126, height: 900 },
+    { width: 1126, height: 1410 },
     { width: 1440, height: 2340 },
     { width: 1440, height: 1938 },
   ];
@@ -460,6 +462,9 @@ const App: React.FC = () => {
 
         // category check
         const isSplash = template.category === '开屏';
+        const isWink = template.app === 'wink';
+        const focalHeight = isWink ? 1410 : 900;
+
         // Precise classification for Focal Windows
         const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
         const isDynamicFocal = template.category === '焦点视窗' && template.name.includes('动态') && !template.name.includes('沉浸式');
@@ -531,7 +536,7 @@ const App: React.FC = () => {
 
                   // Determine target size
                   const targetW = isImmersive ? 1440 : (isStaticFocal ? 1126 : (isHotRecommend ? 720 : 1440));
-                  const targetH = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : (isHotRecommend ? 960 : 2340)));
+                  const targetH = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? focalHeight : (isHotRecommend ? 960 : 2340)));
 
                   const limitKB = (isSplash || template.category === '焦点视窗') ? 200 : 250;
                   const compressed = await smartCropImage(file, targetW, targetH, limitKB);
@@ -554,7 +559,7 @@ const App: React.FC = () => {
               try {
                 // Determine smart crop dimensions based on type
                 const w = isImmersive ? 1440 : (isStaticFocal ? 1126 : ((isHotRecommend || isHomePopup) ? 720 : 1440));
-                const h = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? 900 : ((isHotRecommend || isHomePopup) ? 960 : 2340)));
+                const h = isNonFullscreenSplash ? 1938 : (isImmersive ? 2340 : (isStaticFocal ? focalHeight : ((isHotRecommend || isHomePopup) ? 960 : 2340)));
 
                 const limitKB = (isSplash || template.category === '焦点视窗') ? 200 : 250;
                 const smart = await smartCropImage(raw.file, w, h, limitKB);
@@ -633,11 +638,11 @@ const App: React.FC = () => {
             finalUrl = raw.previewUrl;
           }
         }
-        // 4. Static Focal Window + Image -> Force Smart Crop (1126x900)
+        // 4. Static Focal Window + Image -> Force Smart Crop (1126 x focalHeight)
         else if ((isStaticFocal || isImmersive) && raw.file.type.startsWith('image/')) {
           try {
             const w = isImmersive ? 1440 : 1126;
-            const h = isImmersive ? 2340 : 900;
+            const h = isImmersive ? 2340 : focalHeight;
             const smart = await smartCropImage(raw.file, w, h, 250);
             if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
           } catch (e) {
@@ -658,7 +663,7 @@ const App: React.FC = () => {
               const file = new File([blob], forceJpeg ? "first_frame_focal.jpg" : "first_frame_focal.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
 
               const w = isImmersive ? 1440 : 1126;
-              const h = isImmersive ? 2340 : 900;
+              const h = isImmersive ? 2340 : focalHeight;
               const smart = await smartCropImage(file, w, h, 250);
               console.log(`[mt-f-2 Debug] Smart crop result:`, smart);
               if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
@@ -745,10 +750,10 @@ const App: React.FC = () => {
                 const blob = await resp.blob();
                 const forceJpeg = isSplash || template.category === '焦点视窗';
                 const frameFile = new File([blob], forceJpeg ? 'last_frame_mtf1.jpg' : 'last_frame_mtf1.png', { type: forceJpeg ? 'image/jpeg' : 'image/png' });
-                const smart = await smartCropImage(frameFile, 1126, 900, 250);
+                const smart = await smartCropImage(frameFile, 1126, focalHeight, 250);
                 if (smart?.url) {
                   finalUrl = `${ASSETS_URL}${smart.url}`;
-                  console.log(`[mt-f-1] Last frame captured and cropped to 1126x900: ${finalUrl}`);
+                  console.log(`[mt-f-1] Last frame captured and cropped to 1126x${focalHeight}: ${finalUrl}`);
                 } else {
                   finalUrl = lastFrame;
                 }
@@ -791,9 +796,9 @@ const App: React.FC = () => {
           dimensions:
             (isSplash && raw.file.type.startsWith('image/')) ? (isNonFullscreenSplash ? '1440 x 1938' : '1440 x 2340') :
               (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' :
-                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? '1126 x 900' :
-                  // NOTE: mt-f-1 尺寸固定为 1126×900
-                  (template.id === 'mt-f-1') ? '1126 x 900' :
+                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? `1126 x ${focalHeight}` :
+                  // NOTE: 动态焦点视窗尺寸固定位 1126 x focalHeight
+                  (isDynamicFocal) ? `1126 x ${focalHeight}` :
                     ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
                       (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
                         (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :

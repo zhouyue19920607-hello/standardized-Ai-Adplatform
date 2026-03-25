@@ -59,7 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar pb-24">
         {apps.map(appName => {
           const appTemplates = templates.filter(tpl => tpl.app === appName);
-          const isDisabledApp = appName === 'wink' || appName === '美颜';
+          const isDisabledApp = appName === '美颜';
 
           // Get unique categories for this app
           const categories = Array.from(new Set(appTemplates.map(tpl => tpl.category)));
@@ -77,9 +77,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className={`transition-all`}>
                 {/* If disabled app, show placeholder or simplified list */}
                 {isDisabledApp ? (
-                  <div className="p-8 text-center bg-gray-50/50">
-                    <span className="material-symbols-outlined text-ios-gray-3 text-3xl mb-2">construction</span>
-                    <p className="text-xs text-ios-gray-2 font-medium">{t('sidebar.noTemplate')}</p>
+                  <div className="py-2 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
+                    <p className="text-[10px] text-ios-gray-2 font-bold tracking-tight">{t('sidebar.noTemplate')}</p>
                   </div>
                 ) : (
                   <div className="flex flex-col">
@@ -168,7 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   </label>
 
                                   {/* Config Panel (Inline) - Focal Window or Dynamic Splash */}
-                                  {tpl.checked && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (
+                                  {tpl.checked && tpl.app !== 'wink' && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (
                                     <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                                       <div className="flex items-center justify-between">
                                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
@@ -192,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                       )}
 
                                       {/* Focal Window Options */}
-                                      {tpl.category === '焦点视窗' && (
+                                      {tpl.category === '焦点视窗' && tpl.app !== 'wink' && (
                                         <>
                                           {/* NOTE: mt-f-1 动态焦点视窗专属：截取视频最后一帧 */}
                                           {tpl.id === 'mt-f-1' && (
@@ -242,6 +241,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                                               </label>
                                             </div>
                                           </div>
+
+                                          {/* NOTE: 智能取色开启时，只读展示当前提取到的色值 */}
+                                          {(tpl.smartExtract ?? true) && (tpl.iconColor || tpl.gradientColor) && (
+                                            <div className="flex items-center gap-3 pt-1">
+                                              {tpl.iconColor && /^#[0-9A-Fa-f]{6}$/.test(tpl.iconColor) && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <div className="w-3.5 h-3.5 rounded-full border border-ios-gray-5 ring-1 ring-white shrink-0" style={{ backgroundColor: tpl.iconColor }} title="主色" />
+                                                  <span className="text-[10px] font-mono text-ios-gray-2 uppercase tracking-widest">{tpl.iconColor}</span>
+                                                </div>
+                                              )}
+                                              {tpl.gradientColor && /^#[0-9A-Fa-f]{6}$/.test(tpl.gradientColor) && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <div className="w-3.5 h-3.5 rounded-full border border-ios-gray-5 ring-1 ring-white shrink-0" style={{ backgroundColor: tpl.gradientColor }} title="渐变色" />
+                                                  <span className="text-[10px] font-mono text-ios-gray-2 uppercase tracking-widest">{tpl.gradientColor}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
 
                                           {!tpl.smartExtract && (
                                             <div className="space-y-3 pt-2 border-t border-ios-gray-6">
