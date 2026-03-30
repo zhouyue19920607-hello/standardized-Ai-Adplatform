@@ -208,7 +208,10 @@
     "name": "动态开屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "dynamic"
+    "splashGroup": "dynamic",
+    "maskPath": "backend/storage/masks/1774854887707_______________________-.png",
+    "mask_path": "/static/masks/1774854887707_______________________-.png",
+    "maskUrl": "/static/masks/1774854887707_______________________-.png"
   },
   {
     "id": "my-s-2",
@@ -284,7 +287,10 @@
     "name": "动态开屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "dynamic"
+    "splashGroup": "dynamic",
+    "maskPath": "backend/storage/masks/1774854891499_______________________-.png",
+    "mask_path": "/static/masks/1774854891499_______________________-.png",
+    "maskUrl": "/static/masks/1774854891499_______________________-.png"
   },
   {
     "id": "wk-s-2",

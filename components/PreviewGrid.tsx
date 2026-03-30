@@ -192,16 +192,13 @@ const AdCard: React.FC<{
   };
 
   return (
-    <div className="liquid-glass lens-effect group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-white/20">
-      <div className="px-3 py-2.5 border-b border-white/10 flex items-center justify-between gap-2 bg-white/5">
-        <div className="flex items-center gap-2 overflow-hidden w-full">
-          <span className="text-primary text-[9px] uppercase font-bold tracking-widest shrink-0">{t(`apps.${asset.app}`)}</span>
-          <span className="text-[9px] text-slate-400 font-bold font-mono shrink-0">{asset.dimensions}</span>
-          <h3 className="font-bold text-slate-900 text-xs truncate flex-1">{t(`templates.${asset.templateName}`) !== `templates.${asset.templateName}` ? t(`templates.${asset.templateName}`) : asset.templateName}</h3>
-        </div>
+    <div className="bg-[#F4F5F7] group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-slate-200/60 rounded-[20px] pb-3 relative shadow-md">
+      <div className="px-3 pt-3 pb-2 flex items-center justify-center bg-transparent shrink-0">
+        {/* Dimension Text */}
+        <span className="text-[12px] text-slate-400 font-bold font-mono tracking-[0.1em] shrink min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-center">{asset.dimensions}</span>
       </div>
       <div
-        className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview"
+        className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"
         style={{ aspectRatio, containerType: 'size' }}
         onDoubleClick={() => onZoom({ ...asset, splashText: localSplashText }, localShowMask, localShowCrop, localShowBadge)}
       >
@@ -381,32 +378,95 @@ const AdCard: React.FC<{
         )}
       </div>
 
-      <div className="px-2.5 py-2 border-t border-slate-100 flex items-center justify-between mt-auto bg-slate-50/30 gap-1.5">
-        <div className="flex items-center gap-1 flex-1 min-w-0">
+      {/* Bottom Toolbar Layout Match (Moved Above Mask Style) */}
+      <div className="px-3 py-3 flex items-center justify-center gap-[12px] w-full max-w-full overflow-hidden shrink-0 mt-auto bg-transparent">
+        {/* Toggle Mask Button */}
+        <button
+          onClick={() => setLocalShowMask(!localShowMask)}
+          className={`w-[36px] h-[30px] rounded-[10px] flex items-center justify-center transition-all duration-300 shadow-sm shrink-0 ${localShowMask ? 'bg-[#007AE7] text-white shadow-blue-500/40' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200/50'}`}
+        >
+          <span className="material-symbols-outlined text-[18px]">{localShowMask ? 'visibility' : 'visibility_off'}</span>
+        </button>
+
+        {asset.cropOverlayUrl && (
           <button
-            onClick={() => setLocalShowMask(!localShowMask)}
-            className={`h-8 px-2 rounded-lg flex items-center shrink gap-1 transition-all text-[11px] font-bold shadow-sm min-w-0 ${localShowMask ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
+            onClick={() => setLocalShowCrop(!localShowCrop)}
+            className={`flex items-center justify-center transition-colors ${localShowCrop ? 'text-orange-500' : 'text-slate-700 hover:text-black hover:scale-110'}`}
+            title={t('preview.cropPreview')}
           >
-            <span className="material-symbols-outlined text-[16px] shrink-0">{localShowMask ? 'visibility' : 'visibility_off'}</span>
-            <span className="truncate">{localShowMask ? t('preview.adMask') : t('preview.rawAsset')}</span>
+            <span className="material-symbols-outlined" style={{ fontSize: '20px', strokeWidth: 1.5 }}>crop</span>
           </button>
+        )}
 
-          {asset.cropOverlayUrl && (
-            <button
-              onClick={() => setLocalShowCrop(!localShowCrop)}
-              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowCrop ? 'bg-orange-500 text-white shadow-orange-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-              title={t('preview.cropPreview')}
-            >
-              <span className="material-symbols-outlined text-[18px]">crop</span>
-            </button>
+        {(asset.category === '开屏' || isHotSearch || isScorePopup) && localShowMask && (
+          <button
+            onClick={() => setIsEditingText(!isEditingText)}
+            className={`flex items-center justify-center transition-colors ${isEditingText ? 'text-[#007AE7]' : 'text-slate-700 hover:text-black hover:scale-110'}`}
+            title={t('preview.editText')}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '22px' }}>filter_list</span>
+          </button>
+        )}
+
+        {asset.aiExtractedColors && asset.aiExtractedColors.length > 1 && (
+          <button
+            onClick={() => {
+              const colors = asset.aiExtractedColors || [];
+              const currentIdx = colors.findIndex(c => c.iconColor === asset.aiExtractedColor) ?? -1;
+              const nextIdx = (currentIdx + 1) % colors.length;
+              const next = colors[nextIdx];
+              if (next) {
+                onUpdate?.({
+                  aiExtractedColor: next.iconColor,
+                  gradientColor: next.gradientColor
+                });
+              }
+            }}
+            className="flex items-center justify-center transition-colors text-slate-700 hover:text-black hover:scale-110"
+            title="切换配色"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>casino</span>
+          </button>
+        )}
+
+        {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
+          <button
+            onClick={() => {
+              const next = !localShowBadge;
+              setLocalShowBadge(next);
+              onUpdate?.({ showBadge: next });
+            }}
+            className={`flex items-center justify-center transition-colors ${localShowBadge ? 'text-purple-500' : 'text-slate-700 hover:text-black hover:scale-110'}`}
+            title={t('preview.brandComponent')}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>verified</span>
+          </button>
+        )}
+
+        <button
+          onClick={handleDownload}
+          disabled={isDownloading}
+          className="flex items-center justify-center transition-colors text-slate-700 hover:text-black hover:scale-110"
+          title={t('preview.download')}
+        >
+          {isDownloading ? (
+            <div className="w-[18px] h-[18px] border-[2px] border-slate-300 border-t-slate-800 rounded-full animate-spin" />
+          ) : (
+            <span className="material-symbols-outlined" style={{ fontSize: '22px' }}>download</span>
           )}
+        </button>
+      </div>
 
-          {/* NOTE: 三平台开屏样式切换按钮，仅对有多平台蒙版的开屏资产显示 */}
-          {isSplashWithPlatforms && localShowMask && (
-            <div className="flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+      {/* 蒙版样式 (Platform Mask Switch) - Moved to bottom */}
+      {isSplashWithPlatforms && localShowMask && (
+        <div className="w-full shrink-0 flex flex-col items-center pt-1 pb-4">
+          <div className="w-[90%] max-w-[280px]">
+            <h4 className="text-[12px] font-bold text-slate-800 mb-2.5 px-1 tracking-wider text-center">蒙版样式</h4>
+            <div className="flex items-center gap-2 justify-center w-full">
               {(['meitu', 'beauty', 'wink'] as const).map((platform) => {
-                const labels = { meitu: '秀秀', beauty: '美颜', wink: 'wink' };
+                const imgIcons: Record<string, string> = { meitu: '/icons/meitu_mask_icon.png', beauty: '/icons/beauty_mask_icon.png', wink: '/icons/wink_mask_icon.png' };
                 const hasMask = !!asset.splashPlatformMasks![platform];
+                const isSelected = activeSplashStyle === platform;
                 return (
                   <button
                     key={platform}
@@ -415,76 +475,22 @@ const AdCard: React.FC<{
                       setActiveSplashStyle(platform);
                       onUpdate?.({ activeSplashStyle: platform, maskUrl: asset.splashPlatformMasks![platform] });
                     }}
-                    className={`h-8 px-2 text-[10px] font-bold transition-all ${!hasMask ? 'text-slate-300 cursor-not-allowed' :
-                      activeSplashStyle === platform ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'
+                    className={`flex-1 flex items-center justify-center py-2 h-[42px] rounded-[10px] border-2 transition-all duration-300 ${!hasMask ? 'border-transparent bg-slate-100/50 opacity-40 cursor-not-allowed' :
+                      isSelected ? 'border-blue-500 bg-white shadow-sm scale-[1.02]' : 'border-transparent bg-[#FAFBFC] shadow-sm hover:scale-[1.02] hover:shadow-md'
                       }`}
-                    title={hasMask ? `${labels[platform]}开屏样式` : `${labels[platform]}样式（蒙版未上传）`}
                   >
-                    {labels[platform]}
+                    {imgIcons[platform] && (
+                      <div className={`w-[26px] h-[26px] transition-all duration-300 overflow-hidden ${isSelected ? 'scale-105 drop-shadow-md' : 'opacity-[0.85] scale-95 grayscale-[15%]'}`}>
+                        <img src={imgIcons[platform]} className="w-full h-full object-contain" alt={platform} />
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
-          )}
-
-          {(asset.category === '开屏' || isHotSearch || isScorePopup) && localShowMask && (
-            <button
-              onClick={() => setIsEditingText(!isEditingText)}
-              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${isEditingText ? 'bg-primary text-white shadow-primary/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-              title={t('preview.editText')}
-            >
-              <span className="material-symbols-outlined text-[18px]">edit_note</span>
-            </button>
-          )}
-
-          {asset.aiExtractedColors && asset.aiExtractedColors.length > 1 && (
-            <button
-              onClick={() => {
-                const colors = asset.aiExtractedColors || [];
-                const currentIdx = colors.findIndex(c => c.iconColor === asset.aiExtractedColor) ?? -1;
-                const nextIdx = (currentIdx + 1) % colors.length;
-                const next = colors[nextIdx];
-                if (next) {
-                  onUpdate?.({
-                    aiExtractedColor: next.iconColor,
-                    gradientColor: next.gradientColor
-                  });
-                }
-              }}
-              className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center bg-white text-slate-400 hover:text-primary transition-all active:scale-95 border border-slate-200 shadow-sm"
-              title="切换配色"
-            >
-              <span className="material-symbols-outlined text-[18px]">casino</span>
-            </button>
-          )}
-
-          {(asset.category === '焦点视窗' || asset.category === '弹窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isRecipeContent) && asset.badgeOverlayUrl && (
-            <button
-              onClick={() => {
-                const next = !localShowBadge;
-                setLocalShowBadge(next);
-                onUpdate?.({ showBadge: next });
-              }}
-              className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all shadow-sm ${localShowBadge ? 'bg-purple-500 text-white shadow-purple-500/20' : 'bg-white text-slate-400 hover:text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-              title={t('preview.brandComponent')}
-            >
-              <span className="material-symbols-outlined text-[18px]">verified</span>
-            </button>
-          )}
+          </div>
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={isDownloading}
-          className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center transition-all active:scale-95 border border-slate-200 shadow-sm ${isDownloading ? 'bg-slate-100 text-slate-300' : 'bg-white text-slate-400 hover:text-primary'}`}
-          title={t('preview.download')}
-        >
-          {isDownloading ? (
-            <div className="w-4 h-4 border-2 border-slate-300 border-t-primary rounded-full animate-spin" />
-          ) : (
-            <span className="material-symbols-outlined text-[18px]">download</span>
-          )}
-        </button>
-      </div>
+      )}
     </div>
   );
 };
@@ -499,108 +505,73 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
   if (assets.length === 0 && !isGenerating) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-start pt-16 p-6 h-full min-h-[450px]">
-        <div className="max-w-3xl w-full space-y-0 animate-in fade-in slide-in-from-top-4 duration-1000 font-medium">
+      <div className="flex-1 flex flex-col items-center justify-start pt-4 p-6 h-full min-h-[450px]">
+        <div className="max-w-3xl w-full space-y-0 animate-in fade-in slide-in-from-top-4 duration-1000 font-medium tracking-wide">
           {/* Top Border */}
           <div className="h-[1px] w-full bg-slate-200/40 mb-4"></div>
 
           {/* Title */}
-          <div className="text-center py-4 mb-8">
-            <h2 className="text-lg font-bold text-slate-500/80 tracking-[0.6em] uppercase">操作说明与素材限制</h2>
+          <div className="text-center py-2 mb-6">
+            <h2 className="text-lg font-bold text-slate-500/80 tracking-[0.6em] uppercase drop-shadow-sm">操作说明与素材限制</h2>
           </div>
 
-          {/* Main Grid Content (Single Row) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-x-8 gap-y-12 pb-12">
-            {/* Sec 1: Core Capabilities */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
-                <span className="material-symbols-outlined text-[16px] opacity-70">bolt</span>
-                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">核心能力</span>
+          {/* Main Grid Content (Two columns for two situations) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-8">
+
+            {/* Situation 1 */}
+            <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-slate-100/80 hover:bg-white hover:shadow-lg hover:border-blue-100 transition-all duration-300 group">
+              <div className="flex items-center gap-3 text-slate-700 border-b border-slate-200 pb-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[18px]">rule</span>
+                </div>
+                <h3 className="font-bold text-[13px] tracking-wide relative">
+                  情况一：素材尺寸符合要求
+                  <span className="absolute -bottom-[13px] left-0 w-8 h-0.5 bg-blue-500 rounded-full scale-0 group-hover:scale-100 transition-transform origin-left"></span>
+                </h3>
               </div>
-              <ul className="space-y-2 text-[11px] text-slate-400 leading-snug">
-                <li className="flex items-start gap-1.5 line-clamp-1">
-                  <span className="opacity-40">•</span>
-                  <span>秀秀端广告位全适配</span>
+              <ul className="space-y-3 text-[12px] text-slate-500 leading-relaxed pt-2">
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-blue-400 shrink-0">visibility</span>
+                  <span>能够结合我们的<strong>安全区域（MR）</strong>和<strong>互动样式</strong>，预览图片或视频的最终表现。</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>图片：智能扩图 & 排版</span>
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-blue-400 shrink-0">compress</span>
+                  <span>自动将生成或导出的图片文件体积优化并<strong>保持在 200K 以内</strong>，并且支持针对视频输出<strong>首尾帧截图</strong>。</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>视频：标准尺寸重构</span>
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-blue-400 shrink-0">palette</span>
+                  <span>对于<strong>焦点视窗</strong>，支持智能取色功能以及手动精准调色配置。</span>
                 </li>
               </ul>
             </div>
 
-            {/* Sec 2: Template Config */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
-                <span className="material-symbols-outlined text-[16px] opacity-70">settings</span>
-                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">模版配置</span>
+            {/* Situation 2 */}
+            <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-slate-100/80 hover:bg-white hover:shadow-lg hover:border-purple-100 transition-all duration-300 group">
+              <div className="flex items-center gap-3 text-slate-700 border-b border-slate-200 pb-3">
+                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                </div>
+                <h3 className="font-bold text-[13px] tracking-wide relative">
+                  情况二：无法提供符合 MR 的素材
+                  <span className="absolute -bottom-[13px] left-0 w-8 h-0.5 bg-purple-500 rounded-full scale-0 group-hover:scale-100 transition-transform origin-left"></span>
+                </h3>
               </div>
-              <ul className="space-y-2 text-[11px] text-slate-400 leading-snug">
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>开屏：文案编辑 / 自检</span>
+              <ul className="space-y-3 text-[12px] text-slate-500 leading-relaxed pt-2">
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-purple-400 shrink-0">smart_toy</span>
+                  <span>开启<strong>「AI 智能增强」</strong>功能后，系统将根据预设的 MR 规范进行<strong>智能排版与扩图</strong>。</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>焦点：角标 / 智能配色</span>
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-purple-400 shrink-0">aspect_ratio</span>
+                  <span>AI 会自动调整或补全画面，输出完美对齐安全区且尺寸合规的广告素材。</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>支持实时预览及下载</span>
+                <li className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] text-rose-400 shrink-0">warning</span>
+                  <span className="text-rose-500/90 font-medium">当前该功能【仅支持针对图片进行改动】，视频素材暂无法进行 AI 智能扩展及排版。</span>
                 </li>
               </ul>
             </div>
 
-            {/* Sec 3: Material Limits */}
-            <div className="space-y-3 md:border-l border-slate-100/30 md:pl-8">
-              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
-                <span className="material-symbols-outlined text-[16px] opacity-70">inventory_2</span>
-                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">素材限制</span>
-              </div>
-              <ul className="space-y-2 text-[11px] text-slate-400">
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>图片下载 ≤ 200KB</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="opacity-40">•</span>
-                  <span>视频下载 ≤ 3MB</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Sec 4: Tips */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2.5 text-slate-500 border-b border-slate-100/50 pb-2">
-                <span className="material-symbols-outlined text-[16px] opacity-70">info</span>
-                <span className="font-bold text-[11px] tracking-widest whitespace-nowrap">温馨提示</span>
-              </div>
-              <ul className="space-y-2 text-[11px] text-slate-400/80 italic">
-                <li className="flex items-start gap-1.5">
-                  <span>• 效果仅供预览参考</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span>• 最终以上线实测为准</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          {/* AI Banner */}
-          <div className="py-6 px-10 bg-slate-50/50 rounded-2xl border border-slate-100/50 text-slate-400/80 flex items-center justify-between gap-6 hover:bg-white hover:shadow-sm transition-all duration-300 group">
-            <div className="flex items-center gap-4">
-              <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-slate-300 border border-slate-100 shadow-sm group-hover:text-indigo-400 transition-colors">
-                <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
-              </div>
-              <p className="text-[12px] font-medium tracking-tight">
-                如需开启图片扩图、智能排版等 <span className="text-slate-500 font-bold">AI 增强</span> 核心引擎，请联系管理员激活后台账户权限。
-              </p>
-            </div>
-            <span className="material-symbols-outlined text-slate-200 text-sm">arrow_forward</span>
           </div>
 
           <div className="h-[1px] w-full bg-slate-200/40 mt-8"></div>

@@ -29,8 +29,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   if (!Array.isArray(templates)) return null;
   const apps: AdTemplate['app'][] = ['美图秀秀', '美颜', 'wink'];
 
-  // NOTE: 三平台开屏 — 合并全部三个 app 的开屏模板，统一展示在侧边栏最顶部
-  const allSplashTemplates = templates.filter(tpl => tpl.category === '开屏');
+  // NOTE: 三平台开屏 — 仅取美图秀秀的开屏模板作为代表，生成时自动关联三平台蒙版
+  const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏');
 
   // State for collapsible sub-categories (Key format: "AppName-CategoryName")
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
@@ -40,10 +40,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     setExpandedCats(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Helper to init expansion state on first load (e.g. expand all by default or first one)
-  // Simple approach: controlled by click. Default collapsed? 
-  // User "still needs expand/collapse", implies they want control. 
-  // I'll default to 'true' (expanded) for meaningful content.
   useEffect(() => {
     const initialExpanded: Record<string, boolean> = {};
     templates.forEach(tpl => {
@@ -51,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (initialExpanded[key] === undefined) initialExpanded[key] = false;
     });
     setExpandedCats(prev => ({ ...initialExpanded, ...prev }));
-  }, [templates.length]); // dependency on length to run when templates load
+  }, [templates.length]);
 
   return (
     <aside className="w-[340px] sticky top-24 h-[calc(100vh-180px)] flex flex-col liquid-glass ml-4 my-4 shrink-0 overflow-hidden shadow-2xl z-50">
@@ -61,127 +57,122 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar pb-24">
 
-        {/* ===== 三平台开屏模版统一分组 ===== */}
-        {allSplashTemplates.length > 0 && (
-          <div className="space-y-2 group">
-            <div className="flex items-center gap-2 px-3">
-              <h3 className="text-xs font-bold text-slate-800">三平台开屏模版</h3>
-              <span className="text-[9px] bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full font-semibold">秀秀 / 美颜 / wink</span>
-            </div>
-            <div className="flex flex-col">
-              {/* NOTE: 按应用分展示开屏模版子分组 */}
-              {(['美图秀秀', '美颜', 'wink'] as const).map(splashApp => {
-                const appSplash = allSplashTemplates.filter(tpl => tpl.app === splashApp);
-                if (appSplash.length === 0) return null;
-                const expandKey = `splash-${splashApp}`;
-                const isExpanded = expandedCats[expandKey] ?? false;
-                const selectedCount = appSplash.filter(tpl => tpl.checked).length;
-                const isAllSelected = appSplash.every(tpl => tpl.checked);
-                const appLabels = { '美图秀秀': '秀秀开屏', '美颜': '美颜开屏', wink: 'wink 开屏' };
-                return (
-                  <div key={splashApp} className="border-b border-ios-gray-6 last:border-0">
-                    <div
-                      className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
-                      onClick={() => toggleCat(expandKey)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={`material-symbols-outlined text-[18px] text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
-                        <span className="text-[15px] font-bold text-slate-800">{appLabels[splashApp]}</span>
-                        <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-full">{appSplash.length}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {selectedCount > 0 && (
-                          <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-bold">{selectedCount}</span>
-                        )}
-                        <div
-                          className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const targetState = !isAllSelected;
-                            appSplash.forEach(tpl => { if (tpl.checked !== targetState) onTemplateToggle(tpl.id); });
-                          }}
-                        >
-                          {isAllSelected ? (
-                            <span className="material-symbols-outlined text-sm text-primary fill">check_circle</span>
-                          ) : (
-                            <span className="material-symbols-outlined text-sm text-ios-gray-3">radio_button_unchecked</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {isExpanded && (
-                      <div className="bg-ios-gray-6/30 p-1.5 space-y-1">
-                        {appSplash.map(tpl => (
-                          <div key={tpl.id} className="px-1">
-                            <label
-                              className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
-                            >
-                              <div className="flex items-center justify-center">
-                                {tpl.checked ? (
-                                  <span className="material-symbols-outlined text-[22px] text-primary fill">check_circle</span>
-                                ) : (
-                                  <span className="material-symbols-outlined text-[22px] text-ios-gray-4">radio_button_unchecked</span>
-                                )}
-                                <input type="checkbox" checked={tpl.checked} onChange={() => onTemplateToggle(tpl.id)} className="sr-only" />
-                              </div>
-                              <div className="flex flex-col flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`text-sm font-semibold truncate ${tpl.checked ? 'text-primary' : 'text-slate-800'}`}>
-                                    {t(`templates.${tpl.name}`) !== `templates.${tpl.name}` ? t(`templates.${tpl.name}`) : tpl.name}
-                                  </span>
-                                  {tpl.mask_path && <span className="material-symbols-outlined text-[14px] text-slate-400" title="支持MR遣罩">visibility</span>}
-                                </div>
-                                <div className="flex items-center justify-between mt-0.5">
-                                  <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{tpl.dimensions}</span>
-                                  <span className="text-[10px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium">
-                                    <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
-                                    {tpl.processedCount || 0}
-                                  </span>
-                                </div>
-                              </div>
-                            </label>
-                            {/* NOTE: 动态开屏截帧配置，仅秀秀平台支持 */}
-                            {tpl.checked && tpl.app === '美图秀秀' && tpl.name.includes('动态') && (
-                              <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
-                                  <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.captureFirst')}</span>
-                                  <label className="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      className="sr-only peer"
-                                      checked={config.captureFirstFrame}
-                                      onChange={(e) => onConfigChange({ captureFirstFrame: e.target.checked })}
-                                    />
-                                    <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                                  </label>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+        {/* ===== 三平台开屏模版（以秀秀为代表，去重显示，生成时自动带三平台蒙版）===== */}
+        {meituSplashTemplates.length > 0 && (() => {
+          const expandKey = 'splash-unified';
+          const isExpanded = expandedCats[expandKey] ?? true;
+          const selectedCount = meituSplashTemplates.filter(tpl => tpl.checked).length;
+          const isAllSelected = meituSplashTemplates.every(tpl => tpl.checked);
+          return (
+            <div className="space-y-2 group">
+              <div className="flex flex-col border-b border-ios-gray-6 pb-2 last:border-0">
+                {/* Category header row */}
+                <div
+                  className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
+                  onClick={() => toggleCat(expandKey)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`material-symbols-outlined text-[18px] text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    <span className="text-[15px] font-bold text-slate-800">三平台开屏模版</span>
+                    <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-full">{meituSplashTemplates.length}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full font-semibold mr-1">秀秀/美颜/wink</span>
+                    {selectedCount > 0 && (
+                      <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-bold">{selectedCount}</span>
+                    )}
+                    <div
+                      className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const targetState = !isAllSelected;
+                        meituSplashTemplates.forEach(tpl => { if (tpl.checked !== targetState) onTemplateToggle(tpl.id); });
+                      }}
+                    >
+                      {isAllSelected ? (
+                        <span className="material-symbols-outlined text-sm text-primary fill">check_circle</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-sm text-ios-gray-3">radio_button_unchecked</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
+                {/* Template list */}
+                {isExpanded && (
+                  <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
+                    {meituSplashTemplates.map(tpl => (
+                      <div key={tpl.id} className="px-1">
+                        <label
+                          className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
+                        >
+                          <div className="flex items-center justify-center">
+                            {tpl.checked ? (
+                              <span className="material-symbols-outlined text-[22px] text-primary fill">check_circle</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[22px] text-ios-gray-4">radio_button_unchecked</span>
+                            )}
+                            <input type="checkbox" checked={tpl.checked} onChange={() => onTemplateToggle(tpl.id)} className="sr-only" />
+                          </div>
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`text-sm font-semibold truncate ${tpl.checked ? 'text-primary' : 'text-slate-800'}`}>
+                                {t(`templates.${tpl.name}`) !== `templates.${tpl.name}` ? t(`templates.${tpl.name}`) : tpl.name}
+                              </span>
+                              {/* NOTE: 三平台徽章提示 */}
+                              <span className="text-[9px] text-blue-400 font-bold bg-blue-50 px-1.5 py-0.5 rounded-full shrink-0">×3平台</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{tpl.dimensions}</span>
+                              <span className="text-[10px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium">
+                                <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                                {tpl.processedCount || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </label>
+
+                        {/* NOTE: 动态全屏开屏截帧配置 */}
+                        {tpl.checked && tpl.name.includes('动态') && (
+                          <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                              <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.captureFirst')}</span>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  className="sr-only peer"
+                                  checked={config.captureFirstFrame}
+                                  onChange={(e) => onConfigChange({ captureFirstFrame: e.target.checked })}
+                                />
+                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                              </label>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ===== 各 App 其他分类（开屏已移至上方三平台分组，不再重复显示）===== */}
         {apps.map(appName => {
           const appTemplates = templates.filter(tpl => tpl.app === appName);
           const isDisabledApp = appName === '美颜';
 
-          // NOTE: 排除开屏模版，已并入上方三平台开屏分组
+          // NOTE: 排除开屏模版，已并入三平台开屏统一分组
           const categories = Array.from(new Set(
             appTemplates.filter(tpl => tpl.category !== '开屏').map(tpl => tpl.category)
           ));
 
-          // 美颜还有其他模版（如弹窗、焦点视窗），不展示应用标题 + 占位符
+          // 美颜没有其他非开屏模版时，显示占位
           if (categories.length === 0) {
             if (isDisabledApp) return (
               <div key={appName} className="space-y-2 group">
@@ -208,7 +199,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div className={`transition-all`}>
-                {/* If disabled app, show placeholder or simplified list */}
                 {isDisabledApp ? (
                   <div className="py-2 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
                     <p className="text-[10px] text-ios-gray-2 font-bold tracking-tight">{t('sidebar.noTemplate')}</p>
@@ -218,7 +208,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {categories.map(cat => {
                       const subTemplates = appTemplates.filter(tpl => tpl.category === cat);
                       const expandKey = `${appName}-${cat}`;
-                      const isExpanded = expandedCats[expandKey] ?? true; // Default true
+                      const isExpanded = expandedCats[expandKey] ?? true;
                       const selectedCount = subTemplates.filter(tpl => tpl.checked).length;
                       const isAllSelected = subTemplates.length > 0 && subTemplates.every(tpl => tpl.checked);
 
