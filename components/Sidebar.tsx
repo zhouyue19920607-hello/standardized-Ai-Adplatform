@@ -71,13 +71,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
                   onClick={() => toggleCat(expandKey)}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className={`material-symbols-outlined text-[18px] text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
-                    <span className="text-[15px] font-bold text-slate-800">三平台开屏模版</span>
-                    <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-full">{meituSplashTemplates.length}</span>
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className={`material-symbols-outlined text-[18px] text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>chevron_right</span>
+                    <div className="flex items-center gap-[3px] shrink-0">
+                      <img src="/icons/meitu_mask_icon.png" className="w-[18px] h-[18px] rounded-[4px] object-contain" alt="meitu" />
+                      <img src="/icons/beauty_mask_icon.png" className="w-[18px] h-[18px] rounded-[4px] object-contain" alt="beauty" />
+                      <img src="/icons/wink_mask_icon.png" className="w-[18px] h-[18px] rounded-[4px] object-contain" alt="wink" />
+                    </div>
+                    <span className="text-[15px] font-bold text-slate-800 ml-0.5 truncate">开屏</span>
+                    <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0">{meituSplashTemplates.length}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full font-semibold mr-1">秀秀/美颜/wink</span>
+                  <div className="flex items-center gap-2 shrink-0">
                     {selectedCount > 0 && (
                       <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-bold">{selectedCount}</span>
                     )}
@@ -174,9 +178,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           // 美颜没有其他非开屏模版时，显示占位
           if (categories.length === 0) {
+            const iconMap: Record<string, string> = { '美图秀秀': 'meitu', '美颜': 'beauty', 'wink': 'wink' };
+            const iconName = iconMap[appName] || appName;
             if (isDisabledApp) return (
               <div key={appName} className="space-y-2 group">
-                <div className="flex items-center gap-2 px-3">
+                <div className="flex items-center gap-1.5 px-3">
+                  <img src={`/icons/${iconName}_mask_icon.png`} className="w-[14px] h-[14px] rounded-[3px] object-contain shrink-0" alt={appName} />
                   <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
                   <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t('sidebar.waiting')}</span>
                 </div>
@@ -188,10 +195,13 @@ const Sidebar: React.FC<SidebarProps> = ({
             return null;
           }
 
+          const iconMap: Record<string, string> = { '美图秀秀': 'meitu', '美颜': 'beauty', 'wink': 'wink' };
+          const iconName = iconMap[appName] || appName;
           return (
             <div key={appName} className="space-y-2 group">
               {/* App Header */}
-              <div className="flex items-center gap-2 px-3">
+              <div className="flex items-center gap-1.5 px-3">
+                <img src={`/icons/${iconName}_mask_icon.png`} className="w-[14px] h-[14px] rounded-[3px] object-contain shrink-0" alt={appName} />
                 <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
                 {isDisabledApp && (
                   <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t('sidebar.waiting')}</span>
