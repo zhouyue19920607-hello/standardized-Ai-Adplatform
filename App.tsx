@@ -808,6 +808,20 @@ const App: React.FC = () => {
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,
           badgeOverlayUrl: template.badge_overlay_path ? `${template.badge_overlay_path}?v=${config.assetsVersion}` : null,
+          // NOTE: 三平台开屏样式 — 查找同 splashGroup 的三个平台蒙版路径
+          ...(template.category === '开屏' && template.splashGroup ? (() => {
+            const meituTpl = templates.find(t => t.category === '开屏' && t.app === '美图秀秀' && t.splashGroup === template.splashGroup);
+            const beautyTpl = templates.find(t => t.category === '开屏' && t.app === '美颜' && t.splashGroup === template.splashGroup);
+            const winkTpl = templates.find(t => t.category === '开屏' && t.app === 'wink' && t.splashGroup === template.splashGroup);
+            return {
+              splashPlatformMasks: {
+                meitu: meituTpl?.mask_path ? `${meituTpl.mask_path}?v=${config.assetsVersion}` : null,
+                beauty: beautyTpl?.mask_path ? `${beautyTpl.mask_path}?v=${config.assetsVersion}` : null,
+                wink: winkTpl?.mask_path ? `${winkTpl.mask_path}?v=${config.assetsVersion}` : null,
+              },
+              activeSplashStyle: 'meitu' as const,
+            };
+          })() : {}),
         };
 
         results.push(newAsset);

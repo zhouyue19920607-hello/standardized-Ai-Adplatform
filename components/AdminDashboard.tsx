@@ -421,22 +421,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             <div className="flex flex-col gap-4 pb-20 px-2">
                                 {filteredTemplates.map(tpl => {
                                     const duplicate = isDuplicate(tpl);
-                                    const isDisabled = tpl.app === '美颜';
+                                    // NOTE: 美颜/wink 开屏模板允许上传蒙版（三平台开屏功能需要），仅其他美颜模板保持禁用
+                                    const isDisabled = tpl.app === '美颜' && tpl.category !== '开屏';
+                                    // NOTE: 允许美颜/wink 开屏模板操作蒙版，但禁止其他字段编辑
+                                    const isMaskOnlyEditable = (tpl.app === '美颜' || tpl.app === 'wink') && tpl.category === '开屏';
                                     return (
                                         <div
                                             key={tpl.id}
-                                            draggable={!isDisabled}
-                                            onDragStart={(e) => !isDisabled && handleDragStart(e, tpl.id)}
+                                            draggable={!isDisabled && !isMaskOnlyEditable}
+                                            onDragStart={(e) => !isDisabled && !isMaskOnlyEditable && handleDragStart(e, tpl.id)}
                                             onDragEnd={handleDragEnd}
                                             onDragOver={handleDragOver}
-                                            onDrop={(e) => !isDisabled && handleDrop(e, tpl.id)}
+                                            onDrop={(e) => !isDisabled && !isMaskOnlyEditable && handleDrop(e, tpl.id)}
                                             className={`bg-white rounded-xl border shadow-sm flex items-center gap-4 p-3 pr-6 relative group transition-all duration-200
-                                                ${duplicate ? 'border-red-300 bg-red-50/10' : isDisabled ? 'border-slate-100 bg-slate-50 opacity-60 grayscale' : 'border-slate-100 hover:border-indigo-200'}
+                                                ${duplicate ? 'border-red-300 bg-red-50/10' : isDisabled ? 'border-slate-100 bg-slate-50 opacity-60 grayscale' : isMaskOnlyEditable ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 hover:border-indigo-200'}
                                                 ${draggedId === tpl.id ? 'opacity-40 border-dashed border-indigo-400' : ''}
                                             `}
                                         >
                                             {/* Disabled Overlay */}
                                             {isDisabled && <div className="absolute inset-0 z-20 cursor-not-allowed" title="该应用暂不支持配置"></div>}
+                                            {/* Mask-only overlay: block clicks except on mask upload */}
+                                            {isMaskOnlyEditable && <div className="absolute inset-0 z-10 cursor-default pointer-events-none" />}
 
                                             {/* Duplicate Warning Indicator */}
                                             {duplicate && (
@@ -500,10 +505,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                         ) : (
                                                             <span className="material-symbols-outlined text-slate-300 text-sm">texture</span>
                                                         )}
+                                                        {/* NOTE: isMaskOnlyEditable 时使用 z-30 突破覆盖层，允许上传 */}
                                                         <input
                                                             type="file"
                                                             accept="image/*"
-                                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                                            className={`absolute inset-0 opacity-0 cursor-pointer ${isMaskOnlyEditable ? 'z-30' : ''}`}
                                                             onChange={(e) => e.target.files?.[0] && handleMaskUpload(tpl.id, e.target.files[0])}
                                                             title="Upload Mask"
                                                         />

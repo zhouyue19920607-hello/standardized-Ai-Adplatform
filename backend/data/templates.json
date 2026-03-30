@@ -11,7 +11,8 @@
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
     "maskUrl": "/static/masks/1770618508446____________________-.png.png",
-    "processedCount": 6
+    "processedCount": 6,
+    "splashGroup": "dynamic"
   },
   {
     "id": "mt-s-5",
@@ -24,7 +25,8 @@
     "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
     "mask_path": "/static/masks/1770618676230_______________________-.png.png",
     "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
-    "processedCount": 7
+    "processedCount": 7,
+    "splashGroup": "nonfull"
   },
   {
     "id": "mt-s-2",
@@ -37,7 +39,8 @@
     "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
     "mask_path": "/static/masks/1770618519624__________________________.png.png",
     "maskUrl": "/static/masks/1770618519624__________________________.png.png",
-    "processedCount": 8
+    "processedCount": 8,
+    "splashGroup": "slide"
   },
   {
     "id": "mt-s-4",
@@ -50,7 +53,8 @@
     "maskPath": "backend/storage/masks/1770618528800____________________-.png.png",
     "mask_path": "/static/masks/1770618528800____________________-.png.png",
     "maskUrl": "/static/masks/1770618528800____________________-.png.png",
-    "processedCount": 4
+    "processedCount": 4,
+    "splashGroup": "bubble"
   },
   {
     "id": "mt-s-3",
@@ -63,7 +67,8 @@
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
     "maskUrl": "/static/masks/1770618641086____________________-.png.png",
-    "processedCount": 7
+    "processedCount": 7,
+    "splashGroup": "twist"
   },
   {
     "id": "mt-f-1",
@@ -202,7 +207,8 @@
     "category": "开屏",
     "name": "动态开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "dynamic"
   },
   {
     "id": "my-s-2",
@@ -210,7 +216,8 @@
     "category": "开屏",
     "name": "上滑开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "slide"
   },
   {
     "id": "my-s-3",
@@ -218,7 +225,8 @@
     "category": "开屏",
     "name": "扭动开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "twist"
   },
   {
     "id": "my-s-4",
@@ -226,7 +234,8 @@
     "category": "开屏",
     "name": "气泡开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "bubble"
   },
   {
     "id": "my-f-1",
@@ -274,7 +283,8 @@
     "category": "开屏",
     "name": "动态开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "dynamic"
   },
   {
     "id": "wk-s-2",
@@ -282,7 +292,8 @@
     "category": "开屏",
     "name": "上滑开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "slide"
   },
   {
     "id": "wk-s-3",
@@ -290,7 +301,8 @@
     "category": "开屏",
     "name": "扭动开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "twist"
   },
   {
     "id": "wk-s-4",
@@ -298,7 +310,8 @@
     "category": "开屏",
     "name": "气泡开屏",
     "checked": false,
-    "dimensions": "1440 x 2340"
+    "dimensions": "1440 x 2340",
+    "splashGroup": "bubble"
   },
   {
     "id": "wk-f-1",

@@ -443,11 +443,17 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
     } else if (asset.category === '开屏') {
         const isNonFullscreenSplash = asset.id.includes('mt-s-5');
+        // NOTE: 三平台开屏 — 根据用户选中的样式选择对应平台蒙版
+        const activePlatform = asset.activeSplashStyle ?? 'meitu';
+        const platformMaskUrl = asset.splashPlatformMasks
+            ? (asset.splashPlatformMasks[activePlatform] ?? asset.maskUrl)
+            : asset.maskUrl;
+
         // Load main image, mask, and potential crop overlay
         const loadList = [loadImg(asset.url)];
 
-        if (showMask && asset.maskUrl) {
-            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+        if (showMask && platformMaskUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${platformMaskUrl}`));
         } else {
             loadList.push(Promise.resolve(null as any));
         }

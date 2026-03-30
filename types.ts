@@ -15,6 +15,8 @@ export interface AdTemplate {
   workflow_id?: string | null;
   crop_overlay_path?: string | null;
   badge_overlay_path?: string | null;
+  // NOTE: 三平台开屏关联分组键（如 'dynamic', 'slide', 'twist', 'bubble', 'nonfull'）
+  splashGroup?: string;
   // Per-template settings
   smartExtract?: boolean;
   iconColor?: string;
@@ -47,6 +49,14 @@ export interface AdAsset {
   showMask?: boolean;
   showCrop?: boolean;
   showBadge?: boolean;
+  // NOTE: 三平台开屏样式蒙版 — 存储三个平台各自的 mask_path
+  splashPlatformMasks?: {
+    meitu: string | null;
+    beauty: string | null;
+    wink: string | null;
+  };
+  // NOTE: 当前激活的平台样式（默认秀秀）
+  activeSplashStyle?: 'meitu' | 'beauty' | 'wink';
 }
 
 export interface AdConfig {

@@ -37,6 +37,15 @@ const AdCard: React.FC<{
   const [localShowCrop, setLocalShowCrop] = useState(config.showCrop);
   const [localShowBadge, setLocalShowBadge] = useState(asset.showBadge ?? false);
   const [isDownloading, setIsDownloading] = useState(false);
+  // NOTE: 三平台开屏样式切换本地状态
+  const [activeSplashStyle, setActiveSplashStyle] = useState<'meitu' | 'beauty' | 'wink'>(asset.activeSplashStyle ?? 'meitu');
+
+  const isSplashWithPlatforms = asset.category === '开屏' && !!asset.splashPlatformMasks;
+
+  // NOTE: 根据当前平台样式动态计算 maskUrl 供预览使用
+  const effectiveMaskUrl = isSplashWithPlatforms
+    ? (asset.splashPlatformMasks![activeSplashStyle] ?? asset.maskUrl)
+    : asset.maskUrl;
 
   const isHotRecommend = asset.id.includes('mt-ib-1');
   const isHotSearch = asset.id.includes('mt-ib-2');
@@ -269,9 +278,9 @@ const AdCard: React.FC<{
               </div>
             )}
 
-            {/* Standard Mask (Overlay Layer - for other categories) */}
-            {localShowMask && asset.maskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || isStaticFocal || isImmersiveFocal) && (
-              <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${asset.maskUrl}`} className="w-full h-full object-contain" /></div>
+            {/* Standard Mask (Overlay Layer - for other categories including 开屏) */}
+            {localShowMask && effectiveMaskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || isStaticFocal || isImmersiveFocal) && (
+              <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${effectiveMaskUrl}`} className="w-full h-full object-contain" /></div>
             )}
 
             {/* 一键配方图文: Mask 在图片下方 (z-[15]), 图片将在上方 (z-[40]) */}
@@ -390,6 +399,32 @@ const AdCard: React.FC<{
             >
               <span className="material-symbols-outlined text-[18px]">crop</span>
             </button>
+          )}
+
+          {/* NOTE: 三平台开屏样式切换按钮，仅对有多平台蒙版的开屏资产显示 */}
+          {isSplashWithPlatforms && localShowMask && (
+            <div className="flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              {(['meitu', 'beauty', 'wink'] as const).map((platform) => {
+                const labels = { meitu: '秀秀', beauty: '美颜', wink: 'wink' };
+                const hasMask = !!asset.splashPlatformMasks![platform];
+                return (
+                  <button
+                    key={platform}
+                    disabled={!hasMask}
+                    onClick={() => {
+                      setActiveSplashStyle(platform);
+                      onUpdate?.({ activeSplashStyle: platform, maskUrl: asset.splashPlatformMasks![platform] });
+                    }}
+                    className={`h-8 px-2 text-[10px] font-bold transition-all ${!hasMask ? 'text-slate-300 cursor-not-allowed' :
+                      activeSplashStyle === platform ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    title={hasMask ? `${labels[platform]}开屏样式` : `${labels[platform]}样式（蒙版未上传）`}
+                  >
+                    {labels[platform]}
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {(asset.category === '开屏' || isHotSearch || isScorePopup) && localShowMask && (
