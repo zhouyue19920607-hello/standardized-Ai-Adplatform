@@ -53,6 +53,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
     const isImmersiveFocal = asset.templateName.includes('沉浸式');
     const isRecipeContent = asset.id.includes('mt-fe-1');
     
+    const isWink = asset.app === 'wink';
     const showMask = config.showMask;
     const showBadge = (config as any).showBadge !== undefined ? (config as any).showBadge : (asset.showBadge ?? false);
 
@@ -66,8 +67,9 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
 
     // Calculate dimensions
     if (asset.category === '焦点视窗') {
-        targetW = (showMask || !isImmersiveFocal) ? 1126 : 1440;
-        targetH = showMask ? 2436 : (isImmersiveFocal ? 2340 : 900);
+        const isMeiyan = asset.app === '美颜';
+        targetW = showMask ? 1126 : (isImmersiveFocal ? 1440 : (isMeiyan ? 1284 : 1126));
+        targetH = showMask ? (isWink ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
     } else if (isHotRecommend && !showMask) {
         targetW = 720; targetH = 960;
     } else if (asset.category === '开屏') {
@@ -104,8 +106,12 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
         const bg1 = loaded[3]; const bg2 = loaded[4]; const iconMask = loaded[5];
         if (showMask) {
             videoRect = {x:0, y:0, w:targetW, h: (vh / vw) * targetW};
+            const isMeiyan = asset.app === '美颜';
             // Focal window draws BG, then video, then more BG? Wait, video is bottom!
-            if (isImmersiveFocal && bg1 && bg2 && iconMask) {
+            if ((isWink || isMeiyan) && maskImg) {
+                // Meiyan & Wink Focal Window: Draw mask on FG layer (on top of video)
+                fgCtx.drawImage(maskImg, 0, 0, targetW, targetH);
+            } else if (isImmersiveFocal && bg1 && bg2 && iconMask) {
                 // Video is at 0, 0, w: targetW, h: dh
                 const baseColor = asset.aiExtractedColor || '#FF00FF';
                 const finalGradientColor = asset.gradientColor || getDerivedGradientColor(baseColor);
@@ -164,7 +170,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
             videoRect = {x:0, y:0, w:targetW, h:targetH};
         }
         if (showBadge && badgeImg) {
-            const bH = (showMask && isImmersiveFocal) ? 2436 : (showMask ? 900 : targetH);
+            const bH = (showMask && isImmersiveFocal) ? 2436 : ((showMask && !isWink) ? 900 : targetH);
             drawImageContain(fgCtx, badgeImg, 0, 0, targetW, bH, 'top');
         }
 

@@ -1,6 +1,6 @@
-
 import React from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useLocation, Link } from 'react-router-dom';
 
 interface HeaderProps {
   onOpenAdmin?: () => void;
@@ -8,19 +8,27 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
   const { t, toggleLanguage, language } = useLanguage();
+  const location = useLocation();
+  const isConfigPage = location.pathname === '/config';
 
   return (
     <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary p-2 rounded-ios shadow-ios">
-            <span className="material-symbols-outlined text-white text-2xl">auto_fix_high</span>
+        <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
+          <div className={`bg-primary p-2 rounded-ios shadow-ios transition-transform duration-500 ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
+            <span className="material-symbols-outlined text-white text-2xl">
+              {isConfigPage ? 'settings_backup_restore' : 'auto_fix_high'}
+            </span>
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-900">{t('header.title')}</h1>
-            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{t('header.subtitle')}</p>
+            <h1 className="text-lg font-bold tracking-tight text-slate-900">
+              {isConfigPage ? '高级配置中心' : t('header.title')}
+            </h1>
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+              {isConfigPage ? 'SYSTEM CONFIGURATION' : t('header.subtitle')}
+            </p>
           </div>
-        </div>
+        </Link>
         <div className="flex items-center gap-5">
           <button
             onClick={toggleLanguage}

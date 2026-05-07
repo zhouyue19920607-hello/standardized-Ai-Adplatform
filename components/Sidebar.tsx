@@ -168,8 +168,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* ===== 各 App 其他分类（开屏已移至上方三平台分组，不再重复显示）===== */}
         {apps.map(appName => {
-          const appTemplates = templates.filter(tpl => tpl.app === appName);
-          const isDisabledApp = appName === '美颜';
+          const appTemplates = templates.filter(tpl => {
+            if (appName === '美颜') {
+              // NOTE: 美颜平台目前仅开放静态/动态焦点视窗模版 (my-f-1, my-f-2)
+              return tpl.app === '美颜' && (tpl.id === 'my-f-1' || tpl.id === 'my-f-2');
+            }
+            return tpl.app === appName;
+          });
 
           // NOTE: 排除开屏模版，已并入三平台开屏统一分组
           const categories = Array.from(new Set(
@@ -180,18 +185,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           if (categories.length === 0) {
             const iconMap: Record<string, string> = { '美图秀秀': 'meitu', '美颜': 'beauty', 'wink': 'wink' };
             const iconName = iconMap[appName] || appName;
-            if (isDisabledApp) return (
-              <div key={appName} className="space-y-2 group">
-                <div className="flex items-center gap-1.5 px-3">
-                  <img src={`/icons/${iconName}_mask_icon.png`} className="w-[14px] h-[14px] rounded-[3px] object-contain shrink-0" alt={appName} />
-                  <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
-                  <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t('sidebar.waiting')}</span>
-                </div>
-                <div className="py-2 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
-                  <p className="text-[10px] text-ios-gray-2 font-bold tracking-tight">{t('sidebar.noTemplate')}</p>
-                </div>
-              </div>
-            );
             return null;
           }
 
@@ -203,18 +196,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-1.5 px-3">
                 <img src={`/icons/${iconName}_mask_icon.png`} className="w-[14px] h-[14px] rounded-[3px] object-contain shrink-0" alt={appName} />
                 <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
-                {isDisabledApp && (
-                  <span className="text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full font-semibold">{t('sidebar.waiting')}</span>
-                )}
               </div>
 
               <div className={`transition-all`}>
-                {isDisabledApp ? (
-                  <div className="py-2 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
-                    <p className="text-[10px] text-ios-gray-2 font-bold tracking-tight">{t('sidebar.noTemplate')}</p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col">
+                <div className="flex flex-col">
                     {categories.map(cat => {
                       const subTemplates = appTemplates.filter(tpl => tpl.category === cat);
                       const expandKey = `${appName}-${cat}`;
@@ -336,6 +321,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                   className="sr-only peer"
                                                   checked={config.captureLastFrameMtF1}
                                                   onChange={(e) => onConfigChange({ captureLastFrameMtF1: e.target.checked })}
+                                                />
+                                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                              </label>
+                                            </div>
+                                          )}
+                                          {/* NOTE: my-f-1 美颜动态焦点视窗专属：截取视频第一帧 */}
+                                          {tpl.id === 'my-f-1' && (
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-bold text-ios-gray-1">截取第一帧</span>
+                                              <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  className="sr-only peer"
+                                                  checked={config.captureFirstFrameMyF1 ?? false}
+                                                  onChange={(e) => onConfigChange({ captureFirstFrameMyF1: e.target.checked })}
                                                 />
                                                 <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                                               </label>
@@ -475,7 +475,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                       );
                     })}
                   </div>
-                )}
               </div>
             </div>
           );

@@ -157,6 +157,12 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             loadImg(`/${focalAssetsDir}/icon_bg.png?v=${config.assetsVersion}`)
         ];
 
+        if (showMask && asset.maskUrl) {
+            loadList.push(loadImg(`${ASSETS_URL}${asset.maskUrl}`));
+        } else {
+            loadList.push(Promise.resolve(null));
+        }
+
         if (showBadge && asset.badgeOverlayUrl) {
             loadList.push(loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`));
         }
@@ -166,11 +172,14 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         const bg1 = loadedImages[1];
         const bg2 = loadedImages[2];
         const iconMask = loadedImages[3];
-        const badgeImg = loadedImages.length > 4 ? loadedImages[4] : null;
+        const maskImg = loadedImages[4];
+        const badgeImg = loadedImages.length > 5 ? loadedImages[5] : null;
 
+        const isWink = asset.app === 'wink';
+        const isMeiyan = asset.app === '美颜';
         // Correct target dimensions
-        const targetW = (showMask || !isImmersiveFocal) ? 1126 : 1440;
-        const targetH = showMask ? 2436 : (isImmersiveFocal ? 2340 : 900);
+        const targetW = showMask ? 1126 : (isImmersiveFocal ? 1440 : (isMeiyan ? 1284 : 1126));
+        const targetH = showMask ? (isWink ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
 
         canvas.width = targetW;
         canvas.height = targetH;
@@ -186,7 +195,11 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             const baseColor = asset.aiExtractedColor || '#FF00FF';
             const finalGradientColor = asset.gradientColor || getDerivedGradientColor(baseColor);
 
-            if (isImmersiveFocal) {
+            if ((isWink || isMeiyan) && maskImg) {
+                // Meiyan & Wink Focal Window: Image FIRST, then Mask (on top)
+                ctx.drawImage(mainImg, 0, 0, dw, dh);
+                ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+            } else if (isImmersiveFocal) {
                 ctx.drawImage(mainImg, 0, 0, dw, dh);
                 ctx.drawImage(bg2, 0, 0, targetW, targetH);
 
@@ -257,7 +270,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
                 // 沉浸式焦点视窗的角标是 object-cover object-top
                 drawImageCover(ctx, badgeImg, 0, 0, targetW, (badgeImg.naturalHeight / badgeImg.naturalWidth) * targetW);
             } else {
-                const bH = (showMask && isImmersiveFocal) ? 2436 : (showMask ? 900 : targetH);
+                const bH = (showMask && isImmersiveFocal) ? 2436 : ((showMask && !isWink) ? 900 : targetH);
                 drawImageContain(ctx, badgeImg, 0, 0, targetW, bH, 'top');
             }
         }

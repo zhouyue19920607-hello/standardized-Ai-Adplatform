@@ -245,16 +245,22 @@
     "app": "美颜",
     "category": "焦点视窗",
     "name": "动态焦点视窗",
-    "checked": false,
-    "dimensions": "1126 x 2436"
+    "checked": true,
+    "dimensions": "1284 x 1128",
+    "maskPath": "backend/storage/masks/1777270597630_______-____________.png",
+    "mask_path": "/static/masks/1777270597630_______-____________.png",
+    "maskUrl": "/static/masks/1777270597630_______-____________.png"
   },
   {
     "id": "my-f-2",
     "app": "美颜",
     "category": "焦点视窗",
     "name": "静态焦点视窗",
-    "checked": false,
-    "dimensions": "1126 x 900"
+    "checked": true,
+    "dimensions": "1284 x 1128",
+    "maskPath": "backend/storage/masks/1777270469489_______-____________.png",
+    "mask_path": "/static/masks/1777270469489_______-____________.png",
+    "maskUrl": "/static/masks/1777270469489_______-____________.png"
   },
   {
     "id": "my-f-3",
@@ -325,7 +331,10 @@
     "category": "焦点视窗",
     "name": "动态焦点视窗",
     "checked": true,
-    "dimensions": "1126 x 1410"
+    "dimensions": "1126 x 1410",
+    "maskPath": "backend/storage/masks/1777262149806_wink____________.png",
+    "mask_path": "/static/masks/1777262149806_wink____________.png",
+    "maskUrl": "/static/masks/1777262149806_wink____________.png"
   },
   {
     "id": "wk-f-2",
@@ -333,6 +342,9 @@
     "category": "焦点视窗",
     "name": "静态焦点视窗",
     "checked": true,
-    "dimensions": "1126 x 1410"
+    "dimensions": "1126 x 1410",
+    "maskPath": "backend/storage/masks/1777262153524_wink____________.png",
+    "mask_path": "/static/masks/1777262153524_wink____________.png",
+    "maskUrl": "/static/masks/1777262153524_wink____________.png"
   }
 ]

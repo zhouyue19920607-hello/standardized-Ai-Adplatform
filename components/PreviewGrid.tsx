@@ -61,7 +61,7 @@ const AdCard: React.FC<{
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
   const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
-    ? (asset.app === 'wink' ? '1126 / 1410' : '1126 / 2436')
+    ? (asset.app === 'wink' ? '1126 / 2438' : '1126 / 2436')
     : (localShowMask && asset.category === '开屏')
       ? '1440 / 2340'
       : asset.dimensions?.replace(' x ', ' / ') || '1080 / 1920';
@@ -195,7 +195,11 @@ const AdCard: React.FC<{
     <div className="bg-[#F4F5F7] group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-slate-200/60 rounded-[20px] pb-3 relative shadow-md">
       <div className="px-3 pt-3 pb-2 flex items-center justify-center bg-transparent shrink-0">
         {/* Dimension Text */}
-        <span className="text-[12px] text-slate-400 font-bold font-mono tracking-[0.1em] shrink min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-center">{asset.dimensions}</span>
+        <span className="text-[12px] text-slate-400 font-bold font-mono tracking-[0.1em] shrink min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-center">
+          {localShowMask && asset.category === '焦点视窗' 
+            ? (asset.app === 'wink' ? '1126 x 2438' : '1126 x 2436') 
+            : asset.dimensions}
+        </span>
       </div>
       <div
         className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"
@@ -245,8 +249,8 @@ const AdCard: React.FC<{
               </div>
             )}
 
-            {/* Focal Window Mask (Lower Layer - for transparent PNGs) */}
-            {localShowMask && (isStaticFocal || isImmersiveFocal) && asset.maskUrl && (
+            {/* Focal Window Mask (Lower Layer - for transparent PNGs like Meitu) */}
+            {localShowMask && (isStaticFocal || isImmersiveFocal) && asset.maskUrl && asset.app === '美图秀秀' && (
               <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
                 <img
                   src={`${ASSETS_URL}${asset.maskUrl}`}
@@ -275,8 +279,8 @@ const AdCard: React.FC<{
               </div>
             )}
 
-            {/* Standard Mask (Overlay Layer - for other categories including 开屏) */}
-            {localShowMask && effectiveMaskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || isStaticFocal || isImmersiveFocal) && (
+            {/* Standard Mask (Overlay Layer - for other categories including 开屏, plus Meiyan/Wink Focal Window) */}
+            {localShowMask && effectiveMaskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || (isStaticFocal && asset.app === '美图秀秀') || (isImmersiveFocal && asset.app === '美图秀秀')) && (
               <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${effectiveMaskUrl}`} className="w-full h-full object-contain" /></div>
             )}
 
@@ -602,7 +606,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
           <div
             className="relative flex items-center justify-center overflow-hidden shadow-2xl bg-white"
             style={{
-              aspectRatio: (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-p-') || selectedAsset.id.includes('mt-fe-'))) ? (selectedAsset.app === 'wink' ? '1126 / 1410' : '1126 / 2436') : (selectedAssetInfo.showMask && selectedAsset.category === '开屏') ? '1440 / 2340' : parseAspectRatio(selectedAsset.dimensions || '1080x1920'),
+              aspectRatio: (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.id.includes('mt-p-') || selectedAsset.id.includes('mt-fe-'))) ? (selectedAsset.app === 'wink' ? '1126 / 2438' : '1126 / 2436') : (selectedAssetInfo.showMask && selectedAsset.category === '开屏') ? '1440 / 2340' : parseAspectRatio(selectedAsset.dimensions || '1080x1920'),
               height: '92vh',
               containerType: 'size'
             }}
@@ -659,8 +663,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               </div>
             )}
 
-            {/* Modal: Focal Window Mask (Lower Layer - for transparent PNGs) */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && (selectedAsset.category === '焦点视窗') && (
+            {/* Modal: Focal Window Mask (Lower Layer - for transparent PNGs like Meitu) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && (selectedAsset.category === '焦点视窗') && selectedAsset.app === '美图秀秀' && (
               <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask bg" />
               </div>
@@ -692,8 +696,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               </div>
             )}
 
-            {/* Modal Overlays: Standard Mask Overlay */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1') || selectedAsset.category === '焦点视窗') && (
+            {/* Modal Overlays: Standard Mask Overlay (Top Layer - for Meiyan, Wink, and Splash) */}
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1') || (selectedAsset.category === '焦点视窗' && selectedAsset.app === '美图秀秀')) && (
               <div className="absolute inset-0 pointer-events-none z-20 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask" />
               </div>

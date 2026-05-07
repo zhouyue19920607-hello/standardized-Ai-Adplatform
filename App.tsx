@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
-import Sidebar from './components/Sidebar';
-import PreviewGrid from './components/PreviewGrid';
-import Footer from './components/Footer';
-import { AdTemplate, AdAsset, AdConfig, ColorScheme } from './types';
+import DashboardWorkspace from './components/DashboardWorkspace';
+import ConfigWorkspace from './components/ConfigWorkspace';
+import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
 import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, incrementTemplateUsage } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
@@ -13,13 +13,6 @@ import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
 import { compositeAsset } from './utils/assetCompositor';
 
 const HEADER_HEIGHT = 73;
-
-interface RawFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  thumbnailUrl?: string; // 用于视频首帧截图
-}
 
 // 浏览器端视频截图辅助函数 - Safari 兼容版
 const captureVideoFrame = (file: File, seekPoint: 'start' | 'end' = 'start'): Promise<string> => {
@@ -141,11 +134,11 @@ const App: React.FC = () => {
           const old = prev.find(p => p.id === tpl.id);
           return {
             ...tpl,
-            checked: old ? old.checked : false,
-            smartExtract: old ? old.smartExtract : false,
-            iconColor: old ? old.iconColor : '#FF00FF',
-            gradientColor: old ? old.gradientColor : '#FF6B6B',
-            palette: old ? old.palette : []
+            checked: old ? old.checked : tpl.checked,
+            smartExtract: old ? old.smartExtract : (tpl.smartExtract ?? true),
+            iconColor: old ? old.iconColor : (tpl.iconColor || '#FF00FF'),
+            gradientColor: old ? old.gradientColor : (tpl.gradientColor || '#FF6B6B'),
+            palette: old ? old.palette : (tpl.palette || [])
           };
         });
       });
@@ -258,6 +251,7 @@ const App: React.FC = () => {
   const ALLOWED_VIDEO_DIMENSIONS = [
     { width: 1126, height: 900 },
     { width: 1126, height: 1410 },
+    { width: 1284, height: 1128 },
     { width: 1440, height: 2340 },
     { width: 1440, height: 1938 },
   ];
@@ -463,7 +457,8 @@ const App: React.FC = () => {
         // category check
         const isSplash = template.category === '开屏';
         const isWink = template.app === 'wink';
-        const focalHeight = isWink ? 1410 : 900;
+        const isMeiyan = template.app === '美颜';
+        const focalHeight = isWink ? 1410 : (isMeiyan ? 1128 : 900);
 
         // Precise classification for Focal Windows
         const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
@@ -762,6 +757,30 @@ const App: React.FC = () => {
               console.error('[mt-f-1] Last frame capture failed, falling back to video', e);
               finalUrl = raw.previewUrl;
             }
+          }
+          // NOTE: my-f-1 美颜动态焦点视窗 + 开启「截取第一帧」→ 截取视频第一帧并合成为静态图
+          else if (template.id === 'my-f-1' && config.captureFirstFrameMyF1) {
+            try {
+              console.log(`[my-f-1] captureFirstFrameMyF1 enabled, capturing first frame...`);
+              let thumb = raw.thumbnailUrl;
+              if (!thumb) thumb = await captureVideoFrame(raw.file, 'start');
+              if (thumb) {
+                const resp = await fetch(thumb);
+                const blob = await resp.blob();
+                const forceJpeg = isSplash || template.category === '焦点视窗';
+                const frameFile = new File([blob], forceJpeg ? 'first_frame_myf1.jpg' : 'first_frame_myf1.png', { type: forceJpeg ? 'image/jpeg' : 'image/png' });
+                const smart = await smartCropImage(frameFile, 1284, focalHeight, 250);
+                if (smart?.url) {
+                  finalUrl = `${ASSETS_URL}${smart.url}`;
+                  console.log(`[my-f-1] First frame captured and cropped to 1284x${focalHeight}: ${finalUrl}`);
+                } else {
+                  finalUrl = thumb;
+                }
+              }
+            } catch (e) {
+              console.error('[my-f-1] First frame capture failed, falling back to video', e);
+              finalUrl = raw.previewUrl;
+            }
           } else {
             // Dynamic Focal stays as video (default)
             finalUrl = raw.previewUrl;
@@ -779,6 +798,8 @@ const App: React.FC = () => {
             if (isStaticFocal || isImmersive) return 'image/png';
             // NOTE: mt-f-1 截取最后一帧时，输出为静态图
             if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) return 'image/png';
+            // NOTE: my-f-1 截取第一帧时，输出为静态图
+            if (template.id === 'my-f-1' && config.captureFirstFrameMyF1) return 'image/png';
             if (isSplash && template.name.includes('动态') && config.captureFirstFrame) {
               return template.id === 'mt-s-1' ? 'image/jpeg' : 'image/png';
             }
@@ -796,9 +817,9 @@ const App: React.FC = () => {
           dimensions:
             (isSplash && raw.file.type.startsWith('image/')) ? (isNonFullscreenSplash ? '1440 x 1938' : '1440 x 2340') :
               (isImmersive && (raw.file.type.startsWith('image/') || true)) ? '1440 x 2340' :
-                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? `1126 x ${focalHeight}` :
+                (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? `${isMeiyan ? 1284 : 1126} x ${focalHeight}` :
                   // NOTE: 动态焦点视窗尺寸固定位 1126 x focalHeight
-                  (isDynamicFocal) ? `1126 x ${focalHeight}` :
+                  (isDynamicFocal) ? `${isMeiyan ? 1284 : 1126} x ${focalHeight}` :
                     ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
                       (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
                         (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
@@ -965,12 +986,43 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-brand-bg transition-colors duration-300">
+    <div className="min-h-screen bg-[#F8F9FB] selection:bg-primary/10 selection:text-primary">
       <Header onOpenAdmin={() => {
         setAdminPasswordInput('');
         setAdminPasswordError(false);
         setShowAdminPasswordModal(true);
       }} />
+
+      <Routes>
+        <Route path="/config" element={<ConfigWorkspace />} />
+        <Route path="/" element={
+          <DashboardWorkspace
+            t={t}
+            templates={templates}
+            config={config}
+            rawFiles={rawFiles}
+            processedAssets={processedAssets}
+            isProcessing={isProcessing}
+            isDragging={isDragging}
+            isCollapsed={isCollapsed}
+            generationProgress={generationProgress}
+            fileInputRef={fileInputRef}
+            handleTemplateToggle={handleTemplateToggle}
+            handleConfigChange={handleConfigChange}
+            handleTemplateUpdate={handleTemplateUpdate}
+            handleGenerate={handleGenerate}
+            handleFileUpload={handleFileUpload}
+            handleDragOver={handleDragOver}
+            handleDragLeave={handleDragLeave}
+            handleDrop={handleDrop}
+            removeRawFile={removeRawFile}
+            setRawFiles={setRawFiles}
+            setProcessedAssets={setProcessedAssets}
+            handleUpdateAsset={handleUpdateAsset}
+            handleBatchDownload={handleBatchDownload}
+          />
+        } />
+      </Routes>
 
       {/* NOTE: 后台密码验证弹窗 */}
       {showAdminPasswordModal && (
@@ -1000,7 +1052,6 @@ const App: React.FC = () => {
               onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(false); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  // NOTE: 密码为一个空格字符
                   if (adminPasswordInput === ' ') {
                     setShowAdminPasswordModal(false);
                     setShowAdmin(true);
@@ -1038,219 +1089,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-
-      <main className="flex-1 w-full flex">
-        <Sidebar
-          templates={templates}
-          config={config}
-          onTemplateToggle={handleTemplateToggle}
-          onConfigChange={handleConfigChange}
-          onTemplateUpdate={handleTemplateUpdate}
-          activeCount={rawFiles.length}
-          onGenerate={handleGenerate}
-          isProcessing={isProcessing}
-          generationProgress={generationProgress}
-        />
-
-        <div className="flex-1 flex flex-col relative">
-          {/* Raw Assets & Upload Section */}
-          <section
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[260px] overflow-y-auto custom-scrollbar'}`}
-          >
-            {/* Contextual Drag Overlay - Minimal */}
-            {isDragging && !isCollapsed && (
-              <div className="absolute inset-x-6 top-6 bottom-4 z-[60] pointer-events-none flex items-center justify-center animate-in fade-in duration-300">
-                {/* Simple backdrop */}
-                <div className="absolute inset-0 bg-primary/5 backdrop-blur-sm rounded-[32px]"></div>
-
-                {/* Minimal text card */}
-                <div className="relative bg-white px-8 py-4 rounded-xl shadow-lg border border-slate-200">
-                  <p className="text-lg font-semibold text-slate-700">
-                    {t('main.releaseToUpload')}
-                  </p>
-                </div>
-              </div>
-            )}
-            {rawFiles.length === 0 ? (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="group relative flex flex-col items-center justify-center border-2 border-dashed border-white/20 bg-white/10 hover:bg-white/20 rounded-[32px] p-12 transition-all cursor-pointer shadow-inner liquid-glass"
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  multiple
-                  accept=".jpg,.jpeg,.png,.webp,.mp4"
-                  onChange={handleFileUpload}
-                />
-                <div className="mb-4 h-16 w-16 liquid-glass flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                  <span className="material-symbols-outlined text-4xl">cloud_upload</span>
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 shadow-sm">{t('main.startCreation')}</h3>
-                <p className="text-slate-500 text-xs mt-1 font-semibold text-center">{t('main.uploadHint')}</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{t('main.pendingAssets')} ({rawFiles.length})</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] font-bold text-primary bg-white px-4 py-2 rounded-full shadow-ios hover:bg-slate-50 transition-all active:scale-95"
-                    >
-                      {t('main.addMore')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setRawFiles([]);
-                        setProcessedAssets([]);
-                      }}
-                      className="text-[11px] font-bold text-red-500 bg-white px-4 py-2 rounded-full shadow-ios hover:bg-red-50 transition-all active:scale-95"
-                    >
-                      {t('main.clearAll')}
-                    </button>
-                  </div>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    multiple
-                    accept=".jpg,.jpeg,.png,.webp,.mp4"
-                    onChange={handleFileUpload}
-                  />
-                </div>
-                <div className={`grid gap-5 pb-2 transition-all duration-400 ${isCollapsed ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 opacity-60' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5'}`}>
-                  {rawFiles.map(raw => (
-                    <div key={raw.id} className={`liquid-glass relative group p-1 transition-all lens-effect ${isCollapsed ? 'scale-90 hover:scale-100' : ''}`}>
-                      <div className={`relative bg-slate-100 flex items-center justify-center overflow-hidden rounded-[16px] ${isCollapsed ? 'aspect-square' : 'aspect-[4/3]'}`}>
-                        {raw.file.type.startsWith('video/') ? (
-                          <div className="w-full h-full flex items-center justify-center bg-slate-900">
-                            {raw.thumbnailUrl ? (
-                              <img src={raw.thumbnailUrl} className="w-full h-full object-contain opacity-60" alt="thumb" />
-                            ) : (
-                              <span className="material-symbols-outlined text-white/50 text-3xl">play_circle</span>
-                            )}
-                            <span className="absolute material-symbols-outlined text-white text-3xl">play_circle</span>
-                          </div>
-                        ) : (
-                          <img
-                            src={raw.previewUrl}
-                            className="w-full h-full object-contain"
-                            alt="raw"
-                          />
-                        )}
-                        <button
-                          onClick={() => removeRawFile(raw.id)}
-                          className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md"
-                        >
-                          <span className="material-symbols-outlined text-sm">close</span>
-                        </button>
-                      </div>
-                      {!isCollapsed && (
-                        <div className="p-3">
-                          <p className="text-[10px] text-slate-700 truncate font-bold">{raw.file.name}</p>
-                          <p className="text-[9px] text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* Sticky Controller Header */}
-          <div className="px-6 pt-6 pb-3 sticky top-[76px] z-30 pointer-events-none transition-all duration-300">
-            <div className="flex items-center justify-between px-6 py-4 liquid-glass border border-white/30 shadow-sm pointer-events-auto">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 liquid-glass flex items-center justify-center text-primary shadow-inner">
-                    <span className="material-symbols-outlined text-[24px]">grid_view</span>
-                  </div>
-                  <h2 className="text-base font-bold text-slate-800">生成预览</h2>
-                </div>
-                {processedAssets.length > 0 && !isProcessing && (
-                  <span className="text-xs font-bold text-primary bg-primary/20 backdrop-blur-md border border-primary/30 px-3 py-1 rounded-full">
-                    {processedAssets.length} 份匹配资产
-                  </span>
-                )}
-                {isProcessing && generationProgress && (
-                  <span className="text-xs font-bold text-blue-500 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                    <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
-                    生成中 {generationProgress.current} / {generationProgress.total}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
-                  <span className="text-[11px] font-bold text-slate-500">全显遮罩</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={config.showMask}
-                      onChange={() => handleConfigChange({ showMask: !config.showMask })}
-                    />
-                    <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
-                  <span className="text-[11px] font-bold text-slate-500">全显裁剪</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={config.showCrop}
-                      onChange={() => handleConfigChange({ showCrop: !config.showCrop })}
-                    />
-                    <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
-                  </label>
-                </div>
-
-                {processedAssets.length > 0 && (
-                  <button
-                    onClick={() => setProcessedAssets([])}
-                    className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/50 border border-black/5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                    title="清空"
-                  >
-                    <span className="material-symbols-outlined text-[22px]">delete_sweep</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Processed Previews Section */}
-          <div className="w-full pb-24 relative">
-            <PreviewGrid
-              assets={processedAssets}
-              config={config}
-              onClear={() => setProcessedAssets([])}
-              onToggleMask={() => handleConfigChange({ showMask: !config.showMask })}
-              onUpdateAsset={handleUpdateAsset}
-              isGenerating={isProcessing}
-            />
-          </div>
-        </div>
-      </main >
-
-      <Footer
-        selectedCount={templates.filter(tpl => tpl.checked).length}
-        assetCount={processedAssets.length}
-        onDownload={handleBatchDownload}
-      />
-
-
       {showAdmin && <AdminDashboard onClose={() => { setShowAdmin(false); loadTemplates(); }} />}
-    </div >
+    </div>
   );
 };
 

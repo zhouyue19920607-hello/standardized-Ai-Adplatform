@@ -363,7 +363,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 onChange={(e) => setNewTemplate(prev => ({ ...prev, app: e.target.value }))}
                                             >
                                                 <option>美图秀秀</option>
-                                                <option disabled value="美颜">美颜 (待开放)</option>
+                                                <option value="美颜">美颜</option>
                                                 <option value="wink">wink</option>
                                             </select>
                                         </div>
@@ -422,9 +422,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 {filteredTemplates.map(tpl => {
                                     const duplicate = isDuplicate(tpl);
                                     // NOTE: 美颜/wink 开屏模板允许上传蒙版（三平台开屏功能需要），仅其他美颜模板保持禁用
-                                    const isDisabled = tpl.app === '美颜' && tpl.category !== '开屏';
+                                    const isDisabled = false; // Meiyan enabled
                                     // NOTE: 允许美颜/wink 开屏模板操作蒙版，但禁止其他字段编辑
-                                    const isMaskOnlyEditable = (tpl.app === '美颜' || tpl.app === 'wink') && tpl.category === '开屏';
+                                    const isMaskOnlyEditable = (tpl.app === '美颜' || tpl.app === 'wink') && tpl.category === '开屏' && false; // Allowed all edits for Meiyan
                                     return (
                                         <div
                                             key={tpl.id}

@@ -64,7 +64,16 @@ export interface AdConfig {
   showCrop: boolean;
   splashText: string;
   captureFirstFrame: boolean;
+  // NOTE: my-f-1 美颜动态焦点视窗专属：是否截取视频第一帧作为静态图输出
+  captureFirstFrameMyF1?: boolean;
   // NOTE: mt-f-1 动态焦点视窗专属：是否截取视频最后一帧作为静态图输出
   captureLastFrameMtF1: boolean;
   assetsVersion: number;
+}
+
+export interface RawFile {
+  id: string;
+  file: File;
+  previewUrl: string;
+  thumbnailUrl?: string;
 }
