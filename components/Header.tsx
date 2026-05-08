@@ -15,9 +15,9 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
     <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
       <div className="flex items-center justify-between">
         <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
-          <div className={`bg-primary p-2 rounded-ios shadow-ios transition-transform duration-500 ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
-            <span className="material-symbols-outlined text-white text-2xl">
-              {isConfigPage ? 'settings_backup_restore' : 'auto_fix_high'}
+          <div className={`bg-primary p-2 rounded-[10px] shadow-ios transition-transform duration-500 ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
+            <span className="material-symbols-outlined text-white text-2xl animate-eye-look">
+              visibility
             </span>
           </div>
           <div>

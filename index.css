@@ -102,3 +102,24 @@ body {
   background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.5) 50%, transparent 100%);
   background-size: 200% 100%;
 }
+/* Eye Look Around Animation (3D Depth) */
+@keyframes eye-look-around {
+  0%, 100% { 
+    transform: perspective(500px) rotateY(0deg) translateX(0); 
+  }
+  20%, 40% { 
+    transform: perspective(500px) rotateY(-20deg) translateX(-2px); 
+  }
+  50% { 
+    transform: perspective(500px) rotateY(0deg) translateX(0); 
+  }
+  70%, 90% { 
+    transform: perspective(500px) rotateY(20deg) translateX(2px); 
+  }
+}
+
+.animate-eye-look {
+  animation: eye-look-around 5s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  display: inline-block;
+  transform-style: preserve-3d;
+}

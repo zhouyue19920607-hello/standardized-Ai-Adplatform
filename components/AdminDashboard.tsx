@@ -417,175 +417,188 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 ))}
                             </div>
 
-                            {/* Templates Row Layout */}
-                            <div className="flex flex-col gap-4 pb-20 px-2">
-                                {filteredTemplates.map(tpl => {
-                                    const duplicate = isDuplicate(tpl);
-                                    // NOTE: 美颜/wink 开屏模板允许上传蒙版（三平台开屏功能需要），仅其他美颜模板保持禁用
-                                    const isDisabled = false; // Meiyan enabled
-                                    // NOTE: 允许美颜/wink 开屏模板操作蒙版，但禁止其他字段编辑
-                                    const isMaskOnlyEditable = (tpl.app === '美颜' || tpl.app === 'wink') && tpl.category === '开屏' && false; // Allowed all edits for Meiyan
-                                    return (
-                                        <div
-                                            key={tpl.id}
-                                            draggable={!isDisabled && !isMaskOnlyEditable}
-                                            onDragStart={(e) => !isDisabled && !isMaskOnlyEditable && handleDragStart(e, tpl.id)}
-                                            onDragEnd={handleDragEnd}
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) => !isDisabled && !isMaskOnlyEditable && handleDrop(e, tpl.id)}
-                                            className={`bg-white rounded-xl border shadow-sm flex items-center gap-4 p-3 pr-6 relative group transition-all duration-200
-                                                ${duplicate ? 'border-red-300 bg-red-50/10' : isDisabled ? 'border-slate-100 bg-slate-50 opacity-60 grayscale' : isMaskOnlyEditable ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 hover:border-indigo-200'}
-                                                ${draggedId === tpl.id ? 'opacity-40 border-dashed border-indigo-400' : ''}
-                                            `}
-                                        >
-                                            {/* Disabled Overlay */}
-                                            {isDisabled && <div className="absolute inset-0 z-20 cursor-not-allowed" title="该应用暂不支持配置"></div>}
-                                            {/* Mask-only overlay: block clicks except on mask upload */}
-                                            {isMaskOnlyEditable && <div className="absolute inset-0 z-10 cursor-default pointer-events-none" />}
-
-                                            {/* Duplicate Warning Indicator */}
-                                            {duplicate && (
-                                                <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] px-1.5 rounded-br-lg z-10" title="重复配置">
-                                                    !
-                                                </div>
-                                            )}
-
-                                            {/* 1. Drag Handle & App Badge */}
-                                            <div className="flex items-center gap-3 pl-2">
-                                                <span className="material-symbols-outlined text-slate-300 cursor-move hover:text-indigo-400" title="Drag to reorder">drag_indicator</span>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${tpl.app === '美图秀秀' ? 'bg-pink-50 text-pink-600 border-pink-100' :
-                                                    tpl.app === '美颜' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                                        'bg-purple-50 text-purple-600 border-purple-100'
-                                                    }`}>
-                                                    {tpl.app}
+                            {/* Templates Grouped by Category */}
+                            <div className="pb-20">
+                                {Object.entries(
+                                    filteredTemplates.reduce((acc, tpl) => {
+                                        const cat = tpl.category || '未分类';
+                                        if (!acc[cat]) acc[cat] = [];
+                                        acc[cat].push(tpl);
+                                        return acc;
+                                    }, {} as Record<string, AdTemplate[]>)
+                                ).sort(([a], [b]) => {
+                                    // Always put "开屏" at the top
+                                    if (a === '开屏') return -1;
+                                    if (b === '开屏') return 1;
+                                    return a.localeCompare(b);
+                                }).map(([category, items]) => (
+                                    <div key={category} className="mb-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                        <div className="flex items-center gap-3 mb-6 px-2">
+                                            <div className="h-8 w-1.5 bg-indigo-600 rounded-full shadow-sm shadow-indigo-500/20"></div>
+                                            <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                                {category}
+                                                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                    {items.length}
                                                 </span>
-                                            </div>
-
-                                            {/* 2. Name & Category */}
-                                            <div className="flex flex-col gap-1 w-48">
-                                                <input
-                                                    className="bg-transparent border-none p-0 text-sm font-bold text-slate-800 focus:ring-0 w-full hover:text-indigo-600 transition-colors"
-                                                    defaultValue={tpl.name}
-                                                    onBlur={(e) => handleUpdateField(tpl.id, 'name', e.target.value)}
-                                                    placeholder="模板名称"
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-[10px] text-slate-500 bg-slate-100 px-1.5 rounded flex items-center gap-1">
-                                                        <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-                                                        {tpl.category}
-                                                    </div>
-                                                    <div className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 rounded flex items-center gap-1 font-medium" title="累积处理图片数">
-                                                        <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
-                                                        {tpl.processedCount || 0}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* 3. Dimensions */}
-                                            <div className="w-24">
-                                                <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">尺寸</label>
-                                                <input
-                                                    className="w-full bg-slate-50 border-slate-100 rounded px-2 py-1 text-xs font-mono text-slate-600 focus:ring-1 focus:ring-indigo-500 border-none"
-                                                    defaultValue={tpl.dimensions || ''}
-                                                    onBlur={(e) => handleUpdateField(tpl.id, 'dimensions', e.target.value)}
-                                                    placeholder="W x H"
-                                                />
-                                            </div>
-
-                                            {/* Divider */}
-                                            <div className="h-8 w-[1px] bg-slate-100"></div>
-
-                                            {/* 4. Assets (Inline) */}
-                                            <div className="flex items-center gap-3 flex-1">
-                                                {/* Asset: Mask */}
-                                                <div className="relative group/asset">
-                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                        {tpl.mask_path ? (
-                                                            <img src={`${ASSETS_URL}${tpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Mask" />
-                                                        ) : (
-                                                            <span className="material-symbols-outlined text-slate-300 text-sm">texture</span>
-                                                        )}
-                                                        {/* NOTE: isMaskOnlyEditable 时使用 z-30 突破覆盖层，允许上传 */}
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            className={`absolute inset-0 opacity-0 cursor-pointer ${isMaskOnlyEditable ? 'z-30' : ''}`}
-                                                            onChange={(e) => e.target.files?.[0] && handleMaskUpload(tpl.id, e.target.files[0])}
-                                                            title="Upload Mask"
-                                                        />
-                                                    </div>
-                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">蒙版</span>
-                                                </div>
-
-                                                {/* Asset: Crop (Splash Only) */}
-                                                {(tpl.category === '开屏') && (
-                                                    <div className="relative group/asset">
-                                                        <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                            {tpl.crop_overlay_path ? (
-                                                                <img src={`${ASSETS_URL}${tpl.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
-                                                            ) : (
-                                                                <span className="material-symbols-outlined text-slate-300 text-sm">crop</span>
-                                                            )}
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                onChange={(e) => e.target.files?.[0] && handleCropOverlayUpload(tpl.id, e.target.files[0])}
-                                                                title="Upload Crop Overlay"
-                                                            />
-                                                        </div>
-                                                        <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">裁剪</span>
-                                                    </div>
-                                                )}
-
-                                                {/* Asset: Badge (Focal or icon/banner or 弹窗 or 信息流) */}
-                                                {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
-                                                    <div className="relative group/asset">
-                                                        <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
-                                                            {tpl.badge_overlay_path ? (
-                                                                <img src={`${ASSETS_URL}${tpl.badge_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Badge" />
-                                                            ) : (
-                                                                <span className="material-symbols-outlined text-slate-300 text-sm">verified</span>
-                                                            )}
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                onChange={(e) => e.target.files?.[0] && handleBadgeOverlayUpload(tpl.id, e.target.files[0])}
-                                                                title="Upload Badge"
-                                                            />
-                                                        </div>
-                                                        <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">角标</span>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* 5. Workflow */}
-                                            <div className="w-48">
-                                                <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">ComfyUI 工作流</label>
-                                                <select
-                                                    className="w-full bg-slate-50 border-none rounded text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-1 pl-2 pr-6 cursor-pointer hover:bg-slate-100 transition-colors"
-                                                    value={tpl.workflow_id || ''}
-                                                    onChange={(e) => handleUpdateField(tpl.id, 'workflow_id', e.target.value)}
-                                                >
-                                                    <option value="">选择工作流...</option>
-                                                    {workflows.map(wf => (
-                                                        <option key={wf.id} value={wf.id}>{wf.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* 6. Delete Action */}
-                                            <button
-                                                onClick={() => handleDeleteTemplate(tpl.id)}
-                                                className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90 ml-auto"
-                                                title="Delete Template"
-                                            >
-                                                <span className="material-symbols-outlined text-lg">delete</span>
-                                            </button>
+                                            </h3>
                                         </div>
-                                    );
-                                })}
+                                        <div className="flex flex-col gap-4 px-2">
+                                            {items.map(tpl => {
+                                                const duplicate = isDuplicate(tpl);
+                                                const isDisabled = false;
+                                                const isMaskOnlyEditable = (tpl.app === '美颜' || tpl.app === 'wink') && tpl.category === '开屏' && false;
+                                                return (
+                                                    <div
+                                                        key={tpl.id}
+                                                        draggable={!isDisabled && !isMaskOnlyEditable}
+                                                        onDragStart={(e) => !isDisabled && !isMaskOnlyEditable && handleDragStart(e, tpl.id)}
+                                                        onDragEnd={handleDragEnd}
+                                                        onDragOver={handleDragOver}
+                                                        onDrop={(e) => !isDisabled && !isMaskOnlyEditable && handleDrop(e, tpl.id)}
+                                                        className={`bg-white rounded-xl border shadow-sm flex items-center gap-4 p-3 pr-6 relative group transition-all duration-200
+                                                            ${duplicate ? 'border-red-300 bg-red-50/10' : isDisabled ? 'border-slate-100 bg-slate-50 opacity-60 grayscale' : isMaskOnlyEditable ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 hover:border-indigo-200'}
+                                                            ${draggedId === tpl.id ? 'opacity-40 border-dashed border-indigo-400' : ''}
+                                                        `}
+                                                    >
+                                                        {/* Disabled Overlay */}
+                                                        {isDisabled && <div className="absolute inset-0 z-20 cursor-not-allowed" title="该应用暂不支持配置"></div>}
+                                                        {/* Mask-only overlay */}
+                                                        {isMaskOnlyEditable && <div className="absolute inset-0 z-10 cursor-default pointer-events-none" />}
+
+                                                        {/* Duplicate Warning */}
+                                                        {duplicate && (
+                                                            <div className="absolute top-0 left-0 bg-red-500 text-white text-[10px] px-1.5 rounded-br-lg z-10" title="重复配置">!</div>
+                                                        )}
+
+                                                        {/* 1. Drag & App Badge */}
+                                                        <div className="flex items-center gap-3 pl-2">
+                                                            <span className="material-symbols-outlined text-slate-300 cursor-move hover:text-indigo-400" title="Drag to reorder">drag_indicator</span>
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${tpl.app === '美图秀秀' ? 'bg-pink-50 text-pink-600 border-pink-100' :
+                                                                tpl.app === '美颜' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                                                    'bg-purple-50 text-purple-600 border-purple-100'
+                                                                }`}>
+                                                                {tpl.app}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* 2. Name & Info */}
+                                                        <div className="flex flex-col gap-1 w-48">
+                                                            <input
+                                                                className="bg-transparent border-none p-0 text-sm font-bold text-slate-800 focus:ring-0 w-full hover:text-indigo-600 transition-colors"
+                                                                defaultValue={tpl.name}
+                                                                onBlur={(e) => handleUpdateField(tpl.id, 'name', e.target.value)}
+                                                                placeholder="模板名称"
+                                                            />
+                                                            <div className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 rounded w-fit flex items-center gap-1 font-medium" title="累积处理图片数">
+                                                                <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                                                                {tpl.processedCount || 0}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* 3. Dimensions */}
+                                                        <div className="w-24">
+                                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">尺寸</label>
+                                                            <input
+                                                                className="w-full bg-slate-50 border-slate-100 rounded px-2 py-1 text-xs font-mono text-slate-600 focus:ring-1 focus:ring-indigo-500 border-none"
+                                                                defaultValue={tpl.dimensions || ''}
+                                                                onBlur={(e) => handleUpdateField(tpl.id, 'dimensions', e.target.value)}
+                                                                placeholder="W x H"
+                                                            />
+                                                        </div>
+
+                                                        {/* Divider */}
+                                                        <div className="h-8 w-[1px] bg-slate-100"></div>
+
+                                                        {/* 4. Assets */}
+                                                        <div className="flex items-center gap-3 flex-1">
+                                                            <div className="relative group/asset">
+                                                                <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                    {tpl.mask_path ? (
+                                                                        <img src={`${ASSETS_URL}${tpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Mask" />
+                                                                    ) : (
+                                                                        <span className="material-symbols-outlined text-slate-300 text-sm">texture</span>
+                                                                    )}
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        className={`absolute inset-0 opacity-0 cursor-pointer ${isMaskOnlyEditable ? 'z-30' : ''}`}
+                                                                        onChange={(e) => e.target.files?.[0] && handleMaskUpload(tpl.id, e.target.files[0])}
+                                                                        title="Upload Mask"
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">蒙版</span>
+                                                            </div>
+
+                                                            {(tpl.category === '开屏') && (
+                                                                <div className="relative group/asset">
+                                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                        {tpl.crop_overlay_path ? (
+                                                                            <img src={`${ASSETS_URL}${tpl.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
+                                                                        ) : (
+                                                                            <span className="material-symbols-outlined text-slate-300 text-sm">crop</span>
+                                                                        )}
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                            onChange={(e) => e.target.files?.[0] && handleCropOverlayUpload(tpl.id, e.target.files[0])}
+                                                                            title="Upload Crop Overlay"
+                                                                        />
+                                                                    </div>
+                                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">裁剪</span>
+                                                                </div>
+                                                            )}
+
+                                                            {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
+                                                                <div className="relative group/asset">
+                                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                        {tpl.badge_overlay_path ? (
+                                                                            <img src={`${ASSETS_URL}${tpl.badge_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Badge" />
+                                                                        ) : (
+                                                                            <span className="material-symbols-outlined text-slate-300 text-sm">verified</span>
+                                                                        )}
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                            onChange={(e) => e.target.files?.[0] && handleBadgeOverlayUpload(tpl.id, e.target.files[0])}
+                                                                            title="Upload Badge"
+                                                                        />
+                                                                    </div>
+                                                                    <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">角标</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 5. Workflow */}
+                                                        <div className="w-48">
+                                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">ComfyUI 工作流</label>
+                                                            <select
+                                                                className="w-full bg-slate-50 border-none rounded text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-1 pl-2 pr-6 cursor-pointer hover:bg-slate-100 transition-colors"
+                                                                value={tpl.workflow_id || ''}
+                                                                onChange={(e) => handleUpdateField(tpl.id, 'workflow_id', e.target.value)}
+                                                            >
+                                                                <option value="">选择工作流...</option>
+                                                                {workflows.map(wf => (
+                                                                    <option key={wf.id} value={wf.id}>{wf.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+
+                                                        {/* 6. Delete Action */}
+                                                        <button
+                                                            onClick={() => handleDeleteTemplate(tpl.id)}
+                                                            className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90 ml-auto"
+                                                            title="Delete Template"
+                                                        >
+                                                            <span className="material-symbols-outlined text-lg">delete</span>
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     ) : null}
