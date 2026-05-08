@@ -1,8 +1,8 @@
 export const translations = {
     zh: {
         header: {
-            title: "标准化自动看板",
-            subtitle: "美图秀秀品牌营销自定义看板",
+            title: "标准化素材看板",
+            subtitle: "自定义模版",
             guide: "使用指南",
             admin: "后台管理",
         },

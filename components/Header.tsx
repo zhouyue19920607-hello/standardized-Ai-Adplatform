@@ -37,18 +37,6 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
             <span className="material-symbols-outlined text-[16px]">translate</span>
             {language === 'zh' ? 'EN' : '中'}
           </button>
-          <div className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer hover:text-primary transition-all group">
-            <span className="material-symbols-outlined text-lg group-hover:scale-110 transition-transform">help_outline</span>
-            <span className="font-semibold">{t('header.guide')}</span>
-          </div>
-          <div className="h-8 w-8 rounded-full border border-black/5 overflow-hidden cursor-pointer hover:shadow-ios transition-all">
-            <img
-              alt="Avatar"
-              className="w-full h-full object-cover"
-              src="https://picsum.photos/seed/user123/100/100"
-            />
-          </div>
-          <div className="w-px h-6 bg-slate-200 ml-2"></div>
           <button
             onClick={onOpenAdmin}
             className="h-9 w-9 flex items-center justify-center rounded-full bg-white/50 hover:bg-white text-slate-600 hover:text-primary transition-all border border-black/5 shadow-ios active:scale-95"
