@@ -140,8 +140,12 @@ const AdCard: React.FC<{
         const videoResp = await fetch(asset.url);
         const videoBlob = await videoResp.blob();
 
+        const shouldLimitMeituFocalVideo = asset.app === '美图秀秀' && asset.category === '焦点视窗';
         const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
-          targetW: params.targetW, targetH: params.targetH, videoRect: params.videoRect
+          targetW: params.targetW,
+          targetH: params.targetH,
+          videoRect: params.videoRect,
+          ...(shouldLimitMeituFocalVideo ? { maxSizeMB: 10 } : {})
         });
 
         if (result.ok && result.url) {

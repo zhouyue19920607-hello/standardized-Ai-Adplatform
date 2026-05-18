@@ -116,6 +116,25 @@ export interface SystemSettings {
     tongyiExpandPrompt?: string;
 }
 
+export interface CreativeTemplateSettings {
+    interactionType: 'bubble-slide' | 'twist' | 'up-slide';
+    cropAreaEnabled: boolean;
+    platforms: Array<'xiuxiu' | 'meiyan' | 'wink'>;
+}
+
+export interface CreativeTemplateItem {
+    id: string;
+    groupId: string;
+    groupName: string;
+    name: string;
+    dimensions: string;
+    enabled: boolean;
+}
+
+export interface CreativeBoardSettings {
+    creativeTemplateSettings: CreativeTemplateSettings;
+}
+
 export const getSettings = async (): Promise<SystemSettings> => {
     const response = await api.get<SystemSettings>('/settings');
     return response.data;
@@ -123,6 +142,25 @@ export const getSettings = async (): Promise<SystemSettings> => {
 
 export const updateSettings = async (settings: Partial<SystemSettings>): Promise<void> => {
     await api.put('/settings', settings);
+};
+
+export const getCreativeSettings = async (): Promise<CreativeBoardSettings> => {
+    const response = await api.get<CreativeBoardSettings>('/creative-settings');
+    return response.data;
+};
+
+export const updateCreativeSettings = async (settings: Partial<CreativeBoardSettings>): Promise<void> => {
+    await api.put('/creative-settings', settings);
+};
+
+export const getCreativeTemplates = async (): Promise<CreativeTemplateItem[]> => {
+    const response = await api.get<CreativeTemplateItem[]>('/creative-templates');
+    return response.data;
+};
+
+export const updateCreativeTemplate = async (id: string, data: Partial<CreativeTemplateItem>): Promise<CreativeTemplateItem> => {
+    const response = await api.put<CreativeTemplateItem>(`/creative-templates/${id}`, data);
+    return response.data;
 };
 
 /**
@@ -164,7 +202,7 @@ export const compositeVideo = async (
     videoBlob: Blob,
     bgBlob: Blob | null,
     fgBlob: Blob | null,
-    params: { targetW: number, targetH: number, videoRect: { x: number, y: number, w: number, h: number } }
+    params: { targetW: number, targetH: number, videoRect: { x: number, y: number, w: number, h: number }, maxSizeMB?: number }
 ): Promise<any> => {
     const formData = new FormData();
     formData.append('video', videoBlob, 'source.mp4');

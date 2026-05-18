@@ -50,12 +50,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [templates.length]);
 
   return (
-    <aside className="w-[340px] sticky top-24 h-[calc(100vh-180px)] flex flex-col liquid-glass ml-4 my-4 shrink-0 overflow-hidden shadow-2xl z-50">
+    <aside className="h-full flex flex-col overflow-hidden">
       <div className="px-6 py-4 shrink-0 flex items-center">
         <p className="text-sm text-slate-900 font-bold">{t('sidebar.selectCat')}</p>
       </div>
 
-      <div className="flex-1 p-3 space-y-6 overflow-y-auto custom-scrollbar pb-24">
+      <div className="flex-1 min-h-0 p-3 space-y-6 overflow-y-auto custom-scrollbar pb-32">
 
         {/* ===== 三平台开屏模版（以秀秀为代表，去重显示，生成时自动带三平台蒙版）===== */}
         {meituSplashTemplates.length > 0 && (() => {
@@ -481,7 +481,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-transparent pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white/85 via-white/55 to-transparent pointer-events-none">
         <div className="ios-glass p-2 rounded-ios shadow-ios-lg pointer-events-auto">
           <button
             onClick={onGenerate}

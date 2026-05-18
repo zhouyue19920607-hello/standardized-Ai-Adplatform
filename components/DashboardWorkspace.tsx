@@ -59,7 +59,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
         <>
             <main className="flex pt-6 px-6 gap-6 transition-all duration-500">
                 {/* Left Sidebar */}
-                <aside className="w-[340px] sticky top-[97px] h-[calc(100vh-120px)] transition-all duration-300">
+                <aside className="w-[340px] sticky top-[97px] h-[calc(100vh-170px)] transition-all duration-300">
                     <div className="h-full liquid-glass rounded-[2rem] border border-white/20 shadow-xl overflow-hidden flex flex-col">
                         <Sidebar
                             templates={templates}

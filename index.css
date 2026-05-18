@@ -123,3 +123,74 @@ body {
   display: inline-block;
   transform-style: preserve-3d;
 }
+
+@keyframes dynamic-splash-rise {
+  0% {
+    transform: translateY(-90%);
+  }
+
+  100% {
+    transform: translateY(190%);
+  }
+}
+
+.animate-dynamic-splash-rise {
+  animation: dynamic-splash-rise 5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes dynamic-splash-float {
+  0% {
+    transform: translateY(-80%);
+  }
+
+  50% {
+    transform: translateY(48%);
+  }
+
+  100% {
+    transform: translateY(190%);
+  }
+}
+
+.animate-dynamic-splash-float {
+  animation: dynamic-splash-float 5s ease-in-out infinite;
+}
+
+@keyframes dynamic-splash-twist {
+  0% {
+    opacity: 0;
+    transform: translateY(-80%) scale(0.94) rotate(-10deg);
+  }
+
+  35% {
+    opacity: 1;
+    transform: translateY(20%) scale(1.04) rotate(8deg);
+  }
+
+  70% {
+    transform: translateY(112%) scale(0.98) rotate(-4deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(190%) scale(1) rotate(0deg);
+  }
+}
+
+.animate-dynamic-splash-twist {
+  animation: dynamic-splash-twist 5s ease-out infinite;
+}
+
+@keyframes pendant-group-drop {
+  0% {
+    transform: translateY(var(--pendant-group-start));
+  }
+
+  100% {
+    transform: translateY(var(--pendant-group-end));
+  }
+}
+
+.animate-pendant-group-drop {
+  animation: pendant-group-drop 5s linear infinite;
+}

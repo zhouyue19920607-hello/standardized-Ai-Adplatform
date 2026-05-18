@@ -15,17 +15,17 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
     <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
       <div className="flex items-center justify-between">
         <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
-          <div className={`bg-primary p-2 rounded-[10px] shadow-ios transition-transform duration-500 ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
+          <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
             <span className="material-symbols-outlined text-white text-2xl animate-eye-look">
               visibility
             </span>
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-900">
-              {isConfigPage ? '高级配置中心' : t('header.title')}
+              {isConfigPage ? '创新形式标准素材看板' : t('header.title')}
             </h1>
             <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-              {isConfigPage ? 'SYSTEM CONFIGURATION' : t('header.subtitle')}
+              {isConfigPage ? '自定义模版' : t('header.subtitle')}
             </p>
           </div>
         </Link>

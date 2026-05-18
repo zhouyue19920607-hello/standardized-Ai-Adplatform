@@ -1,0 +1,11 @@
+{
+  "creativeTemplateSettings": {
+    "interactionType": "bubble-slide",
+    "cropAreaEnabled": true,
+    "platforms": [
+      "xiuxiu",
+      "meiyan",
+      "wink"
+    ]
+  }
+}

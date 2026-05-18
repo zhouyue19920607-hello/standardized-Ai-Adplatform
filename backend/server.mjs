@@ -27,8 +27,24 @@ const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
 const BADGES_DIR = path.join(STORAGE_DIR, "badges");
 
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
+const CREATIVE_TEMPLATES_FILE = path.join(DATA_DIR, "creative-templates.json");
 const WORKFLOWS_FILE = path.join(DATA_DIR, "workflows.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const CREATIVE_SETTINGS_FILE = path.join(DATA_DIR, "creative-settings.json");
+const DEFAULT_CREATIVE_TEMPLATE_SETTINGS = {
+  interactionType: "bubble-slide",
+  cropAreaEnabled: true,
+  platforms: ["xiuxiu", "meiyan", "wink"]
+};
+const DEFAULT_CREATIVE_TEMPLATES = [
+  { id: "dynamic-splash", groupId: "splash", groupName: "开屏创意模版", name: "炫动开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
+  { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
+  { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370", enabled: true },
+  { id: "twist-splash", groupId: "splash", groupName: "开屏创意模版", name: "扭转开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
+  { id: "focal-static", groupId: "home", groupName: "首页创意模版", name: "静态焦点视窗", dimensions: "1126 x 2436", enabled: true },
+  { id: "focal-dynamic", groupId: "home", groupName: "首页创意模版", name: "动态焦点视窗", dimensions: "1126 x 2436", enabled: true },
+  { id: "banner-standard", groupId: "home", groupName: "首页创意模版", name: "标准 Banner", dimensions: "1080 x 1920", enabled: true }
+];
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
 const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
@@ -100,6 +116,11 @@ async function ensureDataFiles() {
     await writeJson(TEMPLATES_FILE, initialTemplates);
   }
 
+  const creativeTemplates = await readJson(CREATIVE_TEMPLATES_FILE, null);
+  if (!creativeTemplates) {
+    await writeJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
+  }
+
   const workflows = await readJson(WORKFLOWS_FILE, null);
   if (!workflows) {
     await writeJson(WORKFLOWS_FILE, []);
@@ -113,6 +134,13 @@ async function ensureDataFiles() {
       aiProvider: "tongyi",
       tongyiApiKey: "",
       comfyuiUrl: "http://127.0.0.1:8188"
+    });
+  }
+
+  const creativeSettings = await readJson(CREATIVE_SETTINGS_FILE, null);
+  if (!creativeSettings) {
+    await writeJson(CREATIVE_SETTINGS_FILE, {
+      creativeTemplateSettings: settings?.creativeTemplateSettings || DEFAULT_CREATIVE_TEMPLATE_SETTINGS
     });
   }
 
@@ -238,6 +266,31 @@ app.post("/api/templates/:id/increment", async (req, res) => {
   await writeJson(USAGE_STATS_FILE, usageStats);
 
   res.json({ success: true, processedCount: usageStats[id] });
+});
+
+// ---- API：创新形式素材看板模版管理 ----
+app.get("/api/creative-templates", async (req, res) => {
+  const templates = await readJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
+  const defaultById = Object.fromEntries(DEFAULT_CREATIVE_TEMPLATES.map(t => [t.id, t]));
+  const merged = templates.map(t => ({
+    ...(defaultById[t.id] || {}),
+    ...t
+  }));
+  res.json(merged);
+});
+
+app.put("/api/creative-templates/:id", async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body || {};
+  const templates = await readJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
+  const index = templates.findIndex(t => t.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Creative template not found" });
+  }
+
+  templates[index] = { ...templates[index], ...payload, id };
+  await writeJson(CREATIVE_TEMPLATES_FILE, templates);
+  res.json(templates[index]);
 });
 
 // 模版遮罩 PNG 上传 / 更新
@@ -766,8 +819,45 @@ app.put("/api/settings", async (req, res) => {
     payload.nanobannerBaseUrl = current.nanobannerBaseUrl;
   }
 
-  const updated = { ...current, ...payload };
+  const updated = {
+    ...current,
+    ...payload
+  };
+  delete updated.creativeTemplateSettings;
   await writeJson(SETTINGS_FILE, updated);
+  res.json({ success: true });
+});
+
+// ---- API: 创新形式素材看板后台配置 ----
+app.get("/api/creative-settings", async (req, res) => {
+  const settings = await readJson(CREATIVE_SETTINGS_FILE, {
+    creativeTemplateSettings: DEFAULT_CREATIVE_TEMPLATE_SETTINGS
+  });
+
+  res.json({
+    creativeTemplateSettings: {
+      ...DEFAULT_CREATIVE_TEMPLATE_SETTINGS,
+      ...(settings.creativeTemplateSettings || {})
+    }
+  });
+});
+
+app.put("/api/creative-settings", async (req, res) => {
+  const payload = req.body || {};
+  const current = await readJson(CREATIVE_SETTINGS_FILE, {
+    creativeTemplateSettings: DEFAULT_CREATIVE_TEMPLATE_SETTINGS
+  });
+
+  const updated = {
+    ...current,
+    creativeTemplateSettings: {
+      ...DEFAULT_CREATIVE_TEMPLATE_SETTINGS,
+      ...(current.creativeTemplateSettings || {}),
+      ...(payload.creativeTemplateSettings || {})
+    }
+  };
+
+  await writeJson(CREATIVE_SETTINGS_FILE, updated);
   res.json({ success: true });
 });
 
@@ -1297,7 +1387,8 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
     const outputFilename = `video_composite_${Date.now()}.mp4`;
     const outputPath = path.join(STORAGE_DIR, outputFilename);
 
-    console.log(`[VideoComposite] Starting FFmpeg process for ${videoFile.originalname}... target: ${params.targetW}x${params.targetH}`);
+    const maxSizeMB = Number(params.maxSizeMB) > 0 ? Number(params.maxSizeMB) : undefined;
+    console.log(`[VideoComposite] Starting FFmpeg process for ${videoFile.originalname}... target: ${params.targetW}x${params.targetH}${maxSizeMB ? `, max ${maxSizeMB}MB` : ""}`);
 
     await compressAndCompositeVideo(
       videoFile.path,
@@ -1306,10 +1397,12 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
       params.videoRect,
       bgImage?.path,
       fgImage?.path,
-      outputPath
+      outputPath,
+      { maxSizeMB }
     );
 
-    console.log(`[VideoComposite] FFmpeg success: ${outputPath}`);
+    const outputStats = await fs.stat(outputPath);
+    console.log(`[VideoComposite] FFmpeg success: ${outputPath} (${(outputStats.size / 1024 / 1024).toFixed(2)}MB)`);
 
     // Clean up temp uploads
     fs.unlink(videoFile.path).catch(() => { });
@@ -1318,7 +1411,8 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
 
     return res.json({
       ok: true,
-      url: `/static/${outputFilename}`
+      url: `/static/${outputFilename}`,
+      sizeMB: Number((outputStats.size / 1024 / 1024).toFixed(2))
     });
   } catch (err) {
     console.error("[VideoComposite] Error:", err.message);

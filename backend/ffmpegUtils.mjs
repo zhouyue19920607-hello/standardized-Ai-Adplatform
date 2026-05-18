@@ -1,19 +1,22 @@
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import ffmpeg from 'fluent-ffmpeg';
-import path from 'path';
 import fs from 'fs/promises';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 export async function compressAndCompositeVideo(
-    videoPath, targetW, targetH, videoRect, bgPath, fgPath, outputPath
+    videoPath, targetW, targetH, videoRect, bgPath, fgPath, outputPath, options = {}
 ) {
-    return new Promise((resolve, reject) => {
+    const maxSizeBytes = options.maxSizeMB ? options.maxSizeMB * 1024 * 1024 : null;
+    const bitrateSteps = maxSizeBytes
+        ? [1500, 1200, 900, 700, 500, 350, 250, 180, 120]
+        : [1500];
+
+    const encode = (videoBitrateKbps) => new Promise((resolve, reject) => {
         let command = ffmpeg(videoPath);
         
-        let inputs = 1; // video is 0
-        if (bgPath) { command = command.input(bgPath); inputs++; }
-        if (fgPath) { command = command.input(fgPath); inputs++; }
+        if (bgPath) command = command.input(bgPath);
+        if (fgPath) command = command.input(fgPath);
 
         let filters = [];
         
@@ -52,9 +55,9 @@ export async function compressAndCompositeVideo(
         command.complexFilter(filters, lastOutput)
             .outputOptions([
                 '-c:v libx264',
-                '-b:v 1500k',       // Aggressive constraint for 3MB
-                '-maxrate 2000k', 
-                '-bufsize 4000k',
+                `-b:v ${videoBitrateKbps}k`,
+                `-maxrate ${Math.round(videoBitrateKbps * 1.35)}k`,
+                `-bufsize ${Math.round(videoBitrateKbps * 2.7)}k`,
                 '-preset slow',     // Better quality per bit
                 '-c:a aac',
                 '-b:a 64k',
@@ -65,4 +68,24 @@ export async function compressAndCompositeVideo(
             .on('end', () => resolve())
             .on('error', (err) => reject(err));
     });
+
+    for (const bitrate of bitrateSteps) {
+        await fs.rm(outputPath, { force: true });
+        await encode(bitrate);
+
+        if (!maxSizeBytes) return;
+
+        const stats = await fs.stat(outputPath);
+        if (stats.size <= maxSizeBytes) {
+            console.log(`[VideoComposite] Compressed under ${options.maxSizeMB}MB at ${bitrate}k: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+            return;
+        }
+
+        console.log(`[VideoComposite] Output ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds ${options.maxSizeMB}MB at ${bitrate}k, retrying...`);
+    }
+
+    const finalStats = await fs.stat(outputPath);
+    if (maxSizeBytes && finalStats.size > maxSizeBytes) {
+        throw new Error(`视频压缩后仍超过 ${options.maxSizeMB}MB，请使用更短的视频素材`);
+    }
 }
