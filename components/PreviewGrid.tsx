@@ -61,6 +61,8 @@ const AdCard: React.FC<{
   const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
   const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
+  const shouldOffsetMeiyanFocal = localShowMask && asset.category === '焦点视窗' && asset.app === '美颜' && !!effectiveMaskUrl;
+  const meiyanFocalOffsetStyle = shouldOffsetMeiyanFocal ? { transform: 'translateY(-2.0115cqh)' } : undefined;
 
   const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
     ? (asset.app === 'wink' ? '1126 / 2438' : '1126 / 2436')
@@ -148,12 +150,16 @@ const AdCard: React.FC<{
         const shouldLimitScorePopupVideo =
           asset.id.includes('mt-p-1') &&
           videoBlob.size > 4 * 1024 * 1024;
+        const shouldLimitHotRecommendVideo =
+          asset.id.includes('mt-ib-1') &&
+          videoBlob.size > 4 * 1024 * 1024;
         const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
           targetW: params.targetW,
           targetH: params.targetH,
           videoRect: params.videoRect,
           ...(shouldLimitFocalVideo ? { maxSizeMB: 10 } : {}),
           ...(shouldLimitScorePopupVideo ? { maxSizeMB: 4 } : {}),
+          ...(shouldLimitHotRecommendVideo ? { maxSizeMB: 4 } : {}),
           ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
         });
 
@@ -234,10 +240,11 @@ const AdCard: React.FC<{
                 {/* 闪烁光效 */}
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
               </div>
-            ) : asset.type.startsWith('video') ? (
+            ) : asset.type.startsWith('video') && !(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) ? (
               <video
                 src={asset.url}
                 className={`w-full h-full ${localShowMask && isImmersiveFocal ? 'absolute inset-0 z-0 object-cover' : (localShowMask && (asset.category === '开屏' || asset.category === '焦点视窗' || asset.category === '弹窗' || asset.id.includes('mt-ib-4')) ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
+                style={meiyanFocalOffsetStyle}
                 controls={false}
                 autoPlay
                 playsInline
@@ -248,7 +255,7 @@ const AdCard: React.FC<{
               // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐，以匹配蒙版中的非全屏图片区域
               (localShowMask && isNonFullscreenSplash)
                 ? <img src={asset.url} alt={asset.name} className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
-                : <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && asset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
+                : <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && asset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} style={meiyanFocalOffsetStyle} />
             ))}
 
             {/* Hot Recommend Background Mask (Lower Layer) */}
@@ -343,6 +350,25 @@ const AdCard: React.FC<{
               </div>
             )}
             {/* Final Layers: Special Results (on top of masks) */}
+            {(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && asset.type.startsWith('video') && (
+              <div
+                className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
+                style={{
+                  ...(localShowMask ? (isHotRecommend ? { width: '25.57%', height: '15.76%', left: '62.87%', top: '73.02%' } : (isHotSearch ? { width: '13.86%', height: '6.40%', left: '14.92%', top: '53.08%' } : (isScorePopup ? { width: '85.26%', height: '59.11%', left: '7.37%', top: '20.44%' } : (isHomePopup ? { width: '85.26%', height: '39.41%', left: '7.37%', top: '30.30%' } : (isTopicBanner ? { width: '91.47%', height: '11.82%', left: '4.27%', top: '40.23%' } : (isRecipeContent ? { width: '44.968%', height: '27.717%', left: '4.085%', top: '61.124%' } : { width: '100%', height: '26.27%', left: 0, top: 0 })))))) : { inset: 0 }),
+                  containerType: 'size'
+                }}
+              >
+                <video
+                  src={asset.url}
+                  className={`w-full h-full ${localShowMask ? (isTopicBanner ? 'object-cover rounded-[5px]' : (isHomePopup ? 'object-contain' : (isScorePopup ? 'object-cover rounded-[10px]' : (isRecipeContent ? 'object-cover rounded-[10px]' : (isHotRecommend || isHotSearch) ? 'object-cover rounded-[10px]' : 'object-cover')))) : (isHotRecommend ? 'object-contain rounded-[10px]' : 'object-contain')}`}
+                  controls={false}
+                  autoPlay
+                  playsInline
+                  loop
+                  muted
+                />
+              </div>
+            )}
             {(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && !asset.type.startsWith('video') && (
               <div
                 className={`absolute ${(isHotSearch || isTopicBanner) ? 'z-20' : (isPopup ? 'z-40' : (isRecipeContent ? 'z-[40]' : 'z-10'))}`}
@@ -519,6 +545,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
   const filteredAssets = activeTab === 'all' ? assets : assets.filter(a => a.category === activeTab);
   const selectedAsset = selectedAssetInfo?.asset;
+  const shouldOffsetSelectedMeiyanFocal = !!selectedAsset && selectedAssetInfo?.showMask && selectedAsset.category === '焦点视窗' && selectedAsset.app === '美颜' && !!selectedAsset.maskUrl;
+  const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-2.0115cqh)' } : undefined;
 
   if (assets.length === 0 && !isGenerating) {
     return (
@@ -630,6 +658,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 <video
                   src={selectedAsset.url}
                   className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-[15] object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
+                  style={selectedMeiyanFocalOffsetStyle}
                   controls
                   autoPlay
                   playsInline
@@ -640,7 +669,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐以匹配蒙版的图片区域
                 (selectedAssetInfo.showMask && (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')))
                   ? <img src={selectedAsset.url} alt="zoom" className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
-                  : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-[15]' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
+                  : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-[15]' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} style={selectedMeiyanFocalOffsetStyle} />
               )
             )}
 
@@ -776,7 +805,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
             {/* Modal: Final Result Layers (on top of masks) */}
-            {(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && (
+            {(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.id.includes('mt-ib-4') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1')) && !selectedAsset.type.startsWith('video') && (
               <div
                 className={`absolute ${(selectedAsset.id.includes('mt-ib-2') || selectedAsset.id.includes('mt-ib-4')) ? 'z-[40]' : (selectedAsset.category === '弹窗' ? 'z-[50]' : (selectedAsset.id.includes('mt-fe-1') ? 'z-[40]' : 'z-10'))}`}
                 style={{

@@ -197,7 +197,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
 
             if ((isWink || isMeiyan) && maskImg) {
                 // Meiyan & Wink Focal Window: Image FIRST, then Mask (on top)
-                ctx.drawImage(mainImg, 0, 0, dw, dh);
+                const contentY = isMeiyan ? -49 : 0;
+                ctx.drawImage(mainImg, 0, contentY, dw, dh);
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
             } else if (isImmersiveFocal) {
                 ctx.drawImage(mainImg, 0, 0, dw, dh);

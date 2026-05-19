@@ -111,6 +111,9 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
         if (showMask) {
             videoRect = {x:0, y:0, w:targetW, h: (vh / vw) * targetW};
             const isMeiyan = asset.app === '美颜';
+            if (isMeiyan && maskImg) {
+                videoRect.y = -49;
+            }
             // Focal window draws BG, then video, then more BG? Wait, video is bottom!
             if ((isWink || isMeiyan) && maskImg) {
                 // Meiyan & Wink Focal Window: Draw mask on FG layer (on top of video)

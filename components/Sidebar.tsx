@@ -420,6 +420,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                                       支持图片或视频素材；可智能配色，也可用 AI 扩图适配尺寸；视频自动压缩至 10MB 以内。
                                     </div>
                                   )}
+                                  {tpl.id === 'mt-ib-1' && (
+                                    <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
+                                      支持图片或视频素材；也可以用AI扩图适配尺寸；视频自动压缩至4MB以内
+                                    </div>
+                                  )}
 
                                   {/* Config Panel (Inline) - Focal Window or Dynamic Splash */}
                                   {tpl.checked && tpl.app !== 'wink' && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (

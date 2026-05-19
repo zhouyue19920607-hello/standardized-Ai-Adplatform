@@ -302,6 +302,7 @@ const App: React.FC = () => {
     { width: 1284, height: 1128 },
     { width: 1440, height: 2340 },
     { width: 1440, height: 1938 },
+    { width: 720, height: 960 },
     { width: 960, height: 1440 },
   ];
 
@@ -960,7 +961,7 @@ const App: React.FC = () => {
                 (isStaticFocal && (raw.file.type.startsWith('image/') || true)) ? `${isMeiyan ? 1284 : 1126} x ${focalHeight}` :
                   // NOTE: 动态焦点视窗尺寸固定位 1126 x focalHeight
                   (isDynamicFocal) ? `${isMeiyan ? 1284 : 1126} x ${focalHeight}` :
-                    ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
+                    (isHotRecommend || isHomePopup) ? '720 x 960' :
                       (isScorePopup) ? '960 x 1440' :
                         (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
                           (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
