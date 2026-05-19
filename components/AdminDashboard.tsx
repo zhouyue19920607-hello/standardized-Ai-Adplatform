@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AdTemplate, AdAsset } from '../types';
-import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, createTemplate, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, CreativeTemplateItem } from '../services/api';
+import { AdTemplate, AdAsset, AnalyticsSummary } from '../types';
+import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, CreativeTemplateItem, getAnalyticsSummary } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminDashboardProps {
@@ -17,11 +17,12 @@ const PROMPT_PRESETS = [
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const { t } = useLanguage();
-    const [activeTab, setActiveTab] = useState<'templates' | 'workflows' | 'settings'>('templates');
+    const [activeTab, setActiveTab] = useState<'templates' | 'workflows' | 'settings' | 'analytics'>('templates');
     const [templateBoard, setTemplateBoard] = useState<'standard' | 'creative'>('standard');
     const [templates, setTemplates] = useState<AdTemplate[]>([]);
     const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>([]);
     const [workflows, setWorkflows] = useState<any[]>([]);
+    const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
     const [loading, setLoading] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [assetsVersion, setAssetsVersion] = useState(Date.now());
@@ -46,14 +47,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     // Advanced Management State
     const [filterApp, setFilterApp] = useState<string>('ALL');
     const [draggedId, setDraggedId] = useState<string | null>(null);
-
-    // Form state for new template
-    const [newTemplate, setNewTemplate] = useState({
-        name: '',
-        app: '美图秀秀',
-        category: '开屏',
-        dimensions: '1080 x 1920'
-    });
 
     useEffect(() => {
         fetchData();
@@ -149,26 +142,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [tData, cData, wData] = await Promise.all([getTemplates(), getCreativeTemplates(), getWorkflows()]);
+            const [tData, cData, wData, aData] = await Promise.all([getTemplates(), getCreativeTemplates(), getWorkflows(), getAnalyticsSummary()]);
             setTemplates(tData);
             setCreativeTemplates(cData);
             setWorkflows(wData);
+            setAnalytics(aData);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleCreateTemplate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            const newTpl = await createTemplate({ ...newTemplate, checked: false });
-            setTemplates(prev => [...prev, newTpl]);
-            setNewTemplate({ name: '', app: '美图秀秀', category: '开屏', dimensions: '1080 x 1920' });
-        } catch (error) {
-            console.error("Failed to create template", error);
-            alert(t('admin.failCreate'));
         }
     };
 
@@ -300,6 +282,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         return filteredTemplates.filter(item => item.name === t.name && item.dimensions === t.dimensions && item.app === t.app).length > 1;
     };
 
+    const splashPlatformMeta: Array<{ app: AdTemplate['app']; key: string; label: string; tone: string }> = [
+        { app: '美图秀秀', key: 'meitu', label: '秀秀', tone: 'bg-pink-50 text-pink-600 border-pink-100' },
+        { app: '美颜', key: 'beauty', label: '美颜', tone: 'bg-blue-50 text-blue-600 border-blue-100' },
+        { app: 'wink', key: 'wink', label: 'Wink', tone: 'bg-purple-50 text-purple-600 border-purple-100' },
+    ];
+
+    const splashGroups = Object.values(
+        templates
+            .filter(tpl => tpl.category === '开屏')
+            .reduce((acc, tpl) => {
+                const groupKey = tpl.splashGroup || tpl.id;
+                if (!acc[groupKey]) acc[groupKey] = [];
+                acc[groupKey].push(tpl);
+                return acc;
+            }, {} as Record<string, AdTemplate[]>)
+    ).filter(group => filterApp === 'ALL' || group.some(tpl => tpl.app === filterApp));
+
+    const nonSplashTemplates = filteredTemplates.filter(tpl => tpl.category !== '开屏');
+
+    const getSplashRepresentative = (group: AdTemplate[]) => {
+        return group.find(tpl => tpl.app === '美图秀秀') || group[0];
+    };
+
+    const handleSplashGroupUpdate = async (group: AdTemplate[], field: keyof AdTemplate, value: string) => {
+        const ids = new Set(group.map(tpl => tpl.id));
+        try {
+            await Promise.all(group.map(tpl => updateTemplate(tpl.id, { [field]: value })));
+            setTemplates(prev => prev.map(tpl => ids.has(tpl.id) ? { ...tpl, [field]: value } : tpl));
+        } catch (error) {
+            console.error(`Failed to update splash group ${String(field)}`, error);
+            alert(t('admin.failUpdate'));
+        }
+    };
+
+    const handleSplashGroupCropUpload = async (group: AdTemplate[], file: File) => {
+        try {
+            const updated = await Promise.all(group.map(tpl => uploadCropOverlay(tpl.id, file)));
+            const cropPathById = new Map(updated.map(tpl => [tpl.id, tpl.crop_overlay_path]));
+            setTemplates(prev => prev.map(tpl => cropPathById.has(tpl.id) ? { ...tpl, crop_overlay_path: cropPathById.get(tpl.id) } : tpl));
+            setAssetsVersion(Date.now());
+        } catch (error) {
+            console.error("Failed to upload splash group crop overlay", error);
+            alert(t('admin.failUpload'));
+        }
+    };
+
     return (
         <div
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6"
@@ -341,6 +369,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             >
                                 <span className="material-symbols-outlined text-[16px]">account_tree</span>
                                 {t('admin.workflows')}
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('analytics')}
+                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1.5 ${activeTab === 'analytics' ? 'bg-white shadow-md text-slate-900 scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <span className="material-symbols-outlined text-[16px]">monitoring</span>
+                                数据统计
                             </button>
                         </div>
                     </div>
@@ -439,66 +474,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 </div>
                             ) : (
                                 <>
-                            {/* Premium Create Form - Compact Version */}
-                            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300">
-                                <div className="flex flex-col xl:flex-row xl:items-end gap-5">
-                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                                        <div className="group">
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.templateName')}</label>
-                                            <input
-                                                required
-                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300"
-                                                placeholder="例如：618大促开屏"
-                                                value={newTemplate.name}
-                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="group">
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.appName')}</label>
-                                            <select
-                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
-                                                value={newTemplate.app}
-                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, app: e.target.value }))}
-                                            >
-                                                <option>美图秀秀</option>
-                                                <option value="美颜">美颜</option>
-                                                <option value="wink">wink</option>
-                                            </select>
-                                        </div>
-                                        <div className="group">
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.category')}</label>
-                                            <select
-                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all cursor-pointer"
-                                                value={newTemplate.category}
-                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, category: e.target.value }))}
-                                            >
-                                                <option>开屏</option>
-                                                <option>焦点视窗</option>
-                                                <option>信息流</option>
-                                                <option>icon/banner</option>
-                                                <option>弹窗</option>
-                                            </select>
-                                        </div>
-                                        <div className="group">
-                                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('admin.dimensions')}</label>
-                                            <input
-                                                className="block w-full bg-slate-50 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-0 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 transition-all text-center font-mono"
-                                                placeholder="1080 x 1920"
-                                                value={newTemplate.dimensions}
-                                                onChange={(e) => setNewTemplate(prev => ({ ...prev, dimensions: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={handleCreateTemplate}
-                                        className="h-[42px] px-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">add</span>
-                                        {t('admin.add')}
-                                    </button>
-                                </div>
-                            </div>
-
                             {/* App Filter Tabs */}
                             <div className="flex items-center gap-2 pb-2">
                                 {['ALL', '美图秀秀', '美颜', 'wink'].map(app => (
@@ -517,19 +492,129 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                             {/* Templates Grouped by Category */}
                             <div className="pb-20">
+                                {splashGroups.length > 0 && (
+                                    <div className="mb-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                        <div className="flex items-center justify-between mb-5 px-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-8 w-1.5 bg-indigo-600 rounded-full shadow-sm shadow-indigo-500/20"></div>
+                                                <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                                    开屏
+                                                    <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                        {splashGroups.length}
+                                                    </span>
+                                                </h3>
+                                            </div>
+                                            <p className="text-xs font-bold text-slate-400">裁剪和工作流统一配置，三个平台蒙版独立上传</p>
+                                        </div>
+                                        <div className="flex flex-col gap-3 px-2">
+                                            {splashGroups.map(group => {
+                                                const representative = getSplashRepresentative(group);
+                                                const totalCount = group.reduce((sum, tpl) => sum + (tpl.processedCount || 0), 0);
+                                                return (
+                                                    <div key={representative.splashGroup || representative.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-5 hover:border-indigo-200 transition-all">
+                                                        <div className="flex flex-col gap-2 w-56">
+                                                            <div className="flex items-center gap-1.5">
+                                                                {splashPlatformMeta.map(platform => (
+                                                                    <img key={platform.key} src={`/icons/${platform.key}_mask_icon.png`} className="w-5 h-5 rounded-[5px] object-contain" alt={platform.label} />
+                                                                ))}
+                                                                <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">三平台共用</span>
+                                                            </div>
+                                                            <input
+                                                                className="bg-transparent border-none p-0 text-sm font-black text-slate-800 focus:ring-0 w-full hover:text-indigo-600 transition-colors"
+                                                                defaultValue={representative.name}
+                                                                onBlur={(e) => handleSplashGroupUpdate(group, 'name', e.target.value)}
+                                                                placeholder="开屏模板名称"
+                                                            />
+                                                            <div className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 rounded w-fit flex items-center gap-1 font-medium" title="三平台累计处理数">
+                                                                <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                                                                {totalCount}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="w-28">
+                                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">统一尺寸</label>
+                                                            <input
+                                                                className="w-full bg-slate-50 border-slate-100 rounded px-2 py-1.5 text-xs font-mono text-slate-600 focus:ring-1 focus:ring-indigo-500 border-none"
+                                                                defaultValue={representative.dimensions || ''}
+                                                                onBlur={(e) => handleSplashGroupUpdate(group, 'dimensions', e.target.value)}
+                                                                placeholder="W x H"
+                                                            />
+                                                        </div>
+
+                                                        <div className="h-10 w-[1px] bg-slate-100"></div>
+
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="relative group/asset">
+                                                                <div className="w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                    {representative.crop_overlay_path ? (
+                                                                        <img src={`${ASSETS_URL}${representative.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
+                                                                    ) : (
+                                                                        <span className="material-symbols-outlined text-slate-300 text-base">crop</span>
+                                                                    )}
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        onChange={(e) => e.target.files?.[0] && handleSplashGroupCropUpload(group, e.target.files[0])}
+                                                                        title="Upload shared crop overlay"
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[9px] text-slate-400 text-center block w-full mt-0.5">统一裁剪</span>
+                                                            </div>
+
+                                                            {splashPlatformMeta.map(platform => {
+                                                                const platformTpl = group.find(tpl => tpl.app === platform.app);
+                                                                if (!platformTpl) return null;
+                                                                return (
+                                                                    <div key={platform.app} className="relative group/asset">
+                                                                        <div className="w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                            {platformTpl.mask_path ? (
+                                                                                <img src={`${ASSETS_URL}${platformTpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt={`${platform.label} mask`} />
+                                                                            ) : (
+                                                                                <span className="material-symbols-outlined text-slate-300 text-base">texture</span>
+                                                                            )}
+                                                                            <input
+                                                                                type="file"
+                                                                                accept="image/*"
+                                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                                onChange={(e) => e.target.files?.[0] && handleMaskUpload(platformTpl.id, e.target.files[0])}
+                                                                                title={`Upload ${platform.label} mask`}
+                                                                            />
+                                                                        </div>
+                                                                        <span className={`text-[9px] text-center block w-full mt-0.5 rounded border ${platform.tone}`}>{platform.label}蒙版</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        <div className="ml-auto w-52">
+                                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">统一 ComfyUI 工作流</label>
+                                                            <select
+                                                                className="w-full bg-slate-50 border-none rounded-xl text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-2 pl-3 pr-7 cursor-pointer hover:bg-slate-100 transition-colors"
+                                                                value={representative.workflow_id || ''}
+                                                                onChange={(e) => handleSplashGroupUpdate(group, 'workflow_id', e.target.value)}
+                                                            >
+                                                                <option value="">选择工作流...</option>
+                                                                {workflows.map(wf => (
+                                                                    <option key={wf.id} value={wf.id}>{wf.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {Object.entries(
-                                    filteredTemplates.reduce((acc, tpl) => {
+                                    nonSplashTemplates.reduce((acc, tpl) => {
                                         const cat = tpl.category || '未分类';
                                         if (!acc[cat]) acc[cat] = [];
                                         acc[cat].push(tpl);
                                         return acc;
                                     }, {} as Record<string, AdTemplate[]>)
-                                ).sort(([a], [b]) => {
-                                    // Always put "开屏" at the top
-                                    if (a === '开屏') return -1;
-                                    if (b === '开屏') return 1;
-                                    return a.localeCompare(b);
-                                }).map(([category, items]) => (
+                                ).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
                                     <div key={category} className="mb-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
                                         <div className="flex items-center gap-3 mb-6 px-2">
                                             <div className="h-8 w-1.5 bg-indigo-600 rounded-full shadow-sm shadow-indigo-500/20"></div>
@@ -702,6 +787,83 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             )}
                         </div>
                     ) : null}
+
+                    {activeTab === 'analytics' && (
+                        <div className="space-y-6 max-w-[1400px] mx-auto">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-800">数据统计</h3>
+                                    <p className="text-sm text-slate-400 mt-1">按自然日统计访问、访客和模板生成使用情况，访客以浏览器匿名 ID 去重。</p>
+                                </div>
+                                <button
+                                    onClick={fetchData}
+                                    className="px-4 py-2 rounded-xl bg-white border border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50 shadow-sm flex items-center gap-1.5"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">refresh</span>
+                                    刷新数据
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                {[
+                                    { label: '今日访客', value: analytics?.today.uniqueVisitors ?? 0, icon: 'person', tone: 'bg-blue-50 text-blue-600' },
+                                    { label: '今日访问次数', value: analytics?.today.visits ?? 0, icon: 'login', tone: 'bg-emerald-50 text-emerald-600' },
+                                    { label: '今日生成次数', value: analytics?.today.generations ?? 0, icon: 'bolt', tone: 'bg-amber-50 text-amber-600' },
+                                    { label: '累计访客', value: analytics?.totals.uniqueVisitors ?? 0, icon: 'groups', tone: 'bg-violet-50 text-violet-600' },
+                                ].map(item => (
+                                    <div key={item.label} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-black text-slate-400">{item.label}</span>
+                                            <span className={`material-symbols-outlined h-9 w-9 rounded-xl flex items-center justify-center ${item.tone}`}>{item.icon}</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-slate-800 mt-4">{item.value}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.2fr] gap-6">
+                                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-base font-black text-slate-800">最近 14 天</h4>
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{analytics?.totals.daysTracked ?? 0} 天记录</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {(analytics?.recentDays ?? []).length > 0 ? analytics!.recentDays.map(day => (
+                                            <div key={day.date} className="grid grid-cols-[1fr_70px_70px_70px] items-center gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                                                <span className="text-xs font-black text-slate-700">{day.date}</span>
+                                                <span className="text-[11px] font-bold text-slate-500">访客 {day.uniqueVisitors}</span>
+                                                <span className="text-[11px] font-bold text-slate-500">访问 {day.visits}</span>
+                                                <span className="text-[11px] font-bold text-slate-500">生成 {day.generations}</span>
+                                            </div>
+                                        )) : (
+                                            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm font-bold text-slate-400">暂无统计数据</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-base font-black text-slate-800">模板使用排行榜</h4>
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">累计</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {(analytics?.templateRanking ?? []).length > 0 ? analytics!.templateRanking.map((item, index) => (
+                                            <div key={item.id} className="grid grid-cols-[34px_1fr_80px] items-center gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                                                <span className={`h-7 w-7 rounded-lg flex items-center justify-center text-xs font-black ${index < 3 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>{index + 1}</span>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-black text-slate-800 truncate">{item.name}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{item.app} / {item.category}</p>
+                                                </div>
+                                                <span className="text-right text-lg font-black text-slate-800">{item.count}</span>
+                                            </div>
+                                        )) : (
+                                            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm font-bold text-slate-400">还没有模板使用记录</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Workflows Tab */}
                     {activeTab === 'workflows' && (

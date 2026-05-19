@@ -192,11 +192,123 @@ const Sidebar: React.FC<SidebarProps> = ({
           const appTemplates = templates.filter(tpl => {
             if (tpl.id === 'mt-f-2') return false;
             if (appName === '美颜') {
-              // NOTE: 美颜平台目前仅开放静态/动态焦点视窗模版 (my-f-1, my-f-2)
-              return tpl.app === '美颜' && (tpl.id === 'my-f-1' || tpl.id === 'my-f-2');
+              return tpl.id === 'my-f-1';
+            }
+            if (appName === 'wink') {
+              return tpl.id === 'wk-f-1';
             }
             return tpl.app === appName;
           });
+
+          const iconMap: Record<string, string> = { '美图秀秀': 'meitu', '美颜': 'beauty', 'wink': 'wink' };
+          const iconName = iconMap[appName] || appName;
+
+          if (appName === '美颜' || appName === 'wink') {
+            const focalTpl = appTemplates[0];
+            if (!focalTpl) return null;
+            return (
+              <div key={appName} className="space-y-2 group">
+                <div className="flex items-center gap-1.5 px-3">
+                  <img src={`/icons/${iconName}_mask_icon.png`} className="w-[14px] h-[14px] rounded-[3px] object-contain shrink-0" alt={appName} />
+                  <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
+                </div>
+                <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
+                  <div className="px-1 relative group/template">
+                    <label
+                      className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
+                        ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
+                      }
+                    >
+                      <div className="flex items-center justify-center">
+                        {focalTpl.checked ? (
+                          <span className="material-symbols-outlined text-[22px] text-primary fill">check_circle</span>
+                        ) : (
+                          <span className="material-symbols-outlined text-[22px] text-ios-gray-4">radio_button_unchecked</span>
+                        )}
+                        <input
+                          type="checkbox"
+                          checked={focalTpl.checked}
+                          onChange={() => onTemplateToggle(focalTpl.id)}
+                          className="sr-only"
+                        />
+                      </div>
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-sm font-semibold truncate ${focalTpl.checked ? 'text-primary' : 'text-slate-800'}`}>
+                            {t(`templates.${focalTpl.name}`) !== `templates.${focalTpl.name}` ? t(`templates.${focalTpl.name}`) : focalTpl.name}
+                          </span>
+                          {focalTpl.mask_path && <span className="material-symbols-outlined text-[14px] text-slate-400" title="支持MR遮罩">visibility</span>}
+                        </div>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <span className="text-[10px] text-slate-500 font-bold font-mono tracking-tight">{focalTpl.dimensions}</span>
+                          <span className="text-[10px] text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium" title="累积处理图片数">
+                            <span className="material-symbols-outlined" style={{ fontSize: '10px' }}>photo_library</span>
+                            {focalTpl.processedCount || 0}
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                    <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
+                      支持图片或视频素材；可智能配色，也可用 AI 扩图适配尺寸；视频自动压缩至 10MB 以内。
+                    </div>
+
+                    {focalTpl.checked && (
+                      <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                          <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
+                        </div>
+                        {focalTpl.id === 'my-f-1' && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-ios-gray-1">截取第一帧</span>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={config.captureFirstFrameMyF1 ?? false}
+                                onChange={(e) => onConfigChange({
+                                  captureFirstFrameMyF1: e.target.checked,
+                                  ...(e.target.checked ? { captureLastFrameMyF1: false } : {})
+                                })}
+                              />
+                              <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-ios-gray-1">截取最后一帧</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={focalTpl.id === 'my-f-1' ? (config.captureLastFrameMyF1 ?? false) : (config.captureLastFrameWkF1 ?? false)}
+                              onChange={(e) => onConfigChange(focalTpl.id === 'my-f-1'
+                                ? { captureLastFrameMyF1: e.target.checked, ...(e.target.checked ? { captureFirstFrameMyF1: false } : {}) }
+                                : { captureLastFrameWkF1: e.target.checked }
+                              )}
+                            />
+                            <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.smartExtract')}</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={focalTpl.smartExtract ?? true}
+                              onChange={(e) => onTemplateUpdate(focalTpl.id, { smartExtract: e.target.checked })}
+                            />
+                            <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
 
           // NOTE: 排除开屏模版，已并入三平台开屏统一分组
           const categories = Array.from(new Set(
@@ -210,8 +322,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             return null;
           }
 
-          const iconMap: Record<string, string> = { '美图秀秀': 'meitu', '美颜': 'beauty', 'wink': 'wink' };
-          const iconName = iconMap[appName] || appName;
           return (
             <div key={appName} className="space-y-2 group">
               {/* App Header */}

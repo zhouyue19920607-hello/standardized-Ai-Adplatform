@@ -31,6 +31,7 @@ const CREATIVE_TEMPLATES_FILE = path.join(DATA_DIR, "creative-templates.json");
 const WORKFLOWS_FILE = path.join(DATA_DIR, "workflows.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const CREATIVE_SETTINGS_FILE = path.join(DATA_DIR, "creative-settings.json");
+const ANALYTICS_FILE = path.join(DATA_DIR, "analytics.json");
 const DEFAULT_CREATIVE_TEMPLATE_SETTINGS = {
   interactionType: "bubble-slide",
   cropAreaEnabled: true,
@@ -49,6 +50,77 @@ const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 // NOTE: 遇罩/裁剪层/角标路径单独存储，不随代码更新被覆盖
 // 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path } }
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
+
+const getShanghaiDateKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const lookup = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${lookup.year}-${lookup.month}-${lookup.day}`;
+};
+
+const ensureAnalyticsDay = (analytics, dateKey = getShanghaiDateKey()) => {
+  if (!analytics.days) analytics.days = {};
+  if (!analytics.days[dateKey]) {
+    analytics.days[dateKey] = {
+      visits: 0,
+      generations: 0,
+      visitors: [],
+      templateUses: {}
+    };
+  }
+  if (!Array.isArray(analytics.days[dateKey].visitors)) analytics.days[dateKey].visitors = [];
+  if (!analytics.days[dateKey].templateUses) analytics.days[dateKey].templateUses = {};
+  return analytics.days[dateKey];
+};
+
+const buildAnalyticsSummary = (analytics) => {
+  const days = analytics.days || {};
+  const todayKey = getShanghaiDateKey();
+  const today = days[todayKey] || { visits: 0, generations: 0, visitors: [], templateUses: {} };
+  const totalVisitorIds = new Set();
+  const templateTotals = {};
+  Object.entries(days).forEach(([date, day]) => {
+    (day.visitors || []).forEach(id => totalVisitorIds.add(id));
+    Object.values(day.templateUses || {}).forEach(item => {
+      if (!templateTotals[item.id]) {
+        templateTotals[item.id] = { ...item, count: 0 };
+      }
+      templateTotals[item.id].count += item.count || 0;
+    });
+  });
+  const recentDays = Object.entries(days)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, 14)
+    .map(([date, day]) => ({
+      date,
+      visits: day.visits || 0,
+      generations: day.generations || 0,
+      uniqueVisitors: (day.visitors || []).length,
+      templateUseCount: Object.values(day.templateUses || {}).reduce((sum, item) => sum + (item.count || 0), 0)
+    }));
+  return {
+    today: {
+      date: todayKey,
+      visits: today.visits || 0,
+      generations: today.generations || 0,
+      uniqueVisitors: (today.visitors || []).length,
+      templateUseCount: Object.values(today.templateUses || {}).reduce((sum, item) => sum + (item.count || 0), 0),
+      topTemplates: Object.values(today.templateUses || {}).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 10)
+    },
+    totals: {
+      daysTracked: Object.keys(days).length,
+      visits: Object.values(days).reduce((sum, day) => sum + (day.visits || 0), 0),
+      generations: Object.values(days).reduce((sum, day) => sum + (day.generations || 0), 0),
+      uniqueVisitors: totalVisitorIds.size
+    },
+    recentDays,
+    templateRanking: Object.values(templateTotals).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 20)
+  };
+};
 
 // ---- 辅助函数：简易 JSON“库”读写 ----
 async function ensureDir(dir) {
@@ -77,8 +149,12 @@ async function ensureDataFiles() {
     const initialTemplates = [
       // 美图秀秀
       { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "气泡全屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "mt-s-2", app: "美图秀秀", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
+      { id: "mt-s-2", app: "美图秀秀", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
+      { id: "mt-s-6", app: "美图秀秀", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
+      { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
+      { id: "mt-s-7", app: "美图秀秀", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
+      { id: "mt-s-8", app: "美图秀秀", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "mt-s-9", app: "美图秀秀", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
       { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "焦点视窗", checked: true, dimensions: "1126 x 2436" },
       { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "mt-fe-1", app: "美图秀秀", category: "信息流", name: "一键配方图文", checked: false, dimensions: "1080 x 1920" },
@@ -92,19 +168,25 @@ async function ensureDataFiles() {
 
       // 美颜
       { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "my-s-2", app: "美颜", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "动态焦点视窗", checked: false, dimensions: "1126 x 2436" },
-      { id: "my-f-2", app: "美颜", category: "焦点视窗", name: "静态焦点视窗", checked: false, dimensions: "1126 x 2436" },
+      { id: "my-s-2", app: "美颜", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
+      { id: "my-s-6", app: "美颜", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
+      { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
+      { id: "my-s-7", app: "美颜", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
+      { id: "my-s-8", app: "美颜", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "my-s-9", app: "美颜", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
+      { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "my-p-1", app: "美颜", category: "弹窗", name: "弹窗精图", checked: false, dimensions: "1080 x 1920" },
       { id: "my-ib-1", app: "美颜", category: "icon/banner", name: "百宝箱顶部banner", checked: false, dimensions: "1080 x 1920" },
 
       // wink
       { id: "wk-s-1", app: "wink", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "wk-s-2", app: "wink", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "动态焦点视窗", checked: false, dimensions: "1126 x 2436" },
-      { id: "wk-f-2", app: "wink", category: "焦点视窗", name: "静态焦点视窗", checked: false, dimensions: "1126 x 2436" }
+      { id: "wk-s-2", app: "wink", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
+      { id: "wk-s-6", app: "wink", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
+      { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
+      { id: "wk-s-7", app: "wink", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
+      { id: "wk-s-8", app: "wink", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "wk-s-9", app: "wink", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
+      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436" }
     ];
 
     await writeJson(TEMPLATES_FILE, initialTemplates);
@@ -248,9 +330,10 @@ app.post("/api/templates/reorder", async (req, res) => {
 // 模版使用次数递增（写入独立的 usage-stats.json，不修改 templates.json）
 app.post("/api/templates/:id/increment", async (req, res) => {
   const { id } = req.params;
+  const { visitorId = "anonymous", board = "standard" } = req.body || {};
   const templates = await readJson(TEMPLATES_FILE, []);
-  const exists = templates.some(t => t.id === id);
-  if (!exists) {
+  const template = templates.find(t => t.id === id);
+  if (!template) {
     return res.status(404).json({ error: "Template not found" });
   }
 
@@ -259,7 +342,39 @@ app.post("/api/templates/:id/increment", async (req, res) => {
   usageStats[id] = (usageStats[id] || 0) + 1;
   await writeJson(USAGE_STATS_FILE, usageStats);
 
+  const analytics = await readJson(ANALYTICS_FILE, { days: {} });
+  const day = ensureAnalyticsDay(analytics);
+  day.generations += 1;
+  if (visitorId && !day.visitors.includes(visitorId)) day.visitors.push(visitorId);
+  day.templateUses[id] = {
+    id,
+    name: template.name,
+    app: template.app,
+    category: template.category,
+    board,
+    count: (day.templateUses[id]?.count || 0) + 1
+  };
+  await writeJson(ANALYTICS_FILE, analytics);
+
   res.json({ success: true, processedCount: usageStats[id] });
+});
+
+app.post("/api/analytics/visit", async (req, res) => {
+  const { visitorId = "anonymous", board = "standard", path: pagePath = "/" } = req.body || {};
+  const analytics = await readJson(ANALYTICS_FILE, { days: {} });
+  const day = ensureAnalyticsDay(analytics);
+  day.visits += 1;
+  if (visitorId && !day.visitors.includes(visitorId)) day.visitors.push(visitorId);
+  day.lastVisit = new Date().toISOString();
+  day.lastBoard = board;
+  day.lastPath = pagePath;
+  await writeJson(ANALYTICS_FILE, analytics);
+  res.json({ ok: true, summary: buildAnalyticsSummary(analytics) });
+});
+
+app.get("/api/analytics/summary", async (req, res) => {
+  const analytics = await readJson(ANALYTICS_FILE, { days: {} });
+  res.json(buildAnalyticsSummary(analytics));
 });
 
 // ---- API：创新形式素材看板模版管理 ----

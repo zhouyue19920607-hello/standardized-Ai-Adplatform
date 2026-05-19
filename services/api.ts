@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { AdTemplate, AdAsset } from '../types';
+import { AdTemplate, AdAsset, AnalyticsSummary } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'http://localhost:4000/api' : '/api');
 export const ASSETS_URL = API_URL.replace('/api', '');
@@ -31,8 +31,17 @@ export const reorderTemplates = async (templates: AdTemplate[]): Promise<void> =
     await api.post('/templates/reorder', { templates });
 };
 
-export const incrementTemplateUsage = async (id: string): Promise<{ success: boolean; processedCount: number }> => {
-    const response = await api.post(`/templates/${id}/increment`);
+export const incrementTemplateUsage = async (id: string, visitorId?: string): Promise<{ success: boolean; processedCount: number }> => {
+    const response = await api.post(`/templates/${id}/increment`, { visitorId, board: 'standard' });
+    return response.data;
+};
+
+export const reportVisit = async (visitorId: string, board: 'standard' | 'creative' = 'standard', path = window.location.pathname): Promise<void> => {
+    await api.post('/analytics/visit', { visitorId, board, path });
+};
+
+export const getAnalyticsSummary = async (): Promise<AnalyticsSummary> => {
+    const response = await api.get<AnalyticsSummary>('/analytics/summary');
     return response.data;
 };
 

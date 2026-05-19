@@ -455,7 +455,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
     } else if (asset.category === '开屏') {
-        const isNonFullscreenSplash = asset.id.includes('mt-s-5');
+        const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
         // NOTE: 三平台开屏 — 根据用户选中的样式选择对应平台蒙版
         const activePlatform = asset.activeSplashStyle ?? 'meitu';
         const platformMaskUrl = asset.splashPlatformMasks
@@ -512,8 +512,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         if (showMask) {
-            const isUpDownSliding = asset.templateName === '上下滑动开屏';
-            const isTwistOpening = asset.templateName === '扭动开屏';
+            const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
+            const isTwistOpening = asset.templateName === '扭动全屏';
 
             let fontSize = 42;
             if (isUpDownSliding || isNonFullscreenSplash) fontSize = 58;
@@ -609,4 +609,3 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         attempt();
     });
 }
-

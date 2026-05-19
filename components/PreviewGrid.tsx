@@ -58,6 +58,8 @@ const AdCard: React.FC<{
   // NOTE: 一键配方图文，图片在蒙版上方，需要特殊分层处理
   const isRecipeContent = asset.id.includes('mt-fe-1');
   const isStaticFocal = asset.category === '焦点视窗' && !isImmersiveFocal && !asset.templateName.includes('动态');
+  const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
+  const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
 
   const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
@@ -140,8 +142,7 @@ const AdCard: React.FC<{
         const videoResp = await fetch(asset.url);
         const videoBlob = await videoResp.blob();
 
-        const shouldLimitMeituFocalVideo =
-          asset.app === '美图秀秀' &&
+        const shouldLimitFocalVideo =
           asset.category === '焦点视窗' &&
           videoBlob.size > 10 * 1024 * 1024;
         const shouldLimitScorePopupVideo =
@@ -151,7 +152,7 @@ const AdCard: React.FC<{
           targetW: params.targetW,
           targetH: params.targetH,
           videoRect: params.videoRect,
-          ...(shouldLimitMeituFocalVideo ? { maxSizeMB: 10 } : {}),
+          ...(shouldLimitFocalVideo ? { maxSizeMB: 10 } : {}),
           ...(shouldLimitScorePopupVideo ? { maxSizeMB: 4 } : {}),
           ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
         });
@@ -245,7 +246,7 @@ const AdCard: React.FC<{
               />
             ) : (!(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) && (
               // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐，以匹配蒙版中的非全屏图片区域
-              (localShowMask && asset.id.includes('mt-s-5'))
+              (localShowMask && isNonFullscreenSplash)
                 ? <img src={asset.url} alt={asset.name} className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
                 : <img src={asset.url} alt={asset.name} className={`${(isImmersiveFocal && localShowMask) ? 'absolute inset-0 z-0' : 'relative z-10'} w-full h-full ${localShowMask && asset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
             ))}
@@ -319,9 +320,9 @@ const AdCard: React.FC<{
             )}
 
             {asset.category === '开屏' && localShowMask && (
-              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: asset.id.includes('mt-s-5') ? '23.5%' : (asset.templateName === '上下滑动开屏' ? '10.5%' : (asset.templateName === '扭动开屏' ? '10.8%' : '7.5%')) }}>
+              <div className="absolute inset-x-0 text-center pointer-events-none z-[60]" style={{ bottom: isNonFullscreenSplash ? '23.5%' : (isUpDownSliding ? '10.5%' : (asset.templateName === '扭动全屏' ? '10.8%' : '7.5%')) }}>
                 <div className={`inline-block transition-all duration-300 pointer-events-auto ${isEditingText ? 'ring-2 ring-primary bg-black/20 rounded-ios p-1' : ''}`} style={{
-                  fontSize: (asset.id.includes('mt-s-5') || asset.templateName === '上下滑动开屏') ? '2.48cqh' : (asset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'),
+                  fontSize: (isNonFullscreenSplash || isUpDownSliding) ? '2.48cqh' : (asset.templateName === '扭动全屏' ? '1.54cqh' : '1.79cqh'),
                   letterSpacing: '0.05em'
                 }}>
                   {isEditingText ? (
@@ -358,7 +359,7 @@ const AdCard: React.FC<{
 
         {localShowCrop && asset.cropOverlayUrl && (
           // NOTE: mt-s-5（非全屏动态）裁剪层跟随结果图，从顶部对齐而非撑满容器
-          asset.id.includes('mt-s-5')
+          isNonFullscreenSplash
             ? <div className="absolute top-0 left-0 w-full z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full" style={{ height: 'auto' }} /></div>
             : <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${asset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
         )}
@@ -637,7 +638,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 />
               ) : (
                 // NOTE: mt-s-5（非全屏动态）开启遮罩时，图片固定从顶部对齐以匹配蒙版的图片区域
-                (selectedAssetInfo.showMask && selectedAsset.id.includes('mt-s-5'))
+                (selectedAssetInfo.showMask && (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')))
                   ? <img src={selectedAsset.url} alt="zoom" className="absolute top-0 left-0 w-full z-10" style={{ height: 'auto' }} />
                   : <img src={selectedAsset.url} alt="zoom" className={`${(selectedAsset.templateName.includes('沉浸式') && selectedAssetInfo.showMask) ? 'absolute inset-0 z-[15]' : 'relative z-10'} w-full h-full ${selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' ? 'object-contain object-top' : 'object-contain'}`} />
               )
@@ -734,7 +735,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
             {selectedAssetInfo.showCrop && selectedAsset.cropOverlayUrl && (
               // NOTE: mt-s-5（非全屏动态）裁剪层在弹窗中同样从顶部对齐
-              selectedAsset.id.includes('mt-s-5')
+              (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏'))
                 ? <div className="absolute top-0 left-0 w-full z-20 pointer-events-none"><img src={`${ASSETS_URL}${selectedAsset.cropOverlayUrl}`} className="w-full" style={{ height: 'auto' }} /></div>
                 : <div className="absolute inset-0 z-20 pointer-events-none"><img src={`${ASSETS_URL}${selectedAsset.cropOverlayUrl}`} className="w-full h-full object-contain" /></div>
             )}
@@ -758,8 +759,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             {/* Modal Splash Text Overlay (Fullscreen 開屏) */}
             {selectedAsset.category === '开屏' && selectedAssetInfo.showMask && (
               <div className="absolute inset-x-0 text-center pointer-events-none z-[60]"
-                style={{ bottom: selectedAsset.id.includes('mt-s-5') ? 'calc(26.07% - 5px)' : (selectedAsset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3')) ? 'translateY(2px)' : 'none' }}>
-                <div className="inline-block" style={{ fontSize: (selectedAsset.id.includes('mt-s-5') || selectedAsset.templateName === '上下滑动开屏') ? '2.48cqh' : (selectedAsset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
+                style={{ bottom: (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) ? 'calc(26.07% - 5px)' : (selectedAsset.templateName.includes('上下滑动') ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动全屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3')) ? 'translateY(2px)' : 'none' }}>
+                <div className="inline-block" style={{ fontSize: ((selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) || selectedAsset.templateName.includes('上下滑动')) ? '2.48cqh' : (selectedAsset.templateName === '扭动全屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
                   <span className="text-white text-center block font-bold shadow-sm">{selectedAsset.splashText || t('preview.defaultSplashText')}</span>
                 </div>
               </div>

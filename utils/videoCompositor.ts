@@ -77,7 +77,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
     } else if (isHomePopup && !showMask) {
         targetW = 720; targetH = 960;
     } else if (asset.category === '开屏') {
-        const isNonFullscreenSplash = asset.id.includes('mt-s-5');
+        const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
         targetW = 1440; targetH = showMask ? 2340 : (isNonFullscreenSplash ? 1938 : 2340);
     }
 
@@ -202,8 +202,8 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
         }
 
         if (showMask) {
-            const isUpDownSliding = asset.templateName === '上下滑动开屏';
-            const isTwistOpening = asset.templateName === '扭动开屏';
+            const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
+            const isTwistOpening = asset.templateName === '扭动全屏';
             const isNonFullscreenSplash = asset.templateName.includes('非全屏');
             let fontSize = 42;
             if (isUpDownSliding || isNonFullscreenSplash) fontSize = 58; else if (isTwistOpening) fontSize = 36;

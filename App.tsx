@@ -6,13 +6,23 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, incrementTemplateUsage } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, incrementTemplateUsage, reportVisit } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
 import { compositeAsset } from './utils/assetCompositor';
 
 const HEADER_HEIGHT = 73;
+const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
+
+const getVisitorId = () => {
+  let visitorId = localStorage.getItem(VISITOR_ID_KEY);
+  if (!visitorId) {
+    visitorId = `visitor_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(VISITOR_ID_KEY, visitorId);
+  }
+  return visitorId;
+};
 
 // 浏览器端视频截图辅助函数 - Safari 兼容版
 const captureVideoFrame = (file: File, seekPoint: 'start' | 'end' = 'start'): Promise<string> => {
@@ -179,6 +189,9 @@ const App: React.FC = () => {
     captureFirstFrameMtP1: false,
     captureFirstFrameMtF1: false,
     captureLastFrameMtF1: false,
+    captureFirstFrameMyF1: false,
+    captureLastFrameMyF1: false,
+    captureLastFrameWkF1: false,
     assetsVersion: Date.now(),
   });
   const [rawFiles, setRawFiles] = useState<RawFile[]>([]);
@@ -187,6 +200,15 @@ const App: React.FC = () => {
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const visitReportedRef = useRef(false);
+
+  useEffect(() => {
+    if (visitReportedRef.current) return;
+    visitReportedRef.current = true;
+    reportVisit(getVisitorId(), window.location.pathname.startsWith('/config') ? 'creative' : 'standard', window.location.pathname).catch(error => {
+      console.error('Failed to report visit', error);
+    });
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -520,9 +542,9 @@ const App: React.FC = () => {
 
         // Precise classification for Focal Windows
         const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
-        const isDynamicFocal = template.category === '焦点视窗' && (template.id === 'mt-f-1' || template.name.includes('动态')) && !template.name.includes('沉浸式');
+        const isDynamicFocal = template.category === '焦点视窗' && (['mt-f-1', 'my-f-1', 'wk-f-1'].includes(template.id) || template.name.includes('动态')) && !template.name.includes('沉浸式');
         const isImmersive = template.category === '焦点视窗' && template.name.includes('沉浸式'); // Assuming Immersive is mostly static images or specific logic
-        const isNonFullscreenSplash = template.id === 'mt-s-5';
+        const isNonFullscreenSplash = template.id === 'mt-s-5' || template.id === 'mt-s-6' || template.name.includes('非全屏');
 
         const isHotRecommend = template.id === 'mt-ib-1';
         const isHotSearch = template.id === 'mt-ib-2';
@@ -851,6 +873,50 @@ const App: React.FC = () => {
               console.error('[my-f-1] First frame capture failed, falling back to video', e);
               finalUrl = raw.previewUrl;
             }
+          }
+          // NOTE: my-f-1 美颜动态焦点视窗 + 开启「截取最后一帧」→ 截取视频最后一帧并合成为静态图
+          else if (template.id === 'my-f-1' && config.captureLastFrameMyF1) {
+            try {
+              console.log(`[my-f-1] captureLastFrameMyF1 enabled, capturing last frame...`);
+              const lastFrame = await captureVideoFrame(raw.file, 'end');
+              if (lastFrame) {
+                const resp = await fetch(lastFrame);
+                const blob = await resp.blob();
+                const frameFile = new File([blob], 'last_frame_myf1.jpg', { type: 'image/jpeg' });
+                const smart = await smartCropImage(frameFile, 1284, focalHeight, 250);
+                if (smart?.url) {
+                  finalUrl = `${ASSETS_URL}${smart.url}`;
+                  console.log(`[my-f-1] Last frame captured and cropped to 1284x${focalHeight}: ${finalUrl}`);
+                } else {
+                  finalUrl = lastFrame;
+                }
+              }
+            } catch (e) {
+              console.error('[my-f-1] Last frame capture failed, falling back to video', e);
+              finalUrl = raw.previewUrl;
+            }
+          }
+          // NOTE: wk-f-1 Wink 动态焦点视窗 + 开启「截取最后一帧」→ 截取视频最后一帧并合成为静态图
+          else if (template.id === 'wk-f-1' && config.captureLastFrameWkF1) {
+            try {
+              console.log(`[wk-f-1] captureLastFrameWkF1 enabled, capturing last frame...`);
+              const lastFrame = await captureVideoFrame(raw.file, 'end');
+              if (lastFrame) {
+                const resp = await fetch(lastFrame);
+                const blob = await resp.blob();
+                const frameFile = new File([blob], 'last_frame_wkf1.jpg', { type: 'image/jpeg' });
+                const smart = await smartCropImage(frameFile, 1126, focalHeight, 250);
+                if (smart?.url) {
+                  finalUrl = `${ASSETS_URL}${smart.url}`;
+                  console.log(`[wk-f-1] Last frame captured and cropped to 1126x${focalHeight}: ${finalUrl}`);
+                } else {
+                  finalUrl = lastFrame;
+                }
+              }
+            } catch (e) {
+              console.error('[wk-f-1] Last frame capture failed, falling back to video', e);
+              finalUrl = raw.previewUrl;
+            }
           } else {
             // Dynamic Focal stays as video (default)
             finalUrl = raw.previewUrl;
@@ -869,7 +935,9 @@ const App: React.FC = () => {
             // NOTE: mt-f-1 截取第0帧或最后一帧时，输出为静态图
             if (template.id === 'mt-f-1' && (config.captureFirstFrameMtF1 || config.captureLastFrameMtF1)) return 'image/png';
             // NOTE: my-f-1 截取第一帧时，输出为静态图
-            if (template.id === 'my-f-1' && config.captureFirstFrameMyF1) return 'image/png';
+            if (template.id === 'my-f-1' && (config.captureFirstFrameMyF1 || config.captureLastFrameMyF1)) return 'image/png';
+            // NOTE: wk-f-1 截取最后一帧时，输出为静态图
+            if (template.id === 'wk-f-1' && config.captureLastFrameWkF1) return 'image/png';
             // NOTE: mt-p-1 保分页弹窗截取第 0 帧时，输出为静态图
             if (template.id === 'mt-p-1' && config.captureFirstFrameMtP1) return 'image/jpeg';
             if (isSplash && (config.captureFirstFrame || config.captureLastFrameSplash)) {
@@ -955,7 +1023,7 @@ const App: React.FC = () => {
         // Increment once for each raw file processed by this template
         let latestCount = tpl.processedCount || 0;
         for (let i = 0; i < rawFiles.length; i++) {
-          const res = await incrementTemplateUsage(tpl.id);
+          const res = await incrementTemplateUsage(tpl.id, getVisitorId());
           latestCount = res.processedCount;
         }
         setTemplates(prev => prev.map(t => t.id === tpl.id ? { ...t, processedCount: latestCount } : t));

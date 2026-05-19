@@ -14,8 +14,12 @@ Base.metadata.create_all(bind=engine)
 INITIAL_TEMPLATES = [
   # 美图秀秀
   { "id": 'mt-s-1', "app": '美图秀秀', "category": '开屏', "name": '气泡全屏', "checked": False },
-  { "id": 'mt-s-2', "app": '美图秀秀', "category": '开屏', "name": '上滑开屏', "checked": False },
-  { "id": 'mt-s-3', "app": '美图秀秀', "category": '开屏', "name": '扭动开屏', "checked": False },
+  { "id": 'mt-s-2', "app": '美图秀秀', "category": '开屏', "name": '上下滑动全屏', "checked": False },
+  { "id": 'mt-s-6', "app": '美图秀秀', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
+  { "id": 'mt-s-3', "app": '美图秀秀', "category": '开屏', "name": '扭动全屏', "checked": False },
+  { "id": 'mt-s-7', "app": '美图秀秀', "category": '开屏', "name": '扭动非全屏', "checked": False },
+  { "id": 'mt-s-8', "app": '美图秀秀', "category": '开屏', "name": '三合一全屏', "checked": False },
+  { "id": 'mt-s-9', "app": '美图秀秀', "category": '开屏', "name": '三合一非全屏', "checked": False },
   { "id": 'mt-f-1', "app": '美图秀秀', "category": '焦点视窗', "name": '焦点视窗', "checked": True },
   { "id": 'mt-f-3', "app": '美图秀秀', "category": '焦点视窗', "name": '沉浸式焦点视窗', "checked": False },
   { "id": 'mt-fe-1', "app": '美图秀秀', "category": '信息流', "name": '一键配方图文', "checked": False },
@@ -29,19 +33,25 @@ INITIAL_TEMPLATES = [
 
   # 美颜
   { "id": 'my-s-1', "app": '美颜', "category": '开屏', "name": '动态开屏', "checked": False },
-  { "id": 'my-s-2', "app": '美颜', "category": '开屏', "name": '上滑开屏', "checked": False },
-  { "id": 'my-s-3', "app": '美颜', "category": '开屏', "name": '扭动开屏', "checked": False },
-  { "id": 'my-f-1', "app": '美颜', "category": '焦点视窗', "name": '动态焦点视窗', "checked": False },
-  { "id": 'my-f-2', "app": '美颜', "category": '焦点视窗', "name": '静态焦点视窗', "checked": False },
+  { "id": 'my-s-2', "app": '美颜', "category": '开屏', "name": '上下滑动全屏', "checked": False },
+  { "id": 'my-s-6', "app": '美颜', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
+  { "id": 'my-s-3', "app": '美颜', "category": '开屏', "name": '扭动全屏', "checked": False },
+  { "id": 'my-s-7', "app": '美颜', "category": '开屏', "name": '扭动非全屏', "checked": False },
+  { "id": 'my-s-8', "app": '美颜', "category": '开屏', "name": '三合一全屏', "checked": False },
+  { "id": 'my-s-9', "app": '美颜', "category": '开屏', "name": '三合一非全屏', "checked": False },
+  { "id": 'my-f-1', "app": '美颜', "category": '焦点视窗', "name": '焦点视窗', "checked": False },
   { "id": 'my-p-1', "app": '美颜', "category": '弹窗', "name": '弹窗精图', "checked": False },
   { "id": 'my-ib-1', "app": '美颜', "category": 'icon/banner', "name": '百宝箱顶部banner', "checked": False },
 
   # wink
   { "id": 'wk-s-1', "app": 'wink', "category": '开屏', "name": '动态开屏', "checked": False },
-  { "id": 'wk-s-2', "app": 'wink', "category": '开屏', "name": '上滑开屏', "checked": False },
-  { "id": 'wk-s-3', "app": 'wink', "category": '开屏', "name": '扭动开屏', "checked": False },
-  { "id": 'wk-f-1', "app": 'wink', "category": '焦点视窗', "name": '动态焦点视窗', "checked": False },
-  { "id": 'wk-f-2', "app": 'wink', "category": '焦点视窗', "name": '静态焦点视窗', "checked": False },
+  { "id": 'wk-s-2', "app": 'wink', "category": '开屏', "name": '上下滑动全屏', "checked": False },
+  { "id": 'wk-s-6', "app": 'wink', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
+  { "id": 'wk-s-3', "app": 'wink', "category": '开屏', "name": '扭动全屏', "checked": False },
+  { "id": 'wk-s-7', "app": 'wink', "category": '开屏', "name": '扭动非全屏', "checked": False },
+  { "id": 'wk-s-8', "app": 'wink', "category": '开屏', "name": '三合一全屏', "checked": False },
+  { "id": 'wk-s-9', "app": 'wink', "category": '开屏', "name": '三合一非全屏', "checked": False },
+  { "id": 'wk-f-1', "app": 'wink', "category": '焦点视窗', "name": '焦点视窗', "checked": False },
 ]
 
 CATEGORY_DIMENSIONS = {
@@ -58,6 +68,8 @@ def seed():
         if not db.query(AdTemplate).filter(AdTemplate.id == t_data["id"]).first():
             if t_data["id"] == "mt-ib-3":
                 t_data["dimensions"] = "1126 x 640"
+            elif t_data["id"].endswith("-s-6") or t_data["id"].endswith("-s-7") or t_data["id"].endswith("-s-9"):
+                t_data["dimensions"] = "1440 x 1938"
             else:
                 t_data["dimensions"] = CATEGORY_DIMENSIONS.get(t_data["category"], '1080 x 1920')
             db_item = AdTemplate(**t_data)

@@ -32,7 +32,7 @@
     "id": "mt-s-2",
     "app": "美图秀秀",
     "category": "开屏",
-    "name": "上下滑动开屏",
+    "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "crop_overlay_path": "/static/badges/1772078204835_________________.png",
@@ -43,10 +43,24 @@
     "splashGroup": "slide"
   },
   {
+    "id": "mt-s-6",
+    "app": "美图秀秀",
+    "category": "开屏",
+    "name": "上下滑动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "crop_overlay_path": "/static/badges/1772092608779____________________.png",
+    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
+    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
+    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "processedCount": 0,
+    "splashGroup": "slide-nonfull"
+  },
+  {
     "id": "mt-s-3",
     "app": "美图秀秀",
     "category": "开屏",
-    "name": "扭动开屏",
+    "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "crop_overlay_path": "/static/badges/1772078210121_________________.png",
@@ -55,6 +69,48 @@
     "maskUrl": "/static/masks/1770618641086____________________-.png.png",
     "processedCount": 7,
     "splashGroup": "twist"
+  },
+  {
+    "id": "mt-s-7",
+    "app": "美图秀秀",
+    "category": "开屏",
+    "name": "扭动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "crop_overlay_path": "/static/badges/1772092608779____________________.png",
+    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
+    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
+    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "processedCount": 0,
+    "splashGroup": "twist-nonfull"
+  },
+  {
+    "id": "mt-s-8",
+    "app": "美图秀秀",
+    "category": "开屏",
+    "name": "三合一全屏",
+    "checked": false,
+    "dimensions": "1440 x 2340",
+    "crop_overlay_path": "/static/badges/1772078210121_________________.png",
+    "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
+    "mask_path": "/static/masks/1770618641086____________________-.png.png",
+    "maskUrl": "/static/masks/1770618641086____________________-.png.png",
+    "processedCount": 0,
+    "splashGroup": "triple"
+  },
+  {
+    "id": "mt-s-9",
+    "app": "美图秀秀",
+    "category": "开屏",
+    "name": "三合一非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "crop_overlay_path": "/static/badges/1772092608779____________________.png",
+    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
+    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
+    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "processedCount": 0,
+    "splashGroup": "triple-nonfull"
   },
   {
     "id": "mt-f-1",
@@ -193,41 +249,66 @@
     "id": "my-s-2",
     "app": "美颜",
     "category": "开屏",
-    "name": "上滑开屏",
+    "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "slide"
   },
   {
+    "id": "my-s-6",
+    "app": "美颜",
+    "category": "开屏",
+    "name": "上下滑动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "slide-nonfull"
+  },
+  {
     "id": "my-s-3",
     "app": "美颜",
     "category": "开屏",
-    "name": "扭动开屏",
+    "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "twist"
   },
   {
+    "id": "my-s-7",
+    "app": "美颜",
+    "category": "开屏",
+    "name": "扭动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "twist-nonfull"
+  },
+  {
+    "id": "my-s-8",
+    "app": "美颜",
+    "category": "开屏",
+    "name": "三合一全屏",
+    "checked": false,
+    "dimensions": "1440 x 2340",
+    "splashGroup": "triple"
+  },
+  {
+    "id": "my-s-9",
+    "app": "美颜",
+    "category": "开屏",
+    "name": "三合一非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "triple-nonfull"
+  },
+  {
     "id": "my-f-1",
     "app": "美颜",
     "category": "焦点视窗",
-    "name": "动态焦点视窗",
+    "name": "焦点视窗",
     "checked": true,
     "dimensions": "1284 x 1128",
     "maskPath": "backend/storage/masks/1777270597630_______-____________.png",
     "mask_path": "/static/masks/1777270597630_______-____________.png",
     "maskUrl": "/static/masks/1777270597630_______-____________.png"
-  },
-  {
-    "id": "my-f-2",
-    "app": "美颜",
-    "category": "焦点视窗",
-    "name": "静态焦点视窗",
-    "checked": true,
-    "dimensions": "1284 x 1128",
-    "maskPath": "backend/storage/masks/1777270469489_______-____________.png",
-    "mask_path": "/static/masks/1777270469489_______-____________.png",
-    "maskUrl": "/static/masks/1777270469489_______-____________.png"
   },
   {
     "id": "my-f-3",
@@ -269,40 +350,65 @@
     "id": "wk-s-2",
     "app": "wink",
     "category": "开屏",
-    "name": "上滑开屏",
+    "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "slide"
   },
   {
+    "id": "wk-s-6",
+    "app": "wink",
+    "category": "开屏",
+    "name": "上下滑动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "slide-nonfull"
+  },
+  {
     "id": "wk-s-3",
     "app": "wink",
     "category": "开屏",
-    "name": "扭动开屏",
+    "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "twist"
   },
   {
+    "id": "wk-s-7",
+    "app": "wink",
+    "category": "开屏",
+    "name": "扭动非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "twist-nonfull"
+  },
+  {
+    "id": "wk-s-8",
+    "app": "wink",
+    "category": "开屏",
+    "name": "三合一全屏",
+    "checked": false,
+    "dimensions": "1440 x 2340",
+    "splashGroup": "triple"
+  },
+  {
+    "id": "wk-s-9",
+    "app": "wink",
+    "category": "开屏",
+    "name": "三合一非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "triple-nonfull"
+  },
+  {
     "id": "wk-f-1",
     "app": "wink",
     "category": "焦点视窗",
-    "name": "动态焦点视窗",
+    "name": "焦点视窗",
     "checked": true,
     "dimensions": "1126 x 1410",
     "maskPath": "backend/storage/masks/1777262149806_wink____________.png",
     "mask_path": "/static/masks/1777262149806_wink____________.png",
     "maskUrl": "/static/masks/1777262149806_wink____________.png"
-  },
-  {
-    "id": "wk-f-2",
-    "app": "wink",
-    "category": "焦点视窗",
-    "name": "静态焦点视窗",
-    "checked": true,
-    "dimensions": "1126 x 1410",
-    "maskPath": "backend/storage/masks/1777262153524_wink____________.png",
-    "mask_path": "/static/masks/1777262153524_wink____________.png",
-    "maskUrl": "/static/masks/1777262153524_wink____________.png"
   }
 ]

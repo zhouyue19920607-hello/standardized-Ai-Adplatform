@@ -68,6 +68,10 @@ export interface AdConfig {
   captureLastFrameSplash?: boolean;
   // NOTE: my-f-1 美颜动态焦点视窗专属：是否截取视频第一帧作为静态图输出
   captureFirstFrameMyF1?: boolean;
+  // NOTE: my-f-1 美颜动态焦点视窗专属：是否截取视频最后一帧作为静态图输出
+  captureLastFrameMyF1?: boolean;
+  // NOTE: wk-f-1 Wink 动态焦点视窗专属：是否截取视频最后一帧作为静态图输出
+  captureLastFrameWkF1?: boolean;
   // NOTE: mt-p-1 保分页弹窗专属：是否截取视频第 0 帧作为静态图输出
   captureFirstFrameMtP1?: boolean;
   // NOTE: mt-f-1 动态焦点视窗专属：是否截取视频第 0 帧作为静态图输出
@@ -91,4 +95,35 @@ export interface RawFile {
     height: number;
     duration: number;
   };
+}
+
+export interface TemplateAnalyticsItem {
+  id: string;
+  name: string;
+  app: string;
+  category: string;
+  board?: string;
+  count: number;
+}
+
+export interface AnalyticsDaySummary {
+  date: string;
+  visits: number;
+  generations: number;
+  uniqueVisitors: number;
+  templateUseCount: number;
+}
+
+export interface AnalyticsSummary {
+  today: AnalyticsDaySummary & {
+    topTemplates: TemplateAnalyticsItem[];
+  };
+  totals: {
+    daysTracked: number;
+    visits: number;
+    generations: number;
+    uniqueVisitors: number;
+  };
+  recentDays: AnalyticsDaySummary[];
+  templateRanking: TemplateAnalyticsItem[];
 }

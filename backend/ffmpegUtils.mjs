@@ -10,7 +10,7 @@ export async function compressAndCompositeVideo(
     const maxSizeBytes = options.maxSizeMB ? options.maxSizeMB * 1024 * 1024 : null;
     const bitrateSteps = maxSizeBytes
         ? [1500, 1200, 900, 700, 500, 350, 250, 180, 120]
-        : [1500];
+        : [null];
 
     const encode = (videoBitrateKbps) => new Promise((resolve, reject) => {
         let command = ffmpeg(videoPath);
@@ -53,18 +53,30 @@ export async function compressAndCompositeVideo(
             lastOutput = 'final';
         }
 
-        command.complexFilter(filters, lastOutput)
-            .outputOptions([
+        const outputOptions = [
                 '-c:v libx264',
-                `-b:v ${videoBitrateKbps}k`,
-                `-maxrate ${Math.round(videoBitrateKbps * 1.35)}k`,
-                `-bufsize ${Math.round(videoBitrateKbps * 2.7)}k`,
                 '-preset slow',     // Better quality per bit
                 '-c:a aac',
-                '-b:a 64k',
+                '-b:a 128k',
                 '-movflags +faststart',
                 '-pix_fmt yuv420p'
-            ])
+        ];
+
+        if (videoBitrateKbps) {
+            outputOptions.splice(
+                2,
+                0,
+                `-b:v ${videoBitrateKbps}k`,
+                `-maxrate ${Math.round(videoBitrateKbps * 1.35)}k`,
+                `-bufsize ${Math.round(videoBitrateKbps * 2.7)}k`
+            );
+        } else {
+            // No max-size target means "compose only": avoid forced low-bitrate compression.
+            outputOptions.splice(2, 0, '-crf 18');
+        }
+
+        command.complexFilter(filters, lastOutput)
+            .outputOptions(outputOptions)
             .save(outputPath)
             .on('end', () => resolve())
             .on('error', (err) => reject(err));

@@ -43,3 +43,5 @@ ai-platform.tar.gz
 backend/data/usage-stats.json
 # NOTE: 遮罩/裁剪层/角标路径持久化文件，不随代码更新覆盖
 backend/data/asset-overrides.json
+# NOTE: 访问统计持久化文件，不随代码更新覆盖
+backend/data/analytics.json
