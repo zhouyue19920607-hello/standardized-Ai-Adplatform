@@ -63,18 +63,48 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
 
     const activeTemplates = templates.filter(tpl => tpl.checked);
     const dimensionSource = activeTemplates.length > 0 ? activeTemplates : templates;
+    const targetSlots = dimensionSource
+        .map(tpl => {
+            const dimension = parseDimensions(tpl.dimensions);
+            if (!dimension) return null;
+            return {
+                ...dimension,
+                templateName: tpl.name,
+                app: tpl.app,
+                category: tpl.category,
+                slotName: `${tpl.app}${tpl.name}`,
+            };
+        })
+        .filter((item): item is { width: number; height: number; label: string; templateName: string; app: string; category: string; slotName: string } => Boolean(item));
     const targetDimensions = Array.from(
-        new Map(
-            dimensionSource
-                .map(tpl => parseDimensions(tpl.dimensions))
-                .filter((item): item is { width: number; height: number; label: string } => Boolean(item))
-                .map(item => [`${item.width}x${item.height}`, item])
-        ).values()
+        new Map(targetSlots.map(item => [`${item.width}x${item.height}`, item])).values()
     );
 
-    const getImageDimensionStatus = (raw: RawFile) => {
-        if (!raw.file.type.startsWith('image/')) {
-            return { tone: 'neutral', label: '视频素材', detail: '已按视频白名单校验' };
+    const describeMatches = (matches: typeof targetSlots) => {
+        const uniqueNames = Array.from(new Set(matches.map(item => item.slotName)));
+        if (uniqueNames.length <= 2) return uniqueNames.join('、');
+        return `${uniqueNames.slice(0, 2).join('、')}等 ${uniqueNames.length} 个资源位`;
+    };
+
+    const getAssetDimensionStatus = (raw: RawFile) => {
+        if (raw.file.type.startsWith('video/')) {
+            if (!raw.videoDimensions) {
+                return { tone: 'neutral', label: '视频素材', detail: '尺寸已放行' };
+            }
+            const matches = targetSlots.filter(target => target.width === raw.videoDimensions?.width && target.height === raw.videoDimensions?.height);
+            const sizeText = `${raw.videoDimensions.width} x ${raw.videoDimensions.height}`;
+            if (matches.length) {
+                return {
+                    tone: 'ok',
+                    label: '视频尺寸符合',
+                    detail: `视频尺寸符合${describeMatches(matches)}尺寸\n${sizeText} / ${Number.isFinite(raw.videoDimensions.duration) ? `${raw.videoDimensions.duration.toFixed(1)}s` : '时长未知'}`
+                };
+            }
+            return {
+                tone: 'warn',
+                label: '建议 AI 适配',
+                detail: `上传的视频不符合任意资源位尺寸（当前 ${sizeText}）\n建议使用 AI 功能协助适配`
+            };
         }
         if (!raw.imageDimensions) {
             return { tone: 'neutral', label: '检测中', detail: '正在读取图片尺寸' };
@@ -82,15 +112,19 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
         if (targetDimensions.length === 0) {
             return { tone: 'neutral', label: '待选择', detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height}` };
         }
-        const matchedCount = targetDimensions.filter(target => target.width === raw.imageDimensions?.width && target.height === raw.imageDimensions?.height).length;
-        if (matchedCount === targetDimensions.length) {
-            return { tone: 'ok', label: '尺寸符合', detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height}` };
+        const matches = targetSlots.filter(target => target.width === raw.imageDimensions?.width && target.height === raw.imageDimensions?.height);
+        const sizeText = `${raw.imageDimensions.width} x ${raw.imageDimensions.height}`;
+        if (matches.length) {
+            return {
+                tone: 'ok',
+                label: '图片尺寸符合',
+                detail: `图片尺寸符合${describeMatches(matches)}尺寸\n${sizeText}`
+            };
         }
-        const scope = activeTemplates.length > 0 ? '已选模板' : '全部平台';
         return {
             tone: 'warn',
             label: '建议 AI 适配',
-            detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height} / ${scope}需 ${targetDimensions.length} 种尺寸`
+            detail: `上传的素材不符合任意资源位尺寸（当前 ${sizeText}）\n建议使用 AI 功能协助适配`
         };
     };
 
@@ -159,7 +193,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                     <div className="min-w-0">
                                         <h3 className="text-xs font-black text-slate-700">{t('main.pendingAssets')} ({rawFiles.length})</h3>
                                         <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                                            图片会检测是否匹配{activeTemplates.length > 0 ? '已选模板' : '全部平台'}尺寸，不匹配建议使用 AI 适配。
+                                            图片/视频会检测是否匹配{activeTemplates.length > 0 ? '已选模板' : '全部平台'}尺寸，不匹配建议使用 AI 适配。
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -182,7 +216,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                 </div>
                                 <div className={`space-y-2 pb-1 transition-all duration-400 ${isCollapsed ? 'opacity-60' : ''}`}>
                                     {rawFiles.map(raw => {
-                                        const status = getImageDimensionStatus(raw);
+                                        const status = getAssetDimensionStatus(raw);
                                         const statusClass = status.tone === 'ok'
                                             ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
                                             : status.tone === 'warn'
@@ -209,9 +243,10 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                     <p className="text-[10px] text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
                                                 </div>
                                                 {!isCollapsed && (
-                                                    <div className="hidden md:block min-w-[170px]">
-                                                        <p className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-black ${statusClass}`}>{status.label}</p>
-                                                        <p className="text-[9px] text-slate-400 font-semibold mt-1 truncate">{status.detail}</p>
+                                                    <div className="hidden md:block min-w-[260px] max-w-[360px]">
+                                                        <div className={`rounded-xl border px-3 py-2 ${statusClass}`}>
+                                                            <p className="text-[9px] font-semibold leading-snug whitespace-pre-line line-clamp-2">{status.detail}</p>
+                                                        </div>
                                                     </div>
                                                 )}
                                                 <button

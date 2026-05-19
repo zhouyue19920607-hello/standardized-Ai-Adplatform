@@ -202,7 +202,7 @@ export const compositeVideo = async (
     videoBlob: Blob,
     bgBlob: Blob | null,
     fgBlob: Blob | null,
-    params: { targetW: number, targetH: number, videoRect: { x: number, y: number, w: number, h: number }, maxSizeMB?: number }
+    params: { targetW: number, targetH: number, videoRect: { x: number, y: number, w: number, h: number }, maxSizeMB?: number, maxDurationSec?: number }
 ): Promise<any> => {
     const formData = new FormData();
     formData.append('video', videoBlob, 'source.mp4');

@@ -76,19 +76,17 @@ async function ensureDataFiles() {
     // 初始模版：和前端现有模版保持一致，并附加尺寸字段，作为“管理库”基线
     const initialTemplates = [
       // 美图秀秀
-      { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
+      { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "气泡全屏", checked: false, dimensions: "1440 x 2340" },
       { id: "mt-s-2", app: "美图秀秀", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "mt-s-4", app: "美图秀秀", category: "开屏", name: "气泡开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "动态焦点视窗", checked: true, dimensions: "1126 x 2436" },
-      { id: "mt-f-2", app: "美图秀秀", category: "焦点视窗", name: "静态焦点视窗", checked: true, dimensions: "1126 x 2436" },
+      { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "焦点视窗", checked: true, dimensions: "1126 x 2436" },
       { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "mt-fe-1", app: "美图秀秀", category: "信息流", name: "一键配方图文", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-1", app: "美图秀秀", category: "icon/banner", name: "热推第三位", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1126 x 640" },
       { id: "mt-ib-4", app: "美图秀秀", category: "icon/banner", name: "话题页banner", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "1080 x 1920" },
+      { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "960 x 1440" },
       { id: "mt-p-2", app: "美图秀秀", category: "弹窗", name: "首页弹窗", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-p-3", app: "美图秀秀", category: "弹窗", name: "首页弹窗异形", checked: false, dimensions: "1080 x 1920" },
 
@@ -96,7 +94,6 @@ async function ensureDataFiles() {
       { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "my-s-2", app: "美颜", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "my-s-4", app: "美颜", category: "开屏", name: "气泡开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "动态焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "my-f-2", app: "美颜", category: "焦点视窗", name: "静态焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "my-p-1", app: "美颜", category: "弹窗", name: "弹窗精图", checked: false, dimensions: "1080 x 1920" },
@@ -106,7 +103,6 @@ async function ensureDataFiles() {
       { id: "wk-s-1", app: "wink", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "wk-s-2", app: "wink", category: "开屏", name: "上滑开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动开屏", checked: false, dimensions: "1440 x 2340" },
-      { id: "wk-s-4", app: "wink", category: "开屏", name: "气泡开屏", checked: false, dimensions: "1440 x 2340" },
       { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "动态焦点视窗", checked: false, dimensions: "1126 x 2436" },
       { id: "wk-f-2", app: "wink", category: "焦点视窗", name: "静态焦点视窗", checked: false, dimensions: "1126 x 2436" }
     ];
@@ -1386,7 +1382,8 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
     const outputPath = path.join(STORAGE_DIR, outputFilename);
 
     const maxSizeMB = Number(params.maxSizeMB) > 0 ? Number(params.maxSizeMB) : undefined;
-    console.log(`[VideoComposite] Starting FFmpeg process for ${videoFile.originalname}... target: ${params.targetW}x${params.targetH}${maxSizeMB ? `, max ${maxSizeMB}MB` : ""}`);
+    const maxDurationSec = Number(params.maxDurationSec) > 0 ? Number(params.maxDurationSec) : undefined;
+    console.log(`[VideoComposite] Starting FFmpeg process for ${videoFile.originalname}... target: ${params.targetW}x${params.targetH}${maxSizeMB ? `, max ${maxSizeMB}MB` : ""}${maxDurationSec ? `, trim ${maxDurationSec}s` : ""}`);
 
     await compressAndCompositeVideo(
       videoFile.path,
@@ -1396,7 +1393,7 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
       bgImage?.path,
       fgImage?.path,
       outputPath,
-      { maxSizeMB }
+      { maxSizeMB, maxDurationSec }
     );
 
     const outputStats = await fs.stat(outputPath);

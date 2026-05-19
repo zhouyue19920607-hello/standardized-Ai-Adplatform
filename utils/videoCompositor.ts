@@ -72,6 +72,10 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
         targetH = showMask ? (isWink ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
     } else if (isHotRecommend && !showMask) {
         targetW = 720; targetH = 960;
+    } else if (isScorePopup && !showMask) {
+        targetW = 960; targetH = 1440;
+    } else if (isHomePopup && !showMask) {
+        targetW = 720; targetH = 960;
     } else if (asset.category === '开屏') {
         const isNonFullscreenSplash = asset.id.includes('mt-s-5');
         targetW = 1440; targetH = showMask ? 2340 : (isNonFullscreenSplash ? 1938 : 2340);

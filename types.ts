@@ -64,8 +64,14 @@ export interface AdConfig {
   showCrop: boolean;
   splashText: string;
   captureFirstFrame: boolean;
+  // NOTE: 开屏模版专属：是否截取视频最后一帧作为静态图输出
+  captureLastFrameSplash?: boolean;
   // NOTE: my-f-1 美颜动态焦点视窗专属：是否截取视频第一帧作为静态图输出
   captureFirstFrameMyF1?: boolean;
+  // NOTE: mt-p-1 保分页弹窗专属：是否截取视频第 0 帧作为静态图输出
+  captureFirstFrameMtP1?: boolean;
+  // NOTE: mt-f-1 动态焦点视窗专属：是否截取视频第 0 帧作为静态图输出
+  captureFirstFrameMtF1?: boolean;
   // NOTE: mt-f-1 动态焦点视窗专属：是否截取视频最后一帧作为静态图输出
   captureLastFrameMtF1: boolean;
   assetsVersion: number;
@@ -79,5 +85,10 @@ export interface RawFile {
   imageDimensions?: {
     width: number;
     height: number;
+  };
+  videoDimensions?: {
+    width: number;
+    height: number;
+    duration: number;
   };
 }

@@ -13,12 +13,10 @@ Base.metadata.create_all(bind=engine)
 
 INITIAL_TEMPLATES = [
   # 美图秀秀
-  { "id": 'mt-s-1', "app": '美图秀秀', "category": '开屏', "name": '动态开屏', "checked": False },
+  { "id": 'mt-s-1', "app": '美图秀秀', "category": '开屏', "name": '气泡全屏', "checked": False },
   { "id": 'mt-s-2', "app": '美图秀秀', "category": '开屏', "name": '上滑开屏', "checked": False },
   { "id": 'mt-s-3', "app": '美图秀秀', "category": '开屏', "name": '扭动开屏', "checked": False },
-  { "id": 'mt-s-4', "app": '美图秀秀', "category": '开屏', "name": '气泡开屏', "checked": False },
-  { "id": 'mt-f-1', "app": '美图秀秀', "category": '焦点视窗', "name": '动态焦点视窗', "checked": True },
-  { "id": 'mt-f-2', "app": '美图秀秀', "category": '焦点视窗', "name": '静态焦点视窗', "checked": True },
+  { "id": 'mt-f-1', "app": '美图秀秀', "category": '焦点视窗', "name": '焦点视窗', "checked": True },
   { "id": 'mt-f-3', "app": '美图秀秀', "category": '焦点视窗', "name": '沉浸式焦点视窗', "checked": False },
   { "id": 'mt-fe-1', "app": '美图秀秀', "category": '信息流', "name": '一键配方图文', "checked": False },
   { "id": 'mt-ib-1', "app": '美图秀秀', "category": 'icon/banner', "name": '热推第三位', "checked": False },
@@ -33,7 +31,6 @@ INITIAL_TEMPLATES = [
   { "id": 'my-s-1', "app": '美颜', "category": '开屏', "name": '动态开屏', "checked": False },
   { "id": 'my-s-2', "app": '美颜', "category": '开屏', "name": '上滑开屏', "checked": False },
   { "id": 'my-s-3', "app": '美颜', "category": '开屏', "name": '扭动开屏', "checked": False },
-  { "id": 'my-s-4', "app": '美颜', "category": '开屏', "name": '气泡开屏', "checked": False },
   { "id": 'my-f-1', "app": '美颜', "category": '焦点视窗', "name": '动态焦点视窗', "checked": False },
   { "id": 'my-f-2', "app": '美颜', "category": '焦点视窗', "name": '静态焦点视窗', "checked": False },
   { "id": 'my-p-1', "app": '美颜', "category": '弹窗', "name": '弹窗精图', "checked": False },
@@ -43,7 +40,6 @@ INITIAL_TEMPLATES = [
   { "id": 'wk-s-1', "app": 'wink', "category": '开屏', "name": '动态开屏', "checked": False },
   { "id": 'wk-s-2', "app": 'wink', "category": '开屏', "name": '上滑开屏', "checked": False },
   { "id": 'wk-s-3', "app": 'wink', "category": '开屏', "name": '扭动开屏', "checked": False },
-  { "id": 'wk-s-4', "app": 'wink', "category": '开屏', "name": '气泡开屏', "checked": False },
   { "id": 'wk-f-1', "app": 'wink', "category": '焦点视窗', "name": '动态焦点视窗', "checked": False },
   { "id": 'wk-f-2', "app": 'wink', "category": '焦点视窗', "name": '静态焦点视窗', "checked": False },
 ]

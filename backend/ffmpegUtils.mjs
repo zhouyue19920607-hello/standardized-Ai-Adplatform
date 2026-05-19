@@ -14,6 +14,7 @@ export async function compressAndCompositeVideo(
 
     const encode = (videoBitrateKbps) => new Promise((resolve, reject) => {
         let command = ffmpeg(videoPath);
+        if (options.maxDurationSec) command = command.duration(options.maxDurationSec);
         
         if (bgPath) command = command.input(bgPath);
         if (fgPath) command = command.input(fgPath);

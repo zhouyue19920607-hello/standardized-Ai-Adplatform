@@ -3,7 +3,7 @@
     "id": "mt-s-1",
     "app": "美图秀秀",
     "category": "开屏",
-    "name": "全屏动态",
+    "name": "气泡全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
     "workflow_id": "wf_1769787041100",
@@ -18,7 +18,7 @@
     "id": "mt-s-5",
     "app": "美图秀秀",
     "category": "开屏",
-    "name": "非全屏动态",
+    "name": "气泡非全屏",
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/1772092608779____________________.png",
@@ -43,20 +43,6 @@
     "splashGroup": "slide"
   },
   {
-    "id": "mt-s-4",
-    "app": "美图秀秀",
-    "category": "开屏",
-    "name": "气泡开屏",
-    "checked": false,
-    "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/badges/1772078206724_________________.png",
-    "maskPath": "backend/storage/masks/1770618528800____________________-.png.png",
-    "mask_path": "/static/masks/1770618528800____________________-.png.png",
-    "maskUrl": "/static/masks/1770618528800____________________-.png.png",
-    "processedCount": 4,
-    "splashGroup": "bubble"
-  },
-  {
     "id": "mt-s-3",
     "app": "美图秀秀",
     "category": "开屏",
@@ -74,21 +60,11 @@
     "id": "mt-f-1",
     "app": "美图秀秀",
     "category": "焦点视窗",
-    "name": "动态焦点视窗",
+    "name": "焦点视窗",
     "checked": true,
     "dimensions": "1126 x 900",
     "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
     "processedCount": 17
-  },
-  {
-    "id": "mt-f-2",
-    "app": "美图秀秀",
-    "category": "焦点视窗",
-    "name": "静态焦点视窗",
-    "checked": true,
-    "dimensions": "1126 x 900",
-    "badge_overlay_path": "/static/badges/mt-f-2_badge.png",
-    "processedCount": 13
   },
   {
     "id": "mt-f-3",
@@ -232,15 +208,6 @@
     "splashGroup": "twist"
   },
   {
-    "id": "my-s-4",
-    "app": "美颜",
-    "category": "开屏",
-    "name": "气泡开屏",
-    "checked": false,
-    "dimensions": "1440 x 2340",
-    "splashGroup": "bubble"
-  },
-  {
     "id": "my-f-1",
     "app": "美颜",
     "category": "焦点视窗",
@@ -315,15 +282,6 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "twist"
-  },
-  {
-    "id": "wk-s-4",
-    "app": "wink",
-    "category": "开屏",
-    "name": "气泡开屏",
-    "checked": false,
-    "dimensions": "1440 x 2340",
-    "splashGroup": "bubble"
   },
   {
     "id": "wk-f-1",

@@ -144,11 +144,16 @@ const AdCard: React.FC<{
           asset.app === '美图秀秀' &&
           asset.category === '焦点视窗' &&
           videoBlob.size > 10 * 1024 * 1024;
+        const shouldLimitScorePopupVideo =
+          asset.id.includes('mt-p-1') &&
+          videoBlob.size > 4 * 1024 * 1024;
         const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
           targetW: params.targetW,
           targetH: params.targetH,
           videoRect: params.videoRect,
-          ...(shouldLimitMeituFocalVideo ? { maxSizeMB: 10 } : {})
+          ...(shouldLimitMeituFocalVideo ? { maxSizeMB: 10 } : {}),
+          ...(shouldLimitScorePopupVideo ? { maxSizeMB: 4 } : {}),
+          ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
         });
 
         if (result.ok && result.url) {
@@ -753,7 +758,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             {/* Modal Splash Text Overlay (Fullscreen 開屏) */}
             {selectedAsset.category === '开屏' && selectedAssetInfo.showMask && (
               <div className="absolute inset-x-0 text-center pointer-events-none z-[60]"
-                style={{ bottom: selectedAsset.id.includes('mt-s-5') ? 'calc(26.07% - 5px)' : (selectedAsset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3') || selectedAsset.id.includes('mt-s-4')) ? 'translateY(2px)' : 'none' }}>
+                style={{ bottom: selectedAsset.id.includes('mt-s-5') ? 'calc(26.07% - 5px)' : (selectedAsset.templateName === '上下滑动开屏' ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动开屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3')) ? 'translateY(2px)' : 'none' }}>
                 <div className="inline-block" style={{ fontSize: (selectedAsset.id.includes('mt-s-5') || selectedAsset.templateName === '上下滑动开屏') ? '2.48cqh' : (selectedAsset.templateName === '扭动开屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
                   <span className="text-white text-center block font-bold shadow-sm">{selectedAsset.splashText || t('preview.defaultSplashText')}</span>
                 </div>

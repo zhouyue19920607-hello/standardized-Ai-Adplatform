@@ -112,6 +112,29 @@ const captureVideoFrame = (file: File, seekPoint: 'start' | 'end' = 'start'): Pr
   });
 };
 
+const getVideoMeta = (file: File): Promise<{ width: number; height: number; duration: number }> => (
+  new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      resolve({
+        width: video.videoWidth,
+        height: video.videoHeight,
+        duration: video.duration,
+      });
+      URL.revokeObjectURL(url);
+      video.remove();
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      video.remove();
+      reject(new Error('视频信息读取失败'));
+    };
+    video.src = url;
+  })
+);
+
 const App: React.FC = () => {
   const { t } = useLanguage();
   const [templates, setTemplates] = useState<AdTemplate[]>([]);
@@ -152,6 +175,9 @@ const App: React.FC = () => {
     showCrop: false,
     splashText: '跳转至第三方平台',
     captureFirstFrame: false,
+    captureLastFrameSplash: false,
+    captureFirstFrameMtP1: false,
+    captureFirstFrameMtF1: false,
     captureLastFrameMtF1: false,
     assetsVersion: Date.now(),
   });
@@ -254,31 +280,39 @@ const App: React.FC = () => {
     { width: 1284, height: 1128 },
     { width: 1440, height: 2340 },
     { width: 1440, height: 1938 },
+    { width: 960, height: 1440 },
   ];
 
   /**
    * 校验视频尺寸是否符合要求
    * @returns true 表示尺寸合法，false 表示尺寸不符合
    */
-  const validateVideoDimensions = (file: File): Promise<boolean> => {
+  const readVideoDimensions = (file: File): Promise<{ width: number; height: number; duration: number } | null> => {
     return new Promise((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
       const url = URL.createObjectURL(file);
       video.onloadedmetadata = () => {
         URL.revokeObjectURL(url);
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        const isValid = ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === w && d.height === h);
-        resolve(isValid);
+        resolve({
+          width: video.videoWidth,
+          height: video.videoHeight,
+          duration: video.duration,
+        });
       };
       video.onerror = () => {
         URL.revokeObjectURL(url);
-        // 无法读取尺寸时放行，避免误拦截
-        resolve(true);
+        resolve(null);
       };
       video.src = url;
     });
+  };
+
+  const validateVideoDimensions = async (file: File): Promise<boolean> => {
+    const meta = await readVideoDimensions(file);
+    // 无法读取尺寸时放行，避免误拦截
+    if (!meta) return true;
+    return ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === meta.width && d.height === meta.height);
   };
 
   const readImageDimensions = (file: File): Promise<{ width: number; height: number } | null> => {
@@ -306,8 +340,10 @@ const App: React.FC = () => {
       const file = f as File;
 
       // NOTE: 仅对视频格式校验尺寸，图片不受限制
+      let videoDimensions: { width: number; height: number; duration: number } | null = null;
       if (file.type.startsWith('video/')) {
-        const isValidSize = await validateVideoDimensions(file);
+        videoDimensions = await readVideoDimensions(file);
+        const isValidSize = !videoDimensions || ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === videoDimensions?.width && d.height === videoDimensions?.height);
         if (!isValidSize) {
           const allowedList = ALLOWED_VIDEO_DIMENSIONS.map(d => `${d.width}x${d.height}px`).join('、');
           alert(`视频尺寸不符合要求！\n\n请上传以下尺寸之一的视频：\n${allowedList}\n\n当前文件：${file.name}`);
@@ -322,7 +358,8 @@ const App: React.FC = () => {
       setRawFiles(prev => [...prev, {
         id,
         file,
-        previewUrl
+        previewUrl,
+        ...(videoDimensions ? { videoDimensions } : {})
       }]);
 
       // Then process thumbnail in background
@@ -483,7 +520,7 @@ const App: React.FC = () => {
 
         // Precise classification for Focal Windows
         const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
-        const isDynamicFocal = template.category === '焦点视窗' && template.name.includes('动态') && !template.name.includes('沉浸式');
+        const isDynamicFocal = template.category === '焦点视窗' && (template.id === 'mt-f-1' || template.name.includes('动态')) && !template.name.includes('沉浸式');
         const isImmersive = template.category === '焦点视窗' && template.name.includes('沉浸式'); // Assuming Immersive is mostly static images or specific logic
         const isNonFullscreenSplash = template.id === 'mt-s-5';
 
@@ -496,33 +533,27 @@ const App: React.FC = () => {
         // NOTE: 一键配方图文，信息流模板，裁剪至 720x960
         const isRecipeContent = template.id === 'mt-fe-1';
         const isMts1 = template.id === 'mt-s-1';
+        const processSplashFrame = async (seekPoint: 'start' | 'end') => {
+          const capturedFrame = await captureVideoFrame(raw.file, seekPoint);
+          if (!capturedFrame) return raw.previewUrl;
+          const resp = await fetch(capturedFrame);
+          const blob = await resp.blob();
+          const file = new File([blob], seekPoint === 'end' ? 'splash_last_frame.jpg' : 'splash_first_frame.jpg', { type: 'image/jpeg' });
+          const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
+          return compressed?.url ? `${ASSETS_URL}${compressed.url}` : capturedFrame;
+        };
 
         // 1. If Workflow exists -> Try ComfyUI -> Fallback to Smart Crop (if image) or Thumbnail (if video)
-        // Special handling: If captureFirstFrame is enabled for dynamic splash, skip workflow entirely
-        const isDynamicTemplate = template.name.includes('动态');
-        const shouldCaptureFrame = isSplash && isDynamicTemplate && isVideo && config.captureFirstFrame;
+        // Special handling: If splash frame capture is enabled, skip workflow entirely
+        const shouldCaptureFrame = isSplash && isVideo && (config.captureFirstFrame || config.captureLastFrameSplash);
 
         if (shouldCaptureFrame) {
-          // Skip workflow, directly capture and process first frame
-          console.log(`[Splash Debug] captureFirstFrame enabled for ${template.id}, skipping workflow...`);
+          // Skip workflow, directly capture and process selected frame
+          const seekPoint = config.captureLastFrameSplash ? 'end' : 'start';
+          console.log(`[Splash Debug] ${seekPoint} frame capture enabled for ${template.id}, skipping workflow...`);
           try {
-            let thumb = raw.thumbnailUrl;
-            if (!thumb) thumb = await captureVideoFrame(raw.file);
-            if (thumb) {
-              const resp = await fetch(thumb);
-              const blob = await resp.blob();
-              const forceJpeg = isSplash || template.category === '焦点视窗';
-              const file = new File([blob], forceJpeg ? "captured_frame.jpg" : "captured_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
-              const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
-              if (compressed?.url) {
-                finalUrl = `${ASSETS_URL}${compressed.url}`;
-                console.log(`[Splash Debug] First frame captured and processed: ${finalUrl}`);
-              } else {
-                finalUrl = thumb;
-              }
-            } else {
-              finalUrl = raw.previewUrl;
-            }
+            finalUrl = await processSplashFrame(seekPoint);
+            console.log(`[Splash Debug] ${seekPoint} frame captured and processed: ${finalUrl}`);
           } catch (e) {
             console.error('[Splash Debug] Frame capture failed:', e);
             finalUrl = raw.previewUrl;
@@ -585,34 +616,14 @@ const App: React.FC = () => {
                 }
               } catch (e) { console.error("Smart Crop fallback failed", e); }
             } else if (raw.file.type.startsWith('video/')) {
-              // Splash Dynamic fallback logic
-              const isDynamicTemplate = template.name.includes('动态');
-              if (isSplash && isDynamicTemplate && config.captureFirstFrame) {
-                // Actually isDynamicFocal is for Focal Window. Splash might need its own check.
-                // Let's use template.name.includes('动态') directly or rely on isDynamicFocal if it was meant to be generic?
-                // No, isDynamicFocal was specific to '焦点视窗'.
-                // Let's use `template.name.includes('动态')` locally.
-                console.log(`[Splash Debug] Capturing first frame for ${template.id}`);
-                let thumb = raw.thumbnailUrl;
-                if (!thumb) thumb = await captureVideoFrame(raw.file);
-                if (thumb) {
-                  try {
-                    const resp = await fetch(thumb);
-                    const blob = await resp.blob();
-                    const forceJpeg = isSplash || template.category === '焦点视窗';
-                    const file = new File([blob], forceJpeg ? "fallback_frame.jpg" : "fallback_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
-                    const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
-                    if (compressed?.url) {
-                      finalUrl = `${ASSETS_URL}${compressed.url}`;
-                      console.log(`[Splash Debug] First frame captured: ${finalUrl}`);
-                    } else {
-                      finalUrl = thumb;
-                    }
-                  } catch (e) {
-                    console.error('[Splash Debug] Frame processing failed:', e);
-                    finalUrl = thumb;
-                  }
-                } else {
+              // Splash fallback logic
+              if (isSplash && (config.captureFirstFrame || config.captureLastFrameSplash)) {
+                const seekPoint = config.captureLastFrameSplash ? 'end' : 'start';
+                console.log(`[Splash Debug] Capturing ${seekPoint} frame for ${template.id}`);
+                try {
+                  finalUrl = await processSplashFrame(seekPoint);
+                } catch (e) {
+                  console.error('[Splash Debug] Frame processing failed:', e);
                   finalUrl = raw.previewUrl;
                 }
               } else {
@@ -631,28 +642,16 @@ const App: React.FC = () => {
             console.error("Direct Smart Crop failed", e);
           }
         }
-        // 3. Dynamic Splash Video (No Workflow)
-        // 3. Dynamic Splash Video (No Workflow)
-        else if (isSplash && template.name.includes('动态') && raw.file.type.startsWith('video/')) {
-          if (config.captureFirstFrame) {
-            let thumb = raw.thumbnailUrl;
-            if (!thumb) thumb = await captureVideoFrame(raw.file);
-            if (thumb) {
-              try {
-                const resp = await fetch(thumb);
-                const blob = await resp.blob();
-                const forceJpeg = isSplash || template.category === '焦点视窗';
-                const file = new File([blob], forceJpeg ? "first_frame.jpg" : "first_frame.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
-                const compressed = await smartCropImage(file, 1440, isNonFullscreenSplash ? 1938 : 2340, 200);
-                if (compressed?.url) finalUrl = `${ASSETS_URL}${compressed.url}`;
-                else finalUrl = thumb;
-              } catch (e) { finalUrl = thumb; }
-            } else {
+        // 3. Splash Video (No Workflow)
+        else if (isSplash && raw.file.type.startsWith('video/')) {
+          if (config.captureFirstFrame || config.captureLastFrameSplash) {
+            try {
+              finalUrl = await processSplashFrame(config.captureLastFrameSplash ? 'end' : 'start');
+            } catch (e) {
+              console.error('[Splash Debug] Direct frame processing failed:', e);
               finalUrl = raw.previewUrl;
             }
-          } else {
-            finalUrl = raw.previewUrl;
-          }
+          } else finalUrl = raw.previewUrl;
         }
         // 4. Static Focal Window + Image -> Force Smart Crop (1126 x focalHeight)
         else if ((isStaticFocal || isImmersive) && raw.file.type.startsWith('image/')) {
@@ -736,6 +735,34 @@ const App: React.FC = () => {
             console.error("Direct Smart Crop (Score Popup) failed", e);
           }
         }
+        // 9.1 Score Popup (保分页弹窗) + Video -> 960x1440 / 5s, optional frame 0 capture
+        else if (isScorePopup && raw.file.type.startsWith('video/')) {
+          try {
+            const meta = await getVideoMeta(raw.file);
+            if (meta.duration > 5) {
+              console.warn(`[mt-p-1] 视频 ${meta.duration.toFixed(1)}s 超过 5s，保存时会按前 5s 合成处理`);
+            }
+            if (meta.width !== 960 || meta.height !== 1440) {
+              console.warn(`[mt-p-1] 视频尺寸 ${meta.width}x${meta.height}，目标尺寸为 960x1440，保存时会按 960x1440 适配`);
+            }
+
+            if (config.captureFirstFrameMtP1) {
+              const firstFrame = await captureVideoFrame(raw.file, 'start');
+              if (firstFrame) {
+                const resp = await fetch(firstFrame);
+                const blob = await resp.blob();
+                const frameFile = new File([blob], 'score_popup_frame0.jpg', { type: 'image/jpeg' });
+                const smart = await smartCropImage(frameFile, 960, 1440, 250);
+                finalUrl = smart?.url ? `${ASSETS_URL}${smart.url}` : firstFrame;
+              }
+            } else {
+              finalUrl = raw.previewUrl;
+            }
+          } catch (e) {
+            console.error("[mt-p-1] Score Popup video handling failed", e);
+            finalUrl = raw.previewUrl;
+          }
+        }
         // 9.5 Home Popup (首页弹窗) + Image -> Force Smart Crop (720x960)
         else if (isHomePopup && raw.file.type.startsWith('image/')) {
           try {
@@ -756,8 +783,30 @@ const App: React.FC = () => {
         }
         // 11. Video Handling (Dynamic Focal etc.)
         else if (raw.file.type.startsWith('video/')) {
+          // NOTE: mt-f-1 动态焦点视窗 + 开启「截取第0帧」→ 截取视频第0帧并合成为静态图
+          if (template.id === 'mt-f-1' && config.captureFirstFrameMtF1) {
+            try {
+              console.log(`[mt-f-1] captureFirstFrameMtF1 enabled, capturing frame 0...`);
+              const firstFrame = await captureVideoFrame(raw.file, 'start');
+              if (firstFrame) {
+                const resp = await fetch(firstFrame);
+                const blob = await resp.blob();
+                const frameFile = new File([blob], 'first_frame_mtf1.jpg', { type: 'image/jpeg' });
+                const smart = await smartCropImage(frameFile, 1126, focalHeight, 250);
+                if (smart?.url) {
+                  finalUrl = `${ASSETS_URL}${smart.url}`;
+                  console.log(`[mt-f-1] Frame 0 captured and cropped to 1126x${focalHeight}: ${finalUrl}`);
+                } else {
+                  finalUrl = firstFrame;
+                }
+              }
+            } catch (e) {
+              console.error('[mt-f-1] Frame 0 capture failed, falling back to video', e);
+              finalUrl = raw.previewUrl;
+            }
+          }
           // NOTE: mt-f-1 动态焦点视窗 + 开启「截取最后一帧」→ 截取视频最后一帧并合成为静态图
-          if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) {
+          else if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) {
             try {
               console.log(`[mt-f-1] captureLastFrameMtF1 enabled, seeking to end...`);
               const lastFrame = await captureVideoFrame(raw.file, 'end');
@@ -817,11 +866,13 @@ const App: React.FC = () => {
           type: (() => {
             if (!raw.file.type.startsWith('video/')) return raw.file.type;
             if (isStaticFocal || isImmersive) return 'image/png';
-            // NOTE: mt-f-1 截取最后一帧时，输出为静态图
-            if (template.id === 'mt-f-1' && config.captureLastFrameMtF1) return 'image/png';
+            // NOTE: mt-f-1 截取第0帧或最后一帧时，输出为静态图
+            if (template.id === 'mt-f-1' && (config.captureFirstFrameMtF1 || config.captureLastFrameMtF1)) return 'image/png';
             // NOTE: my-f-1 截取第一帧时，输出为静态图
             if (template.id === 'my-f-1' && config.captureFirstFrameMyF1) return 'image/png';
-            if (isSplash && template.name.includes('动态') && config.captureFirstFrame) {
+            // NOTE: mt-p-1 保分页弹窗截取第 0 帧时，输出为静态图
+            if (template.id === 'mt-p-1' && config.captureFirstFrameMtP1) return 'image/jpeg';
+            if (isSplash && (config.captureFirstFrame || config.captureLastFrameSplash)) {
               return template.id === 'mt-s-1' ? 'image/jpeg' : 'image/png';
             }
             if (finalUrl.match(/\.(jpg|jpeg)$/i)) return 'image/jpeg';
@@ -842,7 +893,7 @@ const App: React.FC = () => {
                   // NOTE: 动态焦点视窗尺寸固定位 1126 x focalHeight
                   (isDynamicFocal) ? `${isMeiyan ? 1284 : 1126} x ${focalHeight}` :
                     ((isHotRecommend || isHomePopup) && raw.file.type.startsWith('image/')) ? '720 x 960' :
-                      (isScorePopup && raw.file.type.startsWith('image/')) ? '960 x 1440' :
+                      (isScorePopup) ? '960 x 1440' :
                         (isTopicBg && raw.file.type.startsWith('image/')) ? '1126 x 640' :
                           (isRecipeContent && raw.file.type.startsWith('image/')) ? '720 x 960' :
                             (template.dimensions || '1080 x 1920'),
@@ -879,11 +930,12 @@ const App: React.FC = () => {
             finalType: (() => {
               if (!raw.file.type.startsWith('video/')) return raw.file.type;
               if (isStaticFocal || isImmersive) return 'image/png';
-              if (isSplash && template.name.includes('动态') && config.captureFirstFrame) return 'image/png';
+              if (isSplash && (config.captureFirstFrame || config.captureLastFrameSplash)) return 'image/png';
               if (finalUrl.startsWith('data:') || finalUrl.match(/\.(png|jpg|jpeg|webp)$/i)) return 'image/png';
               return 'video/mp4';
             })(),
             captureFirstFrame: config.captureFirstFrame,
+            captureLastFrameSplash: config.captureLastFrameSplash,
             isStaticFocal,
             isImmersive,
             isSplash

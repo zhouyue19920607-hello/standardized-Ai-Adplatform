@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const apps: AdTemplate['app'][] = ['美图秀秀', '美颜', 'wink'];
 
   // NOTE: 三平台开屏 — 仅取美图秀秀的开屏模板作为代表，生成时自动关联三平台蒙版
-  const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏');
+  const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏' && tpl.splashGroup !== 'bubble');
 
   // State for collapsible sub-categories (Key format: "AppName-CategoryName")
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
@@ -106,7 +106,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {isExpanded && (
                   <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
                     {meituSplashTemplates.map(tpl => (
-                      <div key={tpl.id} className="px-1">
+                      <div key={tpl.id} className="px-1 relative group/template">
                         <label
                           className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
                         >
@@ -135,22 +135,43 @@ const Sidebar: React.FC<SidebarProps> = ({
                             </div>
                           </div>
                         </label>
+                        <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
+                          支持图片或视频素材；可用 AI 扩图适配尺寸；视频自动压缩至 3MB 以内。
+                        </div>
 
-                        {/* NOTE: 动态全屏开屏截帧配置 */}
-                        {tpl.checked && tpl.name.includes('动态') && (
+                        {/* NOTE: 开屏模版截帧配置 */}
+                        {tpl.checked && (
                           <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
                               <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-ios-gray-1">{t('sidebar.captureFirst')}</span>
+                              <span className="text-xs font-bold text-ios-gray-1">截取第1帧</span>
                               <label className="relative inline-flex items-center cursor-pointer">
                                 <input
                                   type="checkbox"
                                   className="sr-only peer"
                                   checked={config.captureFirstFrame}
-                                  onChange={(e) => onConfigChange({ captureFirstFrame: e.target.checked })}
+                                  onChange={(e) => onConfigChange({
+                                    captureFirstFrame: e.target.checked,
+                                    ...(e.target.checked ? { captureLastFrameSplash: false } : {})
+                                  })}
+                                />
+                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                              </label>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-ios-gray-1">截取最后1帧</span>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  className="sr-only peer"
+                                  checked={config.captureLastFrameSplash ?? false}
+                                  onChange={(e) => onConfigChange({
+                                    captureLastFrameSplash: e.target.checked,
+                                    ...(e.target.checked ? { captureFirstFrame: false } : {})
+                                  })}
                                 />
                                 <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                               </label>
@@ -169,6 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* ===== 各 App 其他分类（开屏已移至上方三平台分组，不再重复显示）===== */}
         {apps.map(appName => {
           const appTemplates = templates.filter(tpl => {
+            if (tpl.id === 'mt-f-2') return false;
             if (appName === '美颜') {
               // NOTE: 美颜平台目前仅开放静态/动态焦点视窗模版 (my-f-1, my-f-2)
               return tpl.app === '美颜' && (tpl.id === 'my-f-1' || tpl.id === 'my-f-2');
@@ -247,7 +269,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           {isExpanded && (
                             <div className="bg-ios-gray-6/30 p-1.5 space-y-1">
                               {subTemplates.map(tpl => (
-                                <div key={tpl.id} className="px-1">
+                                <div key={tpl.id} className="px-1 relative group/template">
                                   <label
                                     title={tpl.name === '动态开屏' ? t('sidebar.cardPreviewOnly') : undefined}
                                     className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
@@ -283,6 +305,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                                       </div>
                                     </div>
                                   </label>
+                                  {tpl.id === 'mt-f-1' && (
+                                    <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
+                                      支持图片或视频素材；可智能配色，也可用 AI 扩图适配尺寸；视频自动压缩至 10MB 以内。
+                                    </div>
+                                  )}
 
                                   {/* Config Panel (Inline) - Focal Window or Dynamic Splash */}
                                   {tpl.checked && tpl.app !== 'wink' && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (
@@ -311,6 +338,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                                       {/* Focal Window Options */}
                                       {tpl.category === '焦点视窗' && tpl.app !== 'wink' && (
                                         <>
+                                          {/* NOTE: mt-f-1 动态焦点视窗专属：截取视频第0帧 */}
+                                          {tpl.id === 'mt-f-1' && (
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-bold text-ios-gray-1">截取第0帧</span>
+                                              <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  className="sr-only peer"
+                                                  checked={config.captureFirstFrameMtF1 ?? false}
+                                                  onChange={(e) => onConfigChange({
+                                                    captureFirstFrameMtF1: e.target.checked,
+                                                    ...(e.target.checked ? { captureLastFrameMtF1: false } : {})
+                                                  })}
+                                                />
+                                                <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                              </label>
+                                            </div>
+                                          )}
                                           {/* NOTE: mt-f-1 动态焦点视窗专属：截取视频最后一帧 */}
                                           {tpl.id === 'mt-f-1' && (
                                             <div className="flex items-center justify-between">
@@ -320,7 +365,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                   type="checkbox"
                                                   className="sr-only peer"
                                                   checked={config.captureLastFrameMtF1}
-                                                  onChange={(e) => onConfigChange({ captureLastFrameMtF1: e.target.checked })}
+                                                  onChange={(e) => onConfigChange({
+                                                    captureLastFrameMtF1: e.target.checked,
+                                                    ...(e.target.checked ? { captureFirstFrameMtF1: false } : {})
+                                                  })}
                                                 />
                                                 <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                                               </label>
@@ -465,6 +513,31 @@ const Sidebar: React.FC<SidebarProps> = ({
                                           )}
                                         </>
                                       )}
+                                    </div>
+                                  )}
+
+                                  {/* NOTE: mt-p-1 保分页弹窗视频专属：截取第 0 帧 */}
+                                  {tpl.checked && tpl.id === 'mt-p-1' && (
+                                    <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                                        <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <div className="min-w-0">
+                                          <span className="text-xs font-bold text-ios-gray-1">截取第0帧</span>
+                                          <p className="text-[9px] text-slate-400 font-bold mt-0.5">视频 960 x 1440px / 5s 内</p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={config.captureFirstFrameMtP1 ?? false}
+                                            onChange={(e) => onConfigChange({ captureFirstFrameMtP1: e.target.checked })}
+                                          />
+                                          <div className="w-9 h-5 bg-ios-gray-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-ios-gray-3 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                                        </label>
+                                      </div>
                                     </div>
                                   )}
                                 </div>
