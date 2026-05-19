@@ -140,7 +140,10 @@ const AdCard: React.FC<{
         const videoResp = await fetch(asset.url);
         const videoBlob = await videoResp.blob();
 
-        const shouldLimitMeituFocalVideo = asset.app === '美图秀秀' && asset.category === '焦点视窗';
+        const shouldLimitMeituFocalVideo =
+          asset.app === '美图秀秀' &&
+          asset.category === '焦点视窗' &&
+          videoBlob.size > 10 * 1024 * 1024;
         const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
           targetW: params.targetW,
           targetH: params.targetH,
@@ -416,7 +419,7 @@ const AdCard: React.FC<{
           </button>
         )}
 
-        {asset.aiExtractedColors && asset.aiExtractedColors.length > 1 && (
+        {asset.category !== '开屏' && asset.aiExtractedColors && asset.aiExtractedColors.length > 1 && (
           <button
             onClick={() => {
               const colors = asset.aiExtractedColors || [];

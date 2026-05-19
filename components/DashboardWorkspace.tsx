@@ -55,6 +55,45 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     handleUpdateAsset,
     handleBatchDownload,
 }) => {
+    const parseDimensions = (value?: string) => {
+        const match = value?.match(/(\d+)\s*x\s*(\d+)/i);
+        if (!match) return null;
+        return { width: Number(match[1]), height: Number(match[2]), label: `${Number(match[1])} x ${Number(match[2])}` };
+    };
+
+    const activeTemplates = templates.filter(tpl => tpl.checked);
+    const dimensionSource = activeTemplates.length > 0 ? activeTemplates : templates;
+    const targetDimensions = Array.from(
+        new Map(
+            dimensionSource
+                .map(tpl => parseDimensions(tpl.dimensions))
+                .filter((item): item is { width: number; height: number; label: string } => Boolean(item))
+                .map(item => [`${item.width}x${item.height}`, item])
+        ).values()
+    );
+
+    const getImageDimensionStatus = (raw: RawFile) => {
+        if (!raw.file.type.startsWith('image/')) {
+            return { tone: 'neutral', label: '视频素材', detail: '已按视频白名单校验' };
+        }
+        if (!raw.imageDimensions) {
+            return { tone: 'neutral', label: '检测中', detail: '正在读取图片尺寸' };
+        }
+        if (targetDimensions.length === 0) {
+            return { tone: 'neutral', label: '待选择', detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height}` };
+        }
+        const matchedCount = targetDimensions.filter(target => target.width === raw.imageDimensions?.width && target.height === raw.imageDimensions?.height).length;
+        if (matchedCount === targetDimensions.length) {
+            return { tone: 'ok', label: '尺寸符合', detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height}` };
+        }
+        const scope = activeTemplates.length > 0 ? '已选模板' : '全部平台';
+        return {
+            tone: 'warn',
+            label: '建议 AI 适配',
+            detail: `${raw.imageDimensions.width} x ${raw.imageDimensions.height} / ${scope}需 ${targetDimensions.length} 种尺寸`
+        };
+    };
+
     return (
         <>
             <main className="flex pt-6 px-6 gap-6 transition-all duration-500">
@@ -115,15 +154,18 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                 <p className="text-slate-500 text-xs mt-1 font-semibold text-center">{t('main.uploadHint')}</p>
                             </div>
                         ) : (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between px-1">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{t('main.pendingAssets')} ({rawFiles.length})</h3>
+                                    <div className="min-w-0">
+                                        <h3 className="text-xs font-black text-slate-700">{t('main.pendingAssets')} ({rawFiles.length})</h3>
+                                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                            图片会检测是否匹配{activeTemplates.length > 0 ? '已选模板' : '全部平台'}尺寸，不匹配建议使用 AI 适配。
+                                        </p>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="text-[11px] font-bold text-primary bg-white px-4 py-2 rounded-full shadow-ios hover:bg-slate-50 transition-all active:scale-95"
+                                            className="h-8 px-3 text-[11px] font-bold text-primary bg-white/70 rounded-xl shadow-ios hover:bg-white transition-all active:scale-95"
                                         >
                                             {t('main.addMore')}
                                         </button>
@@ -132,47 +174,55 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                 setRawFiles([]);
                                                 setProcessedAssets([]);
                                             }}
-                                            className="text-[11px] font-bold text-red-500 bg-white px-4 py-2 rounded-full shadow-ios hover:bg-red-50 transition-all active:scale-95"
+                                            className="h-8 px-3 text-[11px] font-bold text-red-500 bg-white/70 rounded-xl shadow-ios hover:bg-red-50 transition-all active:scale-95"
                                         >
                                             {t('main.clearAll')}
                                         </button>
                                     </div>
                                 </div>
-                                <div className={`grid gap-5 pb-2 transition-all duration-400 ${isCollapsed ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 opacity-60' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5'}`}>
-                                    {rawFiles.map(raw => (
-                                        <div key={raw.id} className={`liquid-glass relative group p-1 transition-all lens-effect ${isCollapsed ? 'scale-90 hover:scale-100' : ''}`}>
-                                            <div className={`relative bg-slate-100 flex items-center justify-center overflow-hidden rounded-[16px] ${isCollapsed ? 'aspect-square' : 'aspect-[4/3]'}`}>
-                                                {raw.file.type.startsWith('video/') ? (
-                                                    <div className="w-full h-full flex items-center justify-center bg-slate-900">
-                                                        {raw.thumbnailUrl ? (
-                                                            <img src={raw.thumbnailUrl} className="w-full h-full object-contain opacity-60" alt="thumb" />
-                                                        ) : (
-                                                            <span className="material-symbols-outlined text-white/50 text-3xl">play_circle</span>
-                                                        )}
-                                                        <span className="absolute material-symbols-outlined text-white text-3xl">play_circle</span>
+                                <div className={`space-y-2 pb-1 transition-all duration-400 ${isCollapsed ? 'opacity-60' : ''}`}>
+                                    {rawFiles.map(raw => {
+                                        const status = getImageDimensionStatus(raw);
+                                        const statusClass = status.tone === 'ok'
+                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                            : status.tone === 'warn'
+                                                ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                                : 'bg-slate-50 text-slate-500 border-slate-100';
+                                        return (
+                                            <div key={raw.id} className="group flex items-center gap-3 rounded-2xl bg-white/55 border border-white/50 px-3 py-2 shadow-ios lens-effect">
+                                                <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                                                    {raw.file.type.startsWith('video/') ? (
+                                                        <>
+                                                            {raw.thumbnailUrl ? (
+                                                                <img src={raw.thumbnailUrl} className="w-full h-full object-cover opacity-70" alt="thumb" />
+                                                            ) : (
+                                                                <span className="material-symbols-outlined text-slate-400 text-2xl">play_circle</span>
+                                                            )}
+                                                            <span className="absolute material-symbols-outlined text-white text-2xl drop-shadow">play_circle</span>
+                                                        </>
+                                                    ) : (
+                                                        <img src={raw.previewUrl} className="w-full h-full object-contain" alt="raw" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs text-slate-800 truncate font-bold">{raw.file.name}</p>
+                                                    <p className="text-[10px] text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
+                                                </div>
+                                                {!isCollapsed && (
+                                                    <div className="hidden md:block min-w-[170px]">
+                                                        <p className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-black ${statusClass}`}>{status.label}</p>
+                                                        <p className="text-[9px] text-slate-400 font-semibold mt-1 truncate">{status.detail}</p>
                                                     </div>
-                                                ) : (
-                                                    <img
-                                                        src={raw.previewUrl}
-                                                        className="w-full h-full object-contain"
-                                                        alt="raw"
-                                                    />
                                                 )}
                                                 <button
                                                     onClick={() => removeRawFile(raw.id)}
-                                                    className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md"
+                                                    className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100"
                                                 >
-                                                    <span className="material-symbols-outlined text-sm">close</span>
+                                                    <span className="material-symbols-outlined text-[18px]">close</span>
                                                 </button>
                                             </div>
-                                            {!isCollapsed && (
-                                                <div className="p-3">
-                                                    <p className="text-[10px] text-slate-700 truncate font-bold">{raw.file.name}</p>
-                                                    <p className="text-[9px] text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}

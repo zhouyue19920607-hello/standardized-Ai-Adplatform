@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* ===== 三平台开屏模版（以秀秀为代表，去重显示，生成时自动带三平台蒙版）===== */}
         {meituSplashTemplates.length > 0 && (() => {
           const expandKey = 'splash-unified';
-          const isExpanded = expandedCats[expandKey] ?? true;
+          const isExpanded = expandedCats[expandKey] ?? false;
           const selectedCount = meituSplashTemplates.filter(tpl => tpl.checked).length;
           const isAllSelected = meituSplashTemplates.every(tpl => tpl.checked);
           return (
@@ -203,7 +203,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {categories.map(cat => {
                       const subTemplates = appTemplates.filter(tpl => tpl.category === cat);
                       const expandKey = `${appName}-${cat}`;
-                      const isExpanded = expandedCats[expandKey] ?? true;
+                      const isExpanded = expandedCats[expandKey] ?? false;
                       const selectedCount = subTemplates.filter(tpl => tpl.checked).length;
                       const isAllSelected = subTemplates.length > 0 && subTemplates.every(tpl => tpl.checked);
 

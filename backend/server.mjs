@@ -41,9 +41,7 @@ const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
   { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370", enabled: true },
   { id: "twist-splash", groupId: "splash", groupName: "开屏创意模版", name: "扭转开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
-  { id: "focal-static", groupId: "home", groupName: "首页创意模版", name: "静态焦点视窗", dimensions: "1126 x 2436", enabled: true },
-  { id: "focal-dynamic", groupId: "home", groupName: "首页创意模版", name: "动态焦点视窗", dimensions: "1126 x 2436", enabled: true },
-  { id: "banner-standard", groupId: "home", groupName: "首页创意模版", name: "标准 Banner", dimensions: "1080 x 1920", enabled: true }
+  { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true }
 ];
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }

@@ -29,7 +29,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     // AI 增强设置 State
     const [aiSettings, setAiSettings] = useState<SystemSettings>({
         aiEnhancedMode: false,
-        aiProvider: 'tongyi',
+        aiProvider: 'roboneo',
         tongyiApiKey: '',
         roboneoApiKey: '',
         roboneoApiSecret: '',
@@ -61,7 +61,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
     useEffect(() => {
         // NOTE: 首次加载时拉取 AI 增强设置
-        getSettings().then(s => setAiSettings(s)).catch(console.error);
+        getSettings().then(s => setAiSettings({
+            ...s,
+            aiProvider: s.aiProvider === 'tongyi' ? 'roboneo' : s.aiProvider,
+        })).catch(console.error);
     }, []);
 
     const handleSaveAiSettings = async () => {
@@ -801,17 +804,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">AI 服务商</label>
                                         <div className="grid grid-cols-2 gap-3">
                                             <button
-                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'tongyi' }))}
-                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'tongyi'
-                                                    ? 'border-violet-500 bg-violet-50'
-                                                    : 'border-slate-200 hover:border-slate-300'
-                                                    }`}
-                                            >
-                                                <p className="text-sm font-bold text-slate-800">阿里云通义万象</p>
-                                                <p className="text-xs text-slate-400 mt-1">无需 GPU，按次计费</p>
-                                                <p className="text-xs text-violet-500 font-bold mt-1">约 ¥0.14/张</p>
-                                            </button>
-                                            <button
                                                 onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'comfyui' }))}
                                                 className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'comfyui'
                                                     ? 'border-violet-500 bg-violet-50'
@@ -846,91 +838,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                             </button>
                                         </div>
                                     </div>
-
-                                    {/* 通义万象 API Key */}
-                                    {aiSettings.aiProvider === 'tongyi' && (
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                DashScope API Key
-                                                <span className="ml-2 text-slate-300 normal-case font-normal">（阿里云控制台 → API-KEY）</span>
-                                            </label>
-                                            <input
-                                                type="password"
-                                                placeholder={aiSettings.tongyiApiKeyConfigured ? '已配置（输入新值可覆盖）' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'}
-                                                value={aiSettings.tongyiApiKey === '***configured***' ? '' : aiSettings.tongyiApiKey}
-                                                onChange={e => {
-                                                    setAiSettings(prev => ({ ...prev, tongyiApiKey: e.target.value }));
-                                                    // NOTE: key 变化时重置测试状态，避免显示旧结果
-                                                    setTestStatus('idle');
-                                                }}
-                                                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
-                                            />
-                                            {aiSettings.tongyiApiKeyConfigured && aiSettings.tongyiApiKey !== '***configured***' && !aiSettings.tongyiApiKey && (
-                                                <p className="text-xs text-green-500 mt-1.5 flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                    API Key 已配置
-                                                </p>
-                                            )}
-
-                                            {/* 测试连接按钮 */}
-                                            <div className="mt-3 flex items-center gap-3">
-                                                <button
-                                                    onClick={handleTestConnection}
-                                                    disabled={testStatus === 'testing' || (!aiSettings.tongyiApiKey && !aiSettings.tongyiApiKeyConfigured)}
-                                                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {testStatus === 'testing' ? (
-                                                        <><span className="material-symbols-outlined text-[14px] animate-spin">sync</span>测试中...</>
-                                                    ) : (
-                                                        <><span className="material-symbols-outlined text-[14px]">wifi</span>测试连接</>
-                                                    )}
-                                                </button>
-
-                                                {/* 测试结果状态显示 */}
-                                                {testStatus === 'success' && (
-                                                    <span className="flex items-center gap-1 text-xs text-green-600 font-bold">
-                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                        {testMessage}
-                                                    </span>
-                                                )}
-                                                {testStatus === 'error' && (
-                                                    <span className="flex items-center gap-1 text-xs text-red-500 font-bold">
-                                                        <span className="material-symbols-outlined text-[14px]">error</span>
-                                                        {testMessage}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* 扩图 Prompt 配置 */}
-                                            <div className="mt-4">
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                    扩图 Prompt
-                                                    <span className="ml-2 text-slate-300 normal-case font-normal">（引导 AI 生成扩展区域的背景风格）</span>
-                                                </label>
-                                                <textarea
-                                                    rows={3}
-                                                    placeholder="例如：专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻"
-                                                    value={aiSettings.tongyiExpandPrompt ?? ''}
-                                                    onChange={e => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: e.target.value }))}
-                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none leading-relaxed"
-                                                />
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {PROMPT_PRESETS.map(preset => (
-                                                        <button
-                                                            key={preset.label}
-                                                            onClick={() => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: preset.value }))}
-                                                            className="px-3 py-1 bg-violet-50 hover:bg-violet-100 text-violet-600 rounded-full text-xs font-bold transition-colors border border-violet-200"
-                                                        >
-                                                            {preset.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <p className="text-xs text-slate-400 mt-2">💡 Prompt 越具体，AI 生成的扩展背景越符合预期。建议描述场景氛围、色调、风格。</p>
-                                            </div>
-                                        </div>
-                                    )}
-
-
 
                                     {/* ComfyUI 地址（占位，后续实现）*/}
                                     {aiSettings.aiProvider === 'comfyui' && (
@@ -1138,9 +1045,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 <p className="text-xs font-bold text-violet-600 uppercase tracking-wider mb-3">💡 工作原理</p>
                                 <ul className="space-y-2 text-xs text-slate-600">
                                     <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关关闭时：图片经过常规智能裁剪（当前默认行为）</li>
-                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关开启时：图片被发送给通义万象 AI，智能扩展并补充背景</li>
+                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关开启时：图片被发送给当前选择的 AI 服务，智能扩展并补充背景</li>
                                     <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>AI 处理失败时自动降级到常规裁剪，不影响业务</li>
-                                    <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>每张开屏图预计费用约 ¥0.14，可在阿里云 DashScope 控制台查看用量</li>
                                 </ul>
                             </div>
                         </div>

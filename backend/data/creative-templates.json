@@ -32,27 +32,11 @@
     "enabled": true
   },
   {
-    "id": "focal-static",
+    "id": "break-frame-focal-3d",
     "groupId": "home",
     "groupName": "首页创意模版",
-    "name": "静态焦点视窗",
-    "dimensions": "1126 x 2436",
-    "enabled": true
-  },
-  {
-    "id": "focal-dynamic",
-    "groupId": "home",
-    "groupName": "首页创意模版",
-    "name": "动态焦点视窗",
-    "dimensions": "1126 x 2436",
-    "enabled": true
-  },
-  {
-    "id": "banner-standard",
-    "groupId": "home",
-    "groupName": "首页创意模版",
-    "name": "标准 Banner",
-    "dimensions": "1080 x 1920",
+    "name": "破框焦点视窗3D",
+    "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
     "enabled": true
   }
 ]

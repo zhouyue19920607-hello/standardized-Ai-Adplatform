@@ -134,7 +134,7 @@ const App: React.FC = () => {
           const old = prev.find(p => p.id === tpl.id);
           return {
             ...tpl,
-            checked: old ? old.checked : tpl.checked,
+            checked: old ? old.checked : false,
             smartExtract: old ? old.smartExtract : (tpl.smartExtract ?? true),
             iconColor: old ? old.iconColor : (tpl.iconColor || '#FF00FF'),
             gradientColor: old ? old.gradientColor : (tpl.gradientColor || '#FF6B6B'),
@@ -281,6 +281,22 @@ const App: React.FC = () => {
     });
   };
 
+  const readImageDimensions = (file: File): Promise<{ width: number; height: number } | null> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  };
+
   const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
@@ -310,7 +326,12 @@ const App: React.FC = () => {
       }]);
 
       // Then process thumbnail in background
-      if (file.type.startsWith('video/')) {
+      if (file.type.startsWith('image/')) {
+        const dimensions = await readImageDimensions(file);
+        if (dimensions) {
+          setRawFiles(prev => prev.map(f => f.id === id ? { ...f, imageDimensions: dimensions } : f));
+        }
+      } else if (file.type.startsWith('video/')) {
         try {
           const thumb = await captureVideoFrame(file);
           if (thumb) {
@@ -1052,7 +1073,7 @@ const App: React.FC = () => {
               onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminPasswordError(false); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  if (adminPasswordInput === ' ') {
+                  if (adminPasswordInput === '0000') {
                     setShowAdminPasswordModal(false);
                     setShowAdmin(true);
                   } else {
@@ -1073,7 +1094,7 @@ const App: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  if (adminPasswordInput === ' ') {
+                  if (adminPasswordInput === '0000') {
                     setShowAdminPasswordModal(false);
                     setShowAdmin(true);
                   } else {

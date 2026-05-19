@@ -76,4 +76,8 @@ export interface RawFile {
   file: File;
   previewUrl: string;
   thumbnailUrl?: string;
+  imageDimensions?: {
+    width: number;
+    height: number;
+  };
 }
