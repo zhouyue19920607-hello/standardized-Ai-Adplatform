@@ -20,8 +20,9 @@ const PORT = process.env.PORT || 4000;
 const COMFYUI_BASE_URL = process.env.COMFYUI_BASE_URL || "http://127.0.0.1:8188";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
-const DATA_DIR = path.join(__dirname, "data");
-const STORAGE_DIR = path.join(__dirname, "storage");
+// NOTE: 生产部署时可通过 DATA_DIR / STORAGE_DIR 指向挂载卷，让访问统计、模板配置和上传资产跨容器重启保留。
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "data");
+const STORAGE_DIR = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : path.join(__dirname, "storage");
 const MASKS_DIR = path.join(STORAGE_DIR, "masks");
 const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
 const BADGES_DIR = path.join(STORAGE_DIR, "badges");
@@ -148,7 +149,8 @@ async function ensureDataFiles() {
     // 初始模版：和前端现有模版保持一致，并附加尺寸字段，作为“管理库”基线
     const initialTemplates = [
       // 美图秀秀
-      { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "气泡全屏", checked: false, dimensions: "1440 x 2340" },
+      { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "气泡全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
+      { id: "mt-s-5", app: "美图秀秀", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
       { id: "mt-s-2", app: "美图秀秀", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "mt-s-6", app: "美图秀秀", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
@@ -167,7 +169,8 @@ async function ensureDataFiles() {
       { id: "mt-p-3", app: "美图秀秀", category: "弹窗", name: "首页弹窗异形", checked: false, dimensions: "1080 x 1920" },
 
       // 美颜
-      { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
+      { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
+      { id: "my-s-5", app: "美颜", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
       { id: "my-s-2", app: "美颜", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "my-s-6", app: "美颜", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
@@ -179,7 +182,8 @@ async function ensureDataFiles() {
       { id: "my-ib-1", app: "美颜", category: "icon/banner", name: "百宝箱顶部banner", checked: false, dimensions: "1080 x 1920" },
 
       // wink
-      { id: "wk-s-1", app: "wink", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340" },
+      { id: "wk-s-1", app: "wink", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
+      { id: "wk-s-5", app: "wink", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
       { id: "wk-s-2", app: "wink", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "wk-s-6", app: "wink", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },

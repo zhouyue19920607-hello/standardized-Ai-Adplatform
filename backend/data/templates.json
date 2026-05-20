@@ -246,6 +246,15 @@
     "maskUrl": "/static/masks/1774854887707_______________________-.png"
   },
   {
+    "id": "my-s-5",
+    "app": "美颜",
+    "category": "开屏",
+    "name": "气泡非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "nonfull"
+  },
+  {
     "id": "my-s-2",
     "app": "美颜",
     "category": "开屏",
@@ -345,6 +354,15 @@
     "maskPath": "backend/storage/masks/1774854891499_______________________-.png",
     "mask_path": "/static/masks/1774854891499_______________________-.png",
     "maskUrl": "/static/masks/1774854891499_______________________-.png"
+  },
+  {
+    "id": "wk-s-5",
+    "app": "wink",
+    "category": "开屏",
+    "name": "气泡非全屏",
+    "checked": false,
+    "dimensions": "1440 x 1938",
+    "splashGroup": "nonfull"
   },
   {
     "id": "wk-s-2",

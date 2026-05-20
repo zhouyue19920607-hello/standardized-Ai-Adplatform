@@ -14,6 +14,7 @@ Base.metadata.create_all(bind=engine)
 INITIAL_TEMPLATES = [
   # 美图秀秀
   { "id": 'mt-s-1', "app": '美图秀秀', "category": '开屏', "name": '气泡全屏', "checked": False },
+  { "id": 'mt-s-5', "app": '美图秀秀', "category": '开屏', "name": '气泡非全屏', "checked": False },
   { "id": 'mt-s-2', "app": '美图秀秀', "category": '开屏', "name": '上下滑动全屏', "checked": False },
   { "id": 'mt-s-6', "app": '美图秀秀', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
   { "id": 'mt-s-3', "app": '美图秀秀', "category": '开屏', "name": '扭动全屏', "checked": False },
@@ -33,6 +34,7 @@ INITIAL_TEMPLATES = [
 
   # 美颜
   { "id": 'my-s-1', "app": '美颜', "category": '开屏', "name": '动态开屏', "checked": False },
+  { "id": 'my-s-5', "app": '美颜', "category": '开屏', "name": '气泡非全屏', "checked": False },
   { "id": 'my-s-2', "app": '美颜', "category": '开屏', "name": '上下滑动全屏', "checked": False },
   { "id": 'my-s-6', "app": '美颜', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
   { "id": 'my-s-3', "app": '美颜', "category": '开屏', "name": '扭动全屏', "checked": False },
@@ -45,6 +47,7 @@ INITIAL_TEMPLATES = [
 
   # wink
   { "id": 'wk-s-1', "app": 'wink', "category": '开屏', "name": '动态开屏', "checked": False },
+  { "id": 'wk-s-5', "app": 'wink', "category": '开屏', "name": '气泡非全屏', "checked": False },
   { "id": 'wk-s-2', "app": 'wink', "category": '开屏', "name": '上下滑动全屏', "checked": False },
   { "id": 'wk-s-6', "app": 'wink', "category": '开屏', "name": '上下滑动非全屏', "checked": False },
   { "id": 'wk-s-3', "app": 'wink', "category": '开屏', "name": '扭动全屏', "checked": False },

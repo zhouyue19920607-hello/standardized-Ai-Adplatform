@@ -793,7 +793,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-800">数据统计</h3>
-                                    <p className="text-sm text-slate-400 mt-1">按自然日统计访问、访客和模板生成使用情况，访客以浏览器匿名 ID 去重。</p>
+                                    <p className="text-sm text-slate-400 mt-1">今日数据按自然日每日重新开始；累计数据会跨日期保留，访客以浏览器匿名 ID 去重。</p>
                                 </div>
                                 <button
                                     onClick={fetchData}
@@ -804,12 +804,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
                                 {[
                                     { label: '今日访客', value: analytics?.today.uniqueVisitors ?? 0, icon: 'person', tone: 'bg-blue-50 text-blue-600' },
                                     { label: '今日访问次数', value: analytics?.today.visits ?? 0, icon: 'login', tone: 'bg-emerald-50 text-emerald-600' },
                                     { label: '今日生成次数', value: analytics?.today.generations ?? 0, icon: 'bolt', tone: 'bg-amber-50 text-amber-600' },
                                     { label: '累计访客', value: analytics?.totals.uniqueVisitors ?? 0, icon: 'groups', tone: 'bg-violet-50 text-violet-600' },
+                                    { label: '累计访问次数', value: analytics?.totals.visits ?? 0, icon: 'history', tone: 'bg-cyan-50 text-cyan-600' },
+                                    { label: '累计生成次数', value: analytics?.totals.generations ?? 0, icon: 'data_usage', tone: 'bg-rose-50 text-rose-600' },
                                 ].map(item => (
                                     <div key={item.label} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                                         <div className="flex items-center justify-between">
