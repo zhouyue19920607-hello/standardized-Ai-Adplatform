@@ -20,7 +20,7 @@
     "groupId": "splash",
     "groupName": "开屏创意模版",
     "name": "聚光开屏",
-    "dimensions": "小卡 275 x 370 / 大卡 897 x 370",
+    "dimensions": "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340",
     "enabled": true
   },
   {
@@ -37,6 +37,22 @@
     "groupName": "首页创意模版",
     "name": "破框焦点视窗3D",
     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+    "enabled": true
+  },
+  {
+    "id": "jumping-focal-window",
+    "groupId": "home",
+    "groupName": "首页创意模版",
+    "name": "跃动焦点视窗",
+    "dimensions": "待配置",
+    "enabled": true
+  },
+  {
+    "id": "refresh-ui-bottom-nav",
+    "groupId": "home",
+    "groupName": "首页创意模版",
+    "name": "焕新UI/底导",
+    "dimensions": "待配置",
     "enabled": true
   }
 ]

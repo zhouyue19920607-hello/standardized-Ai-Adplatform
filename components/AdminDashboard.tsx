@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdTemplate, AdAsset, AnalyticsSummary } from '../types';
-import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, CreativeTemplateItem, getAnalyticsSummary } from '../services/api';
+import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, uploadCreativeTemplateAsset, CreativeTemplateItem, getAnalyticsSummary } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminDashboardProps {
@@ -63,7 +63,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const handleSaveAiSettings = async () => {
         setAiSettingsSaving(true);
         try {
-            await updateSettings(aiSettings);
+            const normalizedSettings = {
+                ...aiSettings,
+                nanobannerBaseUrl: /^sk-[A-Za-z0-9_-]+$/.test((aiSettings.nanobannerBaseUrl || '').trim())
+                    ? ''
+                    : aiSettings.nanobannerBaseUrl,
+            };
+            await updateSettings(normalizedSettings);
+            setAiSettings(normalizedSettings);
             setAiSettingsSaved(true);
             setTimeout(() => setAiSettingsSaved(false), 2000);
         } catch (err) {
@@ -182,6 +189,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         } catch (error) {
             console.error(`Failed to update creative ${field}`, error);
             alert(t('admin.failUpdate'));
+        }
+    };
+
+    const handleCreativeAssetUpload = async (id: string, slot: string, file: File) => {
+        try {
+            const updated = await uploadCreativeTemplateAsset(id, slot, file);
+            setCreativeTemplates(prev => prev.map(tpl => tpl.id === id ? updated : tpl));
+            setAssetsVersion(Date.now());
+        } catch (error) {
+            console.error("Failed to upload creative asset", error);
+            alert(t('admin.failUpload'));
         }
     };
 
@@ -464,6 +482,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                     />
                                                                     <span className="relative h-6 w-11 rounded-full bg-slate-200 peer-checked:bg-slate-900 transition-all after:content-[''] after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-5" />
                                                                 </label>
+                                                                {(tpl.id === 'dynamic-splash' || tpl.id === 'magazine-flip' || tpl.id === 'slide-splash') && (
+                                                                    <div className="col-span-4 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                                                                        <div className="flex items-center justify-between mb-3">
+                                                                            <div>
+                                                                                <p className="text-xs font-black text-slate-700">{tpl.name}后台素材入口</p>
+                                                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">{tpl.id === 'magazine-flip' ? '向左滑动、裁剪区域、平台图片在这里统一上传配置' : '交互形式、裁剪区域、平台图片在这里统一上传配置'}</p>
+                                                                            </div>
+                                                                            <span className="text-[10px] font-black text-indigo-500 bg-white px-2 py-1 rounded-full border border-indigo-100">后台配置</span>
+                                                                        </div>
+                                                                        <div className="grid grid-cols-5 gap-3">
+                                                                            {[
+                                                                                { slot: 'interaction', label: tpl.id === 'magazine-flip' ? '向左滑动' : '交互形式', icon: tpl.id === 'magazine-flip' ? 'swipe_left' : 'touch_app', path: tpl.interaction_asset_path },
+                                                                                { slot: 'crop', label: '裁剪区域', icon: 'crop', path: tpl.crop_area_path },
+                                                                                { slot: 'xiuxiu', label: '秀秀图片', icon: '/icons/meitu_mask_icon.png', path: tpl.platform_xiuxiu_path },
+                                                                                { slot: 'meiyan', label: '美颜图片', icon: '/icons/beauty_mask_icon.png', path: tpl.platform_meiyan_path },
+                                                                                { slot: 'wink', label: 'Wink图片', icon: '/icons/wink_mask_icon.png', path: tpl.platform_wink_path },
+                                                                            ].map(item => (
+                                                                                <div key={item.slot} className="rounded-xl bg-white border border-slate-100 p-3">
+                                                                                    <div className="relative h-16 rounded-lg bg-slate-50 border border-dashed border-slate-200 overflow-hidden flex items-center justify-center hover:border-indigo-300 transition-colors">
+                                                                                        {item.path ? (
+                                                                                            <img src={`${ASSETS_URL}${item.path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt={item.label} />
+                                                                                        ) : typeof item.icon === 'string' && item.icon.startsWith('/') ? (
+                                                                                            <img src={item.icon} className="h-7 w-7 rounded-lg object-contain opacity-70" alt={item.label} />
+                                                                                        ) : (
+                                                                                            <span className="material-symbols-outlined text-slate-300 text-xl">{item.icon}</span>
+                                                                                        )}
+                                                                                        <input
+                                                                                            type="file"
+                                                                                            accept="image/*"
+                                                                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                                            onChange={(e) => e.target.files?.[0] && handleCreativeAssetUpload(tpl.id, item.slot, e.target.files[0])}
+                                                                                            title={`上传${item.label}`}
+                                                                                        />
+                                                                                    </div>
+                                                                                    <p className="mt-2 text-[10px] font-black text-slate-500 text-center">{item.label}</p>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1140,6 +1198,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                     }}
                                                     className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
                                                 />
+                                                <p className="text-xs text-slate-400 mt-1.5">这里填写接口地址，不要填写 API Key；留空时默认使用 OpenAI 兼容地址。</p>
                                             </div>
 
                                             {/* 测试连接按钮 */}

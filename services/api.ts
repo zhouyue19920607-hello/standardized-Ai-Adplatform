@@ -97,6 +97,11 @@ export const generateComfyUI = async (workflowId: string, params: any) => {
     return response.data;
 };
 
+export const generatePendantAsset = async (prompt: string): Promise<{ url: string; provider: string; message: string }> => {
+    const response = await api.post('/creative/dynamic-splash/pendant', { prompt });
+    return response.data;
+};
+
 export const smartCropImage = async (file: File, width = 1440, height = 2340, maxSizeKB = 200) => {
     const formData = new FormData();
     formData.append('image', file);
@@ -138,6 +143,11 @@ export interface CreativeTemplateItem {
     name: string;
     dimensions: string;
     enabled: boolean;
+    interaction_asset_path?: string;
+    crop_area_path?: string;
+    platform_xiuxiu_path?: string;
+    platform_meiyan_path?: string;
+    platform_wink_path?: string;
 }
 
 export interface CreativeBoardSettings {
@@ -169,6 +179,13 @@ export const getCreativeTemplates = async (): Promise<CreativeTemplateItem[]> =>
 
 export const updateCreativeTemplate = async (id: string, data: Partial<CreativeTemplateItem>): Promise<CreativeTemplateItem> => {
     const response = await api.put<CreativeTemplateItem>(`/creative-templates/${id}`, data);
+    return response.data;
+};
+
+export const uploadCreativeTemplateAsset = async (id: string, slot: string, file: File): Promise<CreativeTemplateItem> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await api.post<CreativeTemplateItem>(`/creative-templates/${id}/assets/${slot}`, formData);
     return response.data;
 };
 

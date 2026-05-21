@@ -41,9 +41,11 @@ const DEFAULT_CREATIVE_TEMPLATE_SETTINGS = {
 const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "dynamic-splash", groupId: "splash", groupName: "开屏创意模版", name: "炫动开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
   { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
-  { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370", enabled: true },
+  { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340", enabled: true },
   { id: "twist-splash", groupId: "splash", groupName: "开屏创意模版", name: "扭转开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
-  { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true }
+  { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
+  { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "待配置", enabled: true },
+  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "待配置", enabled: true }
 ];
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
@@ -402,6 +404,39 @@ app.put("/api/creative-templates/:id", async (req, res) => {
   }
 
   templates[index] = { ...templates[index], ...payload, id };
+  await writeJson(CREATIVE_TEMPLATES_FILE, templates);
+  res.json(templates[index]);
+});
+
+app.post("/api/creative-templates/:id/assets/:slot", upload.single("image"), async (req, res) => {
+  const { id, slot } = req.params;
+  const file = req.file;
+  const slotToField = {
+    interaction: "interaction_asset_path",
+    crop: "crop_area_path",
+    xiuxiu: "platform_xiuxiu_path",
+    meiyan: "platform_meiyan_path",
+    wink: "platform_wink_path"
+  };
+  const field = slotToField[slot];
+  if (!field) {
+    return res.status(400).json({ error: "Unknown creative asset slot" });
+  }
+  if (!file) {
+    return res.status(400).json({ error: "缺少上传文件字段 'image'" });
+  }
+
+  const templates = await readJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
+  const index = templates.findIndex(t => t.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Creative template not found" });
+  }
+
+  const assetUrl = `/static/${path.relative(STORAGE_DIR, file.path).replace(/\\/g, "/")}`;
+  templates[index] = {
+    ...templates[index],
+    [field]: assetUrl
+  };
   await writeJson(CREATIVE_TEMPLATES_FILE, templates);
   res.json(templates[index]);
 });
@@ -1302,6 +1337,126 @@ async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, api
     throw new Error(`Nano Banner 错误: ${err.response?.data?.error?.message || err.response?.data?.message || err.message}`);
   }
 }
+
+function extractImageCandidateFromText(contentReturn = "") {
+  const dataUriMatch = contentReturn.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/=\r\n]+)/);
+  if (dataUriMatch?.[1]) {
+    return { type: "base64", value: dataUriMatch[1].replace(/\s/g, "") };
+  }
+
+  const markdownUrlMatch = contentReturn.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+  if (markdownUrlMatch?.[1]) {
+    return { type: "url", value: markdownUrlMatch[1] };
+  }
+
+  const plainUrlMatch = contentReturn.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)(?:\?[^\s"'<>]+)?/i);
+  if (plainUrlMatch?.[0]) {
+    return { type: "url", value: plainUrlMatch[0] };
+  }
+
+  return null;
+}
+
+async function nanobannerTextToPendant(prompt, apiKey, baseUrl) {
+  if (!baseUrl || baseUrl === "***configured***" || /^sk-[A-Za-z0-9_-]+$/.test(String(baseUrl).trim())) {
+    baseUrl = "https://api.openai.com/v1";
+  }
+  baseUrl = baseUrl.replace(/\/$/, "");
+
+  const apiEndpoint = `${baseUrl}/chat/completions`;
+  const finalPrompt = [
+    "生成一个广告开屏挂件素材。",
+    "硬性要求：1:1 正方形，最终可处理为 450x450px PNG；主体居中；适合叠加在 1440x2340 开屏视频上；边缘干净；不要文字水印；尽量透明背景或纯色易抠背景。",
+    `用户想法：${prompt || "炫动开屏挂件"}`
+  ].join("\n");
+
+  const payload = {
+    model: "gemini-3.1-flash-image-preview",
+    messages: [{
+      role: "user",
+      content: [{ type: "text", text: finalPrompt }]
+    }]
+  };
+
+  const submitResp = await axios.post(apiEndpoint, payload, {
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
+    timeout: 120000
+  });
+
+  const rawContent = submitResp.data?.choices?.[0]?.message?.content;
+  const contentReturn = Array.isArray(rawContent)
+    ? rawContent.map((item) => item?.text || item?.image_url?.url || "").join("\n")
+    : String(rawContent || "");
+  const candidate = extractImageCandidateFromText(contentReturn);
+  if (!candidate) {
+    throw new Error("AI 返回中未找到图片结果");
+  }
+
+  let imgBuffer;
+  if (candidate.type === "base64") {
+    imgBuffer = Buffer.from(candidate.value, "base64");
+  } else {
+    const imgResponse = await axios.get(candidate.value, { responseType: "arraybuffer", timeout: 60000 });
+    imgBuffer = Buffer.from(imgResponse.data);
+  }
+
+  const outFilename = `dynamic_pendant_ai_${Date.now()}.png`;
+  const outPath = path.join(STORAGE_DIR, outFilename);
+  await sharp(imgBuffer)
+    .resize(450, 450, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    })
+    .png()
+    .toFile(outPath);
+
+  const stats = await fs.stat(outPath);
+  return {
+    url: `/static/${outFilename}`,
+    width: 450,
+    height: 450,
+    size: stats.size
+  };
+}
+
+app.post("/api/creative/dynamic-splash/pendant", async (req, res) => {
+  try {
+    const prompt = String(req.body?.prompt || "").trim();
+    const settings = await readJson(SETTINGS_FILE, {
+      aiEnhancedMode: false,
+      aiProvider: "nanobanner",
+      nanobannerApiKey: "",
+      nanobannerBaseUrl: ""
+    });
+
+    if (!settings.nanobannerApiKey) {
+      return res.status(400).json({ error: "请先在后台看板管理中配置 Nano Banner API Key" });
+    }
+
+    const result = await nanobannerTextToPendant(prompt, settings.nanobannerApiKey, settings.nanobannerBaseUrl);
+    return res.json({
+      ok: true,
+      provider: "nanobanner",
+      url: result.url,
+      message: "AI 已生成 PNG 450 x 450 挂件素材",
+      size: result.size
+    });
+  } catch (err) {
+    console.error("[DynamicSplashPendant] AI generation failed:", err.response?.data || err.message);
+    const status = err.response?.status;
+    if (status === 401 || status === 403) {
+      return res.status(status).json({
+        error: "Nano Banner 鉴权失败，请检查 API Key 是否有效，以及 API Base URL 是否填写为服务商提供的接口地址（不要填写成 API Key）"
+      });
+    }
+    return res.status(500).json({ error: err.response?.data?.error?.message || err.response?.data?.message || err.message || "AI 挂件生成失败" });
+  }
+});
 
 /**
  * [已弃用，保留为备用]

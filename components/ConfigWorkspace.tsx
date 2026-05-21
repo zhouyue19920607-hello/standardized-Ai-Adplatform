@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CreativeTemplateItem, CreativeTemplateSettings, getCreativeSettings, getCreativeTemplates } from '../services/api';
+import { ASSETS_URL, CreativeTemplateItem, CreativeTemplateSettings, generatePendantAsset, getCreativeSettings, getCreativeTemplates } from '../services/api';
 import { extractSmartPalette } from '../utils/smartColor';
 
 type UploadStatus = 'idle' | 'valid' | 'adapted' | 'invalid';
@@ -69,6 +69,8 @@ const defaultCreativeCategories = [
         icon: 'home_app_logo',
         templates: [
             { id: 'break-frame-focal-3d', label: '破框焦点视窗3D' },
+            { id: 'jumping-focal-window', label: '跃动焦点视窗' },
+            { id: 'refresh-ui-bottom-nav', label: '焕新UI/底导' },
         ],
     },
 ];
@@ -137,6 +139,10 @@ const defaultBreakColorSchemes = [
 ];
 
 const isPngFile = (file: File) => file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+const isPngOrWebpFile = (file: File) => {
+    const fileName = file.name.toLowerCase();
+    return file.type === 'image/png' || file.type === 'image/webp' || fileName.endsWith('.png') || fileName.endsWith('.webp');
+};
 
 interface PendantFrame {
     x: number;
@@ -327,9 +333,9 @@ const getSpotlightSmallFrame = (index: number, elapsed: number) => {
     const gap = (availableW - SPOTLIGHT_SMALL_W * 3) / 2;
     const targetX = SPOTLIGHT_SIDE_MARGIN + index * (SPOTLIGHT_SMALL_W + gap);
     const targetY = CANVAS_H - SPOTLIGHT_BOTTOM_MARGIN - SPOTLIGHT_SMALL_H;
-    const enterStart = index * 260;
-    const enterProgress = easeOutCubic((elapsed - enterStart) / 900);
-    const mergeProgress = easeInOutCubic((elapsed - 2800) / 1200);
+    const enterStart = index * 160;
+    const enterProgress = easeOutCubic((elapsed - enterStart) / 520);
+    const mergeProgress = easeInOutCubic((elapsed - 1050) / 650);
     const largeX = SPOTLIGHT_SIDE_MARGIN;
     const largeY = CANVAS_H - SPOTLIGHT_BOTTOM_MARGIN - SPOTLIGHT_LARGE_H;
     const largeCenterX = largeX + SPOTLIGHT_LARGE_W / 2;
@@ -355,7 +361,7 @@ const getSpotlightSmallFrame = (index: number, elapsed: number) => {
 };
 
 const getSpotlightLargeFrame = (elapsed: number) => {
-    const progress = easeOutCubic((elapsed - 3600) / 700);
+    const progress = easeOutCubic((elapsed - 1280) / 260);
     const width = SPOTLIGHT_LARGE_W;
     const height = SPOTLIGHT_LARGE_H;
     return {
@@ -769,36 +775,20 @@ const ConfigWorkspace: React.FC = () => {
     const updateBreakFrameAsset = async (file: File) => {
         setError('');
         resetOutput();
-        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-            setBreakFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材支持图片或透明底视频' });
+        if (!isPngOrWebpFile(file)) {
+            setBreakFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材仅支持 PNG / WEBP' });
             return;
         }
 
         const url = URL.createObjectURL(file);
         try {
-            if (file.type.startsWith('image/')) {
-                const size = await getImageSize(file);
-                const isValid = size.width === BREAK_FRAME_W && size.height === BREAK_FRAME_H;
-                setBreakFrameAsset({
-                    file,
-                    url,
-                    status: isValid ? 'valid' : 'adapted',
-                    message: isValid ? '1126 x 1890，透明底容器' : `当前 ${size.width} x ${size.height}，生成时放入 1126 x 1890 透明底容器`,
-                });
-                return;
-            }
-
-            const meta = await getVideoMeta(file);
-            if (meta.duration > 5) {
-                URL.revokeObjectURL(url);
-                setBreakFrameAsset({ file: null, url: null, status: 'invalid', message: `视频时长 ${meta.duration.toFixed(1)}s，需 5s 内` });
-                return;
-            }
+            const size = await getImageSize(file);
+            const isValid = size.width === BREAK_FRAME_W && size.height === BREAK_FRAME_H;
             setBreakFrameAsset({
                 file,
                 url,
-                status: meta.width === BREAK_FRAME_W && meta.height === BREAK_FRAME_H ? 'valid' : 'adapted',
-                message: meta.width === BREAK_FRAME_W && meta.height === BREAK_FRAME_H ? `透明底视频 ${meta.duration.toFixed(1)}s` : `视频 ${meta.width} x ${meta.height}，生成时放入 1126 x 1890 容器`,
+                status: isValid ? 'valid' : 'adapted',
+                message: isValid ? 'PNG/WEBP 1126 x 1890，符合规范' : `当前 ${size.width} x ${size.height}，生成时放入 1126 x 1890 透明底容器`,
             });
         } catch (err) {
             URL.revokeObjectURL(url);
@@ -1026,8 +1016,7 @@ const ConfigWorkspace: React.FC = () => {
         else await updateBreakFocal(files[0]);
     };
 
-    const generatePromptAsset = async () => {
-        const text = prompt.trim() || '炫动开屏素材';
+    const generateLocalPromptAsset = async (text: string) => {
         const canvas = document.createElement('canvas');
         canvas.width = 450;
         canvas.height = 450;
@@ -1064,9 +1053,41 @@ const ConfigWorkspace: React.FC = () => {
             file,
             url,
             status: 'valid',
-            message: '提示词已生成 PNG 450 x 450，符合 MR 标准',
+            message: '本地已生成 PNG 450 x 450，符合 MR 标准',
         });
         return url;
+    };
+
+    const generatePromptAsset = async () => {
+        const text = prompt.trim() || '炫动开屏素材';
+        setError('');
+        resetOutput();
+
+        try {
+            setAsset((current) => ({
+                ...current,
+                status: 'idle',
+                message: 'AI 正在生成 450 x 450 挂件素材...',
+            }));
+            const result = await generatePendantAsset(text);
+            const url = result.url.startsWith('http') ? result.url : `${ASSETS_URL}${result.url}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('AI 素材下载失败');
+            const blob = await response.blob();
+            const file = new File([blob], 'ai-pendant-asset.png', { type: blob.type || 'image/png' });
+            setAsset({
+                file,
+                url,
+                status: 'valid',
+                message: result.message || `AI 已生成 PNG 450 x 450（${result.provider}）`,
+            });
+            return url;
+        } catch (err) {
+            console.warn('炫动开屏 AI 生成失败，降级本地素材', err);
+            const fallbackUrl = await generateLocalPromptAsset(text);
+            setError(err instanceof Error ? `AI 生成暂不可用，已先生成本地预览素材。原因：${err.message}` : 'AI 生成暂不可用，已先生成本地预览素材');
+            return fallbackUrl;
+        }
     };
 
     const buildMagazineVideo = async () => {
@@ -1411,6 +1432,11 @@ const ConfigWorkspace: React.FC = () => {
             return;
         }
 
+        if (expandedTemplate === 'refresh-ui-bottom-nav' || expandedTemplate === 'jumping-focal-window') {
+            setError(`「${selectedTemplateName}」模版已创建，具体素材规则待配置后开放生成`);
+            return;
+        }
+
         if (expandedTemplate !== 'dynamic-splash') {
             setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「破框焦点视窗3D」模版编辑');
             return;
@@ -1447,7 +1473,8 @@ const ConfigWorkspace: React.FC = () => {
                 splashVideo.src = splash.url;
                 splashVideo.muted = true;
                 splashVideo.playsInline = true;
-                splashVideo.loop = true;
+                splashVideo.loop = false;
+                splashVideo.currentTime = 0;
                 await splashVideo.play().catch(() => undefined);
             }
 
@@ -1534,12 +1561,18 @@ const ConfigWorkspace: React.FC = () => {
     const isMagazineTemplate = expandedTemplate === 'magazine-flip';
     const isSpotlightTemplate = expandedTemplate === 'slide-splash';
     const isBreakFocalTemplate = expandedTemplate === 'break-frame-focal-3d';
+    const isJumpingFocalTemplate = expandedTemplate === 'jumping-focal-window';
+    const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const outputSpec = isMagazineTemplate
         ? '输出规格 1440 x 2340 / 每 1.5s 翻页'
             : isSpotlightTemplate
                 ? '输出规格 1440 x 2340 / 聚光合成'
                 : isBreakFocalTemplate
                     ? '输出规格 1126 x 2436 / 破框 3D'
+                    : isJumpingFocalTemplate
+                        ? '输出规格待配置 / 跃动焦点'
+                    : isRefreshUiBottomNavTemplate
+                        ? '输出规格待配置 / 焕新UI底导'
                 : '输出规格 1440 x 2340 / 5s';
     const magazineActiveIndex = magazineAssets.length
         ? Math.floor(magazinePreviewElapsed / MAGAZINE_FRAME_MS) % magazineAssets.length
@@ -1642,7 +1675,7 @@ const ConfigWorkspace: React.FC = () => {
                                 <span className="px-3 py-1 rounded-[20px] bg-white/5 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-white/5">MR STANDARD</span>
                                 <div className="flex items-center gap-1.5 antialiased">
                                     <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#10B981]" />
-                                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-tight">{isMagazineTemplate ? 'Magazine Flip' : isSpotlightTemplate ? 'Spotlight Splash' : isBreakFocalTemplate ? 'Break Frame Focal' : 'Dynamic Splash'}</span>
+                                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-tight">{isMagazineTemplate ? 'Magazine Flip' : isSpotlightTemplate ? 'Spotlight Splash' : isBreakFocalTemplate ? 'Break Frame Focal' : isJumpingFocalTemplate ? 'Jumping Focal' : isRefreshUiBottomNavTemplate ? 'Refresh UI Nav' : 'Dynamic Splash'}</span>
                                 </div>
                             </div>
                             <h1 className="text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
@@ -1810,8 +1843,8 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">焦点视窗背景素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 1126 x 2436px / 视频 5s 内</p>
+                                                    <h2 className="text-white text-sm font-black">开屏素材上传</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 1440 x 2340px / 视频 5s 内</p>
                                                 </div>
                                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(spotlightSplash.status)}`}>{spotlightSplash.message}</span>
                                             </div>
@@ -1842,7 +1875,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 ) : (
                                                     <div className="text-center">
                                                         <span className="material-symbols-outlined text-3xl text-zinc-600">perm_media</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入背景素材</p>
+                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入开屏素材</p>
                                                     </div>
                                                 )}
                                             </button>
@@ -1854,14 +1887,14 @@ const ConfigWorkspace: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h2 className="text-white text-sm font-black">破框素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片/透明底视频 / 1126 x 1890px；AI 生成输出透明底视频</p>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">PNG / WEBP / 1126 x 1890px；AI可协助生成破框素材</p>
                                                 </div>
                                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(breakFrameAsset.status)}`}>{breakFrameAsset.message}</span>
                                             </div>
                                             <input
                                                 ref={breakFrameInputRef}
                                                 type="file"
-                                                accept="image/*,video/*"
+                                                accept="image/png,image/webp,.png,.webp"
                                                 className="hidden"
                                                 onChange={async (e) => {
                                                     const input = e.currentTarget;
@@ -1886,7 +1919,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <div className="text-center">
                                                         <span className="material-symbols-outlined text-3xl text-zinc-600">view_in_ar</span>
                                                         <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'break-frame' ? '松开上传破框素材' : '点击或拖入破框素材'}</p>
-                                                        <p className="text-[9px] text-zinc-700 font-bold mt-1">生成区域固定为 1126 x 1890px，透明底</p>
+                                                        <p className="text-[9px] text-zinc-700 font-bold mt-1">AI可协助生成破框素材</p>
                                                     </div>
                                                 )}
                                             </button>
@@ -1995,6 +2028,21 @@ const ConfigWorkspace: React.FC = () => {
                                             </button>
                                         </div>
                                     </>
+                                ) : isJumpingFocalTemplate || isRefreshUiBottomNavTemplate ? (
+                                    <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                        <div className="flex items-start gap-4">
+                                            <div className="h-11 w-11 rounded-[16px] bg-white/10 flex items-center justify-center shrink-0">
+                                                <span className="material-symbols-outlined text-zinc-300">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'bottom_navigation'}</span>
+                                            </div>
+                                            <div>
+                                                <h2 className="text-white text-sm font-black">{selectedTemplateName}模版</h2>
+                                                <p className="text-[10px] text-zinc-600 font-bold mt-1">模版入口已创建，后续可继续配置上传素材、动画规则和合成预览。</p>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 text-[11px] leading-5 text-zinc-500 font-bold">
+                                            当前不会套用其他模版的上传能力，避免误生成。等你确认底导素材规格后，我再把这一块补成完整可用的后台配置。
+                                        </div>
+                                    </div>
                                 ) : (
                                     <>
                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2093,14 +2141,18 @@ const ConfigWorkspace: React.FC = () => {
                                                     ? '三张小卡从下往上弹出，同排定位后合并成一张大卡'
                                                     : isBreakFocalTemplate
                                                         ? '套用美图秀秀焦点视窗底层能力，破框素材覆盖在焦点视窗上方'
+                                                        : isJumpingFocalTemplate
+                                                            ? '模版入口已创建，等待配置跃动焦点视窗素材规则'
+                                                        : isRefreshUiBottomNavTemplate
+                                                            ? '模版入口已创建，等待配置底导素材规则与合成方式'
                                                         : '8 个挂件组成一整块，从上方滑入并在 5s 内滑出画面'}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
+                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
                                         <a
                                             href={generatedVideoUrl || undefined}
-                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isBreakFocalTemplate ? 'break-frame-focal-3d' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
+                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
                                             className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all ${generatedVideoUrl ? 'bg-white text-black hover:bg-zinc-200' : 'bg-white/5 text-zinc-700 pointer-events-none'}`}
                                         >
                                             <span className="material-symbols-outlined text-base">download</span>
@@ -2108,7 +2160,7 @@ const ConfigWorkspace: React.FC = () => {
                                         </a>
                                         <button
                                             onClick={buildVideo}
-                                            disabled={isGenerating}
+                                            disabled={isGenerating || isJumpingFocalTemplate || isRefreshUiBottomNavTemplate}
                                             className="h-9 px-4 rounded-[14px] bg-primary/90 text-white text-[11px] font-black hover:bg-primary transition-all disabled:opacity-50"
                                         >
                                             {isGenerating ? '生成中' : '重新生成'}
@@ -2128,7 +2180,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     src={generatedVideoUrl}
                                                     className="w-full h-full object-cover"
                                                     autoPlay
-                                                    loop
+                                                    loop={expandedTemplate !== 'dynamic-splash'}
                                                     onPlay={() => setIsPreviewPlaying(true)}
                                                     onPause={() => setIsPreviewPlaying(false)}
                                                 />
@@ -2300,9 +2352,23 @@ const ConfigWorkspace: React.FC = () => {
                                                             ) : null}
                                                         </div>
                                                     </>
+                                                ) : isJumpingFocalTemplate || isRefreshUiBottomNavTemplate ? (
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
+                                                        <span className="material-symbols-outlined text-6xl">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'bottom_navigation'}</span>
+                                                        <span className="mt-3 text-[10px] font-black tracking-widest uppercase">{isJumpingFocalTemplate ? 'Jumping Focal Window' : 'Refresh UI / Bottom Nav'}</span>
+                                                    </div>
                                                 ) : splash.url ? (
                                                     splash.file?.type.startsWith('video/') ? (
-                                                        <video src={splash.url} className="absolute inset-0 w-full h-full object-cover" muted loop playsInline autoPlay />
+                                                        <video
+                                                            ref={previewVideoRef}
+                                                            src={splash.url}
+                                                            className="absolute inset-0 w-full h-full object-cover"
+                                                            muted
+                                                            playsInline
+                                                            autoPlay
+                                                            onPlay={() => setIsPreviewPlaying(true)}
+                                                            onPause={() => setIsPreviewPlaying(false)}
+                                                        />
                                                     ) : (
                                                         <img src={splash.url} alt="开屏预览" className="absolute inset-0 w-full h-full object-cover" />
                                                     )
@@ -2311,10 +2377,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         <span className="material-symbols-outlined text-6xl">movie</span>
                                                     </div>
                                                 )}
-                                                {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && asset.url && (
+                                                {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && asset.url && (
                                                     <div
                                                         className="absolute inset-0 animate-pendant-group-drop pointer-events-none"
-                                                        style={getPendantGroupPreviewStyle()}
+                                                        style={{
+                                                            ...getPendantGroupPreviewStyle(),
+                                                            animationPlayState: isPreviewPlaying ? 'running' : 'paused',
+                                                        }}
                                                     >
                                                         {getPendantSeeds().slice(0, pendantMotionNotes.maxItems).map((seed, index) => (
                                                             <img
@@ -2335,9 +2404,18 @@ const ConfigWorkspace: React.FC = () => {
                                                 <div className="absolute inset-x-0 bottom-8 text-center">
                                                     <span className="text-[8px] font-black text-white/50 uppercase tracking-[0.3em]">1440 x 2340 / FINAL VIDEO</span>
                                                 </div>
+                                                {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && splash.file?.type.startsWith('video/') && (
+                                                    <button
+                                                        onClick={togglePreviewPlayback}
+                                                        className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/55 text-white backdrop-blur-md opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center border border-white/20 z-[120]"
+                                                        aria-label={isPreviewPlaying ? '暂停视频' : '播放视频'}
+                                                    >
+                                                        <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
+                                                    </button>
+                                                )}
                                             </>
                                         )}
-                                        {cropAreaEnabled && (
+                                        {cropAreaEnabled && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && (
                                             <div
                                                 className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
                                             >
@@ -2350,17 +2428,23 @@ const ConfigWorkspace: React.FC = () => {
                                 <div className="mt-4 grid grid-cols-3 gap-3 shrink-0">
                                     <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
                                         <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">交互形式</p>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {interactionOptions.map((item) => (
-                                                <button
-                                                    key={item.id}
-                                                    onClick={() => setInteractionType(item.id)}
-                                                    className={`h-9 rounded-[12px] text-[11px] font-bold transition-all ${interactionType === item.id ? 'bg-white text-black' : 'bg-white/5 text-zinc-400 hover:bg-white/10'}`}
-                                                >
-                                                    {item.label}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        {isMagazineTemplate ? (
+                                            <div className="h-9 rounded-[12px] bg-white text-black text-[11px] font-black flex items-center justify-center">
+                                                向左滑动
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {interactionOptions.map((item) => (
+                                                    <button
+                                                        key={item.id}
+                                                        onClick={() => setInteractionType(item.id)}
+                                                        className={`h-9 rounded-[12px] text-[11px] font-bold transition-all ${interactionType === item.id ? 'bg-white text-black' : 'bg-white/5 text-zinc-400 hover:bg-white/10'}`}
+                                                    >
+                                                        {item.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 flex items-center justify-between gap-3">
