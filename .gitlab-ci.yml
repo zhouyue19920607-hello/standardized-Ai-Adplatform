@@ -1,0 +1,25 @@
+stages:
+  - build
+  - deploy
+
+.tag_only: &tag_only
+  only:
+    - /^v\d+\.\d+\.\d+(-\d+)?$/
+
+build:
+  stage: build
+  image: publisher
+  <<: *tag_only
+  script:
+    - publish.sh release matrix.conf
+  tags:
+    - matrix
+
+deploy:
+  stage: deploy
+  image: notifier
+  <<: *tag_only
+  script:
+    - notify.sh release matrix.conf
+  tags:
+    - matrix
