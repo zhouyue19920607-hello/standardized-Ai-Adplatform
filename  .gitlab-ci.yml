@@ -2,11 +2,9 @@ stages:
   - build
   - deploy
 
-tag_only: &tag_only
+.tag_only: &tag_only
   only:
-    - /^v\d+\.\d+\.\d+(-\d+)?
-
-$/
+    - /^v\d+\.\d+\.\d+(-\d+)?$/
 
 build:
   stage: build
@@ -15,9 +13,7 @@ build:
   script:
     - publish.sh release matrix.conf
   tags:
-    -
-
-matrix
+    - matrix
 
 deploy:
   stage: deploy
@@ -25,4 +21,5 @@ deploy:
   <<: *tag_only
   script:
     - notify.sh release matrix.conf
-  tags: - matrix
+  tags:
+    - matrix
