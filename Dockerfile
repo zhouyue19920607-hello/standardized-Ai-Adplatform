@@ -1,34 +1,33 @@
-# 使用 Node.js 20 LTS 版本
-FROM node:20-slim AS builder
-
+# ─── Stage 1: Build frontend ─────────────────────────────────────────────
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app
-
-# 复制依赖文件并安装
 COPY package*.json ./
-RUN npm install
-
-# 复制源文件并构建前端
+RUN npm ci
 COPY . .
 RUN npm run build
 
-# 生产环境运行阶段
-FROM node:20-slim
-
-# 安装 libvips 用于 sharp 图片处理
-RUN apt-get update && apt-get install -y libvips-dev && rm -rf /var/lib/apt/lists/*
-
+# ─── Stage 2: Install server dependencies (native modules needed) ─────────
+FROM node:20-alpine AS server-deps
+RUN apk add --no-cache python3 make g++ libc6-compat vips-dev
 WORKDIR /app
-
-# 只要生产依赖
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
-# 从构建阶段复制构建好的静态文件和后端代码
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/backend ./backend
-
-# 暴露端口 (默认 4000)
+# ─── Stage 3: Production runner ─────────────────────────────────────────────
+FROM node:20-alpine AS runner
+RUN apk add --no-cache libc6-compat vips
+WORKDIR /app
+COPY --from=server-deps /app/node_modules ./node_modules
+COPY --from=frontend-builder /app/dist ./dist
+COPY backend/ ./backend/
+COPY server.mjs ./
+COPY vite.config.ts ./
+COPY tsconfig*.json ./
+COPY index.html ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
 EXPOSE 4000
-
-# 启动服务器
-CMD ["npm", "run", "server"]
+ENV NODE_ENV=production
+ENV PORT=4000
+ENV HOSTNAME="0.0.0.0"
+CMD ["node", "server.mjs"]
