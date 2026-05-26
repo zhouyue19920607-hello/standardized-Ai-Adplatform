@@ -15,7 +15,7 @@ RUN npm run build
 FROM node:20-slim
 
 # 安装 libvips 用于 sharp 图片处理
-RUN apt-get update && apt-get install -y libvips-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libvips-dev && apt-get clean
 
 WORKDIR /app
 
