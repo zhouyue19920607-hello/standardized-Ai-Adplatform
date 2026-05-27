@@ -62,7 +62,7 @@ const AdCard: React.FC<{
   const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
   const shouldOffsetMeiyanFocal = localShowMask && asset.category === '焦点视窗' && asset.app === '美颜' && !!effectiveMaskUrl;
-  const meiyanFocalOffsetStyle = shouldOffsetMeiyanFocal ? { transform: 'translateY(-1.9294cqh)' } : undefined;
+  const meiyanFocalOffsetStyle = shouldOffsetMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
 
   const aspectRatio = (localShowMask && (asset.category === '焦点视窗' || isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent))
     ? (asset.app === 'wink' ? '1126 / 2438' : '1126 / 2436')
@@ -546,7 +546,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   const filteredAssets = activeTab === 'all' ? assets : assets.filter(a => a.category === activeTab);
   const selectedAsset = selectedAssetInfo?.asset;
   const shouldOffsetSelectedMeiyanFocal = !!selectedAsset && selectedAssetInfo?.showMask && selectedAsset.category === '焦点视窗' && selectedAsset.app === '美颜' && !!selectedAsset.maskUrl;
-  const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-1.9294cqh)' } : undefined;
+  const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
 
   if (assets.length === 0 && !isGenerating) {
     return (

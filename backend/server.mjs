@@ -43,9 +43,11 @@ const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
   { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340", enabled: true },
   { id: "twist-splash", groupId: "splash", groupName: "开屏创意模版", name: "扭转开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
-  { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
-  { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "待配置", enabled: true },
-  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "待配置", enabled: true }
+  { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "秀秀-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
+  { id: "meiyan-break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "美颜-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
+  { id: "polymorphic-flip-card", groupId: "home", groupName: "首页创意模版", name: "多态翻卡", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
+  { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900", enabled: true },
+  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "上方icon 600 x 335 x2 / 下方icon 288 x 315 x4 / 底导 1126 x 252", enabled: true }
 ];
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
@@ -413,6 +415,9 @@ app.post("/api/creative-templates/:id/assets/:slot", upload.single("image"), asy
   const file = req.file;
   const slotToField = {
     interaction: "interaction_asset_path",
+    interactionBubble: "interaction_bubble_asset_path",
+    interactionTwist: "interaction_twist_asset_path",
+    interactionUp: "interaction_up_asset_path",
     crop: "crop_area_path",
     xiuxiu: "platform_xiuxiu_path",
     meiyan: "platform_meiyan_path",
@@ -1364,10 +1369,13 @@ async function nanobannerTextToPendant(prompt, apiKey, baseUrl) {
   baseUrl = baseUrl.replace(/\/$/, "");
 
   const apiEndpoint = `${baseUrl}/chat/completions`;
+  const userPrompt = String(prompt || "炫动开屏挂件")
+    .replace(/[，,。.\s]*纯白色背景[。.\s]*$/u, "")
+    .trim() || "炫动开屏挂件";
   const finalPrompt = [
     "生成一个广告开屏挂件素材。",
-    "硬性要求：1:1 正方形，最终可处理为 450x450px PNG；主体居中；适合叠加在 1440x2340 开屏视频上；边缘干净；不要文字水印；尽量透明背景或纯色易抠背景。",
-    `用户想法：${prompt || "炫动开屏挂件"}`
+    "硬性要求：1:1 正方形，最终可处理为 450x450px PNG；主体居中；适合叠加在 1440x2340 开屏视频上；边缘干净；不要文字水印。",
+    `用户想法：${userPrompt}，纯白色背景`
   ].join("\n");
 
   const payload = {
@@ -1407,13 +1415,7 @@ async function nanobannerTextToPendant(prompt, apiKey, baseUrl) {
 
   const outFilename = `dynamic_pendant_ai_${Date.now()}.png`;
   const outPath = path.join(STORAGE_DIR, outFilename);
-  await sharp(imgBuffer)
-    .resize(450, 450, {
-      fit: "contain",
-      background: { r: 0, g: 0, b: 0, alpha: 0 }
-    })
-    .png()
-    .toFile(outPath);
+  await writePendantWithTransparentBackground(imgBuffer, outPath);
 
   const stats = await fs.stat(outPath);
   return {
@@ -1422,6 +1424,72 @@ async function nanobannerTextToPendant(prompt, apiKey, baseUrl) {
     height: 450,
     size: stats.size
   };
+}
+
+async function writePendantWithTransparentBackground(imgBuffer, outPath) {
+  const { data, info } = await sharp(imgBuffer)
+    .resize(450, 450, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+
+  const isWhiteBackground = (pixelIndex) => {
+    const offset = pixelIndex * channels;
+    const r = data[offset];
+    const g = data[offset + 1];
+    const b = data[offset + 2];
+    const a = data[offset + 3];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    return a > 0 && r >= 238 && g >= 238 && b >= 238 && max - min <= 18;
+  };
+
+  const enqueueIfBackground = (pixelIndex) => {
+    if (visited[pixelIndex] || !isWhiteBackground(pixelIndex)) return;
+    visited[pixelIndex] = 1;
+    queue[tail++] = pixelIndex;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueIfBackground(x);
+    enqueueIfBackground((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueueIfBackground(y * width);
+    enqueueIfBackground(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const pixelIndex = queue[head++];
+    const x = pixelIndex % width;
+    const y = Math.floor(pixelIndex / width);
+
+    if (x > 0) enqueueIfBackground(pixelIndex - 1);
+    if (x < width - 1) enqueueIfBackground(pixelIndex + 1);
+    if (y > 0) enqueueIfBackground(pixelIndex - width);
+    if (y < height - 1) enqueueIfBackground(pixelIndex + width);
+  }
+
+  for (let pixelIndex = 0; pixelIndex < visited.length; pixelIndex += 1) {
+    if (visited[pixelIndex]) {
+      data[pixelIndex * channels + 3] = 0;
+    }
+  }
+
+  await sharp(data, {
+    raw: { width, height, channels }
+  })
+    .png()
+    .toFile(outPath);
 }
 
 app.post("/api/creative/dynamic-splash/pendant", async (req, res) => {

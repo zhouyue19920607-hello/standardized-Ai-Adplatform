@@ -35,7 +35,23 @@
     "id": "break-frame-focal-3d",
     "groupId": "home",
     "groupName": "首页创意模版",
-    "name": "破框焦点视窗3D",
+    "name": "秀秀-破框焦点视窗3D",
+    "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+    "enabled": true
+  },
+  {
+    "id": "meiyan-break-frame-focal-3d",
+    "groupId": "home",
+    "groupName": "首页创意模版",
+    "name": "美颜-破框焦点视窗3D",
+    "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+    "enabled": true
+  },
+  {
+    "id": "polymorphic-flip-card",
+    "groupId": "home",
+    "groupName": "首页创意模版",
+    "name": "多态翻卡",
     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
     "enabled": true
   },
@@ -44,7 +60,7 @@
     "groupId": "home",
     "groupName": "首页创意模版",
     "name": "跃动焦点视窗",
-    "dimensions": "待配置",
+    "dimensions": "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900",
     "enabled": true
   },
   {
@@ -52,7 +68,7 @@
     "groupId": "home",
     "groupName": "首页创意模版",
     "name": "焕新UI/底导",
-    "dimensions": "待配置",
+    "dimensions": "上方icon 600 x 335 x2 / 下方icon 288 x 315 x4 / 底导 1126 x 252",
     "enabled": true
   }
 ]

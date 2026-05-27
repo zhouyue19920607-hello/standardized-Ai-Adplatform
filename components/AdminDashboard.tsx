@@ -487,18 +487,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                         <div className="flex items-center justify-between mb-3">
                                                                             <div>
                                                                                 <p className="text-xs font-black text-slate-700">{tpl.name}后台素材入口</p>
-                                                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">{tpl.id === 'magazine-flip' ? '向左滑动、裁剪区域、平台图片在这里统一上传配置' : '交互形式、裁剪区域、平台图片在这里统一上传配置'}</p>
+                                                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">{tpl.id === 'dynamic-splash' ? '气泡滑动、扭动、上滑三种交互形式分开上传；裁剪区域、平台图片统一配置' : (tpl.id === 'magazine-flip' ? '向左滑动、裁剪区域、平台图片在这里统一上传配置' : '交互形式、裁剪区域、平台图片在这里统一上传配置')}</p>
                                                                             </div>
                                                                             <span className="text-[10px] font-black text-indigo-500 bg-white px-2 py-1 rounded-full border border-indigo-100">后台配置</span>
                                                                         </div>
-                                                                        <div className="grid grid-cols-5 gap-3">
-                                                                            {[
+                                                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                                                                            {(tpl.id === 'dynamic-splash' ? [
+                                                                                { slot: 'interactionBubble', label: '气泡滑动', icon: 'bubble_chart', path: tpl.interaction_bubble_asset_path },
+                                                                                { slot: 'interactionTwist', label: '扭动', icon: 'screen_rotation_alt', path: tpl.interaction_twist_asset_path },
+                                                                                { slot: 'interactionUp', label: '上滑', icon: 'swipe_up', path: tpl.interaction_up_asset_path },
+                                                                                { slot: 'crop', label: '裁剪区域', icon: 'crop', path: tpl.crop_area_path },
+                                                                                { slot: 'xiuxiu', label: '秀秀图片', icon: '/icons/meitu_mask_icon.png', path: tpl.platform_xiuxiu_path },
+                                                                                { slot: 'meiyan', label: '美颜图片', icon: '/icons/beauty_mask_icon.png', path: tpl.platform_meiyan_path },
+                                                                                { slot: 'wink', label: 'Wink图片', icon: '/icons/wink_mask_icon.png', path: tpl.platform_wink_path },
+                                                                            ] : [
                                                                                 { slot: 'interaction', label: tpl.id === 'magazine-flip' ? '向左滑动' : '交互形式', icon: tpl.id === 'magazine-flip' ? 'swipe_left' : 'touch_app', path: tpl.interaction_asset_path },
                                                                                 { slot: 'crop', label: '裁剪区域', icon: 'crop', path: tpl.crop_area_path },
                                                                                 { slot: 'xiuxiu', label: '秀秀图片', icon: '/icons/meitu_mask_icon.png', path: tpl.platform_xiuxiu_path },
                                                                                 { slot: 'meiyan', label: '美颜图片', icon: '/icons/beauty_mask_icon.png', path: tpl.platform_meiyan_path },
                                                                                 { slot: 'wink', label: 'Wink图片', icon: '/icons/wink_mask_icon.png', path: tpl.platform_wink_path },
-                                                                            ].map(item => (
+                                                                            ]).map(item => (
                                                                                 <div key={item.slot} className="rounded-xl bg-white border border-slate-100 p-3">
                                                                                     <div className="relative h-16 rounded-lg bg-slate-50 border border-dashed border-slate-200 overflow-hidden flex items-center justify-center hover:border-indigo-300 transition-colors">
                                                                                         {item.path ? (

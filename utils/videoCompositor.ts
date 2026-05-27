@@ -112,7 +112,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
             videoRect = {x:0, y:0, w:targetW, h: (vh / vw) * targetW};
             const isMeiyan = asset.app === '美颜';
             if (isMeiyan && maskImg) {
-                videoRect.y = -47;
+                videoRect.y = -97;
             }
             // Focal window draws BG, then video, then more BG? Wait, video is bottom!
             if ((isWink || isMeiyan) && maskImg) {

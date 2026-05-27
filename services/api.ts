@@ -144,6 +144,9 @@ export interface CreativeTemplateItem {
     dimensions: string;
     enabled: boolean;
     interaction_asset_path?: string;
+    interaction_bubble_asset_path?: string;
+    interaction_twist_asset_path?: string;
+    interaction_up_asset_path?: string;
     crop_area_path?: string;
     platform_xiuxiu_path?: string;
     platform_meiyan_path?: string;
