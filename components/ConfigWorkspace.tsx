@@ -657,6 +657,35 @@ const ConfigWorkspace: React.FC = () => {
         setGeneratedVideoUrl(null);
     };
 
+    const clearUploadState = (
+        state: UploadState,
+        setter: React.Dispatch<React.SetStateAction<UploadState>>,
+    ) => {
+        if (state.url) URL.revokeObjectURL(state.url);
+        setter(emptyUpload);
+        setError('');
+        resetOutput();
+    };
+
+    const uploadRemoveButton = (
+        state: UploadState,
+        onRemove: () => void,
+        title = '删除素材',
+    ) => state.url ? (
+        <button
+            type="button"
+            onClick={(event) => {
+                event.stopPropagation();
+                onRemove();
+            }}
+            className="absolute right-3 top-3 z-20 h-7 w-7 rounded-full bg-black/75 text-white/85 shadow-lg shadow-black/30 border border-white/10 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+            title={title}
+            aria-label={title}
+        >
+            <span className="material-symbols-outlined text-[15px]">close</span>
+        </button>
+    ) : null;
+
     const updateAsset = async (file: File) => {
         setError('');
         resetOutput();
@@ -1101,7 +1130,11 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const removePolyCard = (id: string) => {
-        setPolyCards((current) => current.filter((item) => item.id !== id));
+        setPolyCards((current) => {
+            const target = current.find((item) => item.id === id);
+            if (target) URL.revokeObjectURL(target.url);
+            return current.filter((item) => item.id !== id);
+        });
         resetOutput();
     };
 
@@ -1151,7 +1184,11 @@ const ConfigWorkspace: React.FC = () => {
 
     const removeRefreshIcon = (kind: 'top' | 'bottom', id: string) => {
         const setter = kind === 'top' ? setRefreshTopIcons : setRefreshBottomIcons;
-        setter((current) => current.filter((item) => item.id !== id));
+        setter((current) => {
+            const target = current.find((item) => item.id === id);
+            if (target) URL.revokeObjectURL(target.url);
+            return current.filter((item) => item.id !== id);
+        });
         resetOutput();
     };
 
@@ -1199,6 +1236,12 @@ const ConfigWorkspace: React.FC = () => {
         } catch (err) {
             setReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '参考图读取失败' });
         }
+    };
+
+    const removeBreakReference = (phase: 0 | 1) => {
+        const reference = phase === 0 ? breakFirstReference : breakSecondReference;
+        const setReference = phase === 0 ? setBreakFirstReference : setBreakSecondReference;
+        clearUploadState(reference, setReference);
     };
 
     const updateBreakColorSchemesFromSource = async (sourceUrl: string, type: 'image' | 'video') => {
@@ -2621,22 +2664,25 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => spotlightLargeInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
-                                                onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
-                                                className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {spotlightLargeCard.url ? (
-                                                    <img src={spotlightLargeCard.url} alt="大卡素材预览" className="h-20 w-full object-contain" />
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">featured_play_list</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入大卡 PNG</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => spotlightLargeInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
+                                                    className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {spotlightLargeCard.url ? (
+                                                        <img src={spotlightLargeCard.url} alt="大卡素材预览" className="h-20 w-full object-contain" />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">featured_play_list</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入大卡 PNG</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(spotlightLargeCard, () => clearUploadState(spotlightLargeCard, setSpotlightLargeCard), '删除大卡素材')}
+                                            </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2658,26 +2704,29 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => spotlightSplashInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'spotlight-splash')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-splash')}
-                                                onDrop={(event) => handleUploadDrop(event, 'spotlight-splash')}
-                                                className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-splash' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {spotlightSplash.url ? (
-                                                    spotlightSplash.file?.type.startsWith('video/') ? (
-                                                        <video src={spotlightSplash.url} className="h-36 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => spotlightSplashInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'spotlight-splash')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-splash')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'spotlight-splash')}
+                                                    className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-splash' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {spotlightSplash.url ? (
+                                                        spotlightSplash.file?.type.startsWith('video/') ? (
+                                                            <video src={spotlightSplash.url} className="h-36 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                                        ) : (
+                                                            <img src={spotlightSplash.url} alt="开屏素材预览" className="h-36 aspect-[9/16] object-cover rounded-xl" />
+                                                        )
                                                     ) : (
-                                                        <img src={spotlightSplash.url} alt="开屏素材预览" className="h-36 aspect-[9/16] object-cover rounded-xl" />
-                                                    )
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">perm_media</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入开屏素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">perm_media</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入开屏素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(spotlightSplash, () => clearUploadState(spotlightSplash, setSpotlightSplash), '删除开屏素材')}
+                                            </div>
                                         </div>
                                     </>
                                 ) : isPolymorphicFlipCardTemplate ? (
@@ -2701,22 +2750,25 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => polyBaseInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'poly-base')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'poly-base')}
-                                                onDrop={(event) => handleUploadDrop(event, 'poly-base')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {polyBase.url ? (
-                                                    <img src={polyBase.url} alt="多态翻卡底图预览" className="h-24 w-full object-cover rounded-xl" />
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 1126 x 900px 底图</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => polyBaseInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'poly-base')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'poly-base')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'poly-base')}
+                                                    className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {polyBase.url ? (
+                                                        <img src={polyBase.url} alt="多态翻卡底图预览" className="h-24 w-full object-cover rounded-xl" />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 1126 x 900px 底图</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(polyBase, () => clearUploadState(polyBase, setPolyBase), '删除底图素材')}
+                                            </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2787,26 +2839,29 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => polyFocalInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'poly-focal')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'poly-focal')}
-                                                onDrop={(event) => handleUploadDrop(event, 'poly-focal')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {polyFocal.url ? (
-                                                    polyFocal.file?.type.startsWith('video/') ? (
-                                                        <video src={polyFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => polyFocalInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'poly-focal')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'poly-focal')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'poly-focal')}
+                                                    className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {polyFocal.url ? (
+                                                        polyFocal.file?.type.startsWith('video/') ? (
+                                                            <video src={polyFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                        ) : (
+                                                            <img src={polyFocal.url} alt="多态翻卡焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
+                                                        )
                                                     ) : (
-                                                        <img src={polyFocal.url} alt="多态翻卡焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
-                                                    )
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">art_track</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">art_track</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(polyFocal, () => clearUploadState(polyFocal, setPolyFocal), '删除焦点视窗素材')}
+                                            </div>
                                         </div>
                                     </>
                                 ) : isRefreshUiBottomNavTemplate ? (
@@ -2830,26 +2885,29 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => breakFocalInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'break-focal')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'break-focal')}
-                                                onDrop={(event) => handleUploadDrop(event, 'break-focal')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {breakFocal.url ? (
-                                                    breakFocal.file?.type.startsWith('video/') ? (
-                                                        <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => breakFocalInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'break-focal')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'break-focal')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'break-focal')}
+                                                    className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {breakFocal.url ? (
+                                                        breakFocal.file?.type.startsWith('video/') ? (
+                                                            <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                        ) : (
+                                                            <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
+                                                        )
                                                     ) : (
-                                                        <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
-                                                    )
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材')}
+                                            </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2961,22 +3019,25 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => refreshBottomNavInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav')}
-                                                onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-nav')}
-                                                className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-nav' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {refreshBottomNav.url ? (
-                                                    <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">bottom_navigation</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入底导素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => refreshBottomNavInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-nav')}
+                                                    className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-nav' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {refreshBottomNav.url ? (
+                                                        <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">bottom_navigation</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入底导素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材')}
+                                            </div>
                                         </div>
                                     </>
                                 ) : isBreakFocalTemplate ? (
@@ -3000,26 +3061,29 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => breakFocalInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'break-focal')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'break-focal')}
-                                                onDrop={(event) => handleUploadDrop(event, 'break-focal')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {breakFocal.url ? (
-                                                    breakFocal.file?.type.startsWith('video/') ? (
-                                                        <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => breakFocalInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'break-focal')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'break-focal')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'break-focal')}
+                                                    className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {breakFocal.url ? (
+                                                        breakFocal.file?.type.startsWith('video/') ? (
+                                                            <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                        ) : (
+                                                            <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
+                                                        )
                                                     ) : (
-                                                        <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
-                                                    )
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入焦点视窗素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材')}
+                                            </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -3043,27 +3107,30 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => breakFrameInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'break-frame')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'break-frame')}
-                                                onDrop={(event) => handleUploadDrop(event, 'break-frame')}
-                                                className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-frame' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                {breakFrameAsset.url ? (
-                                                    breakFrameAsset.file?.type.startsWith('video/') ? (
-                                                        <video src={breakFrameAsset.url} className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline />
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => breakFrameInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'break-frame')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'break-frame')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'break-frame')}
+                                                    className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-frame' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {breakFrameAsset.url ? (
+                                                        breakFrameAsset.file?.type.startsWith('video/') ? (
+                                                            <video src={breakFrameAsset.url} className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline />
+                                                        ) : (
+                                                            <img src={breakFrameAsset.url} alt="破框素材预览" className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" />
+                                                        )
                                                     ) : (
-                                                        <img src={breakFrameAsset.url} alt="破框素材预览" className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" />
-                                                    )
-                                                ) : (
-                                                    <div className="text-center">
-                                                        <span className="material-symbols-outlined text-3xl text-zinc-600">view_in_ar</span>
-                                                        <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'break-frame' ? '松开上传破框素材' : '点击或拖入破框素材'}</p>
-                                                        <p className="text-[9px] text-zinc-700 font-bold mt-1">AI可协助生成破框素材</p>
-                                                    </div>
-                                                )}
-                                            </button>
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">view_in_ar</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'break-frame' ? '松开上传破框素材' : '点击或拖入破框素材'}</p>
+                                                            <p className="text-[9px] text-zinc-700 font-bold mt-1">AI可协助生成破框素材</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(breakFrameAsset, () => clearUploadState(breakFrameAsset, setBreakFrameAsset), '删除破框素材')}
+                                            </div>
                                             <div className="grid gap-3">
                                                 {(isJumpingFocalTemplate ? [
                                                     {
@@ -3181,23 +3248,30 @@ const ConfigWorkspace: React.FC = () => {
                                                                 placeholder={item.placeholder}
                                                                 className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
                                                             />
-                                                            <label className="relative min-h-[86px] rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden cursor-pointer">
-                                                                {item.reference.url ? (
-                                                                    <img src={item.reference.url} alt={`${item.title}参考图`} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="text-center px-2">
-                                                                        <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
-                                                                    </div>
-                                                                )}
-                                                                <input
-                                                                    type="file"
-                                                                    accept="image/*"
-                                                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                    onChange={(e) => e.target.files?.[0] && updateBreakReference(item.phase, e.target.files[0])}
-                                                                    title={`上传${item.title}参考图`}
-                                                                />
-                                                            </label>
+                                                            <div className="relative min-h-[86px]">
+                                                                <label className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden cursor-pointer">
+                                                                    {item.reference.url ? (
+                                                                        <img src={item.reference.url} alt={`${item.title}参考图`} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="text-center px-2">
+                                                                            <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                            <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                        </div>
+                                                                    )}
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        onChange={(e) => {
+                                                                            const input = e.currentTarget;
+                                                                            if (input.files?.[0]) updateBreakReference(item.phase, input.files[0]);
+                                                                            input.value = '';
+                                                                        }}
+                                                                        title={`上传${item.title}参考图`}
+                                                                    />
+                                                                </label>
+                                                                {uploadRemoveButton(item.reference, () => removeBreakReference(item.phase), `删除${item.title}参考图`)}
+                                                            </div>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-3">
                                                             <button
@@ -3244,23 +3318,30 @@ const ConfigWorkspace: React.FC = () => {
                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(asset.status)}`}>{asset.message}</span>
                                     </div>
 
-                                    <input ref={assetInputRef} type="file" accept="image/png" className="hidden" onChange={(e) => e.target.files?.[0] && updateAsset(e.target.files[0])} />
-                                    <button
-                                        onClick={() => assetInputRef.current?.click()}
-                                        onDragOver={(event) => handleUploadDragOver(event, 'asset')}
-                                        onDragLeave={(event) => handleUploadDragLeave(event, 'asset')}
-                                        onDrop={(event) => handleUploadDrop(event, 'asset')}
-                                        className={`w-full min-h-[150px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'asset' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                    >
-                                        {asset.url ? (
-                                            <img src={asset.url} alt="挂件素材预览" className="w-28 h-28 object-contain rounded-xl" />
-                                        ) : (
-                                            <div className="text-center">
-                                                <span className="material-symbols-outlined text-3xl text-zinc-600">add_photo_alternate</span>
-                                                <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'asset' ? '松开上传 PNG 素材' : '点击或拖入 PNG 素材'}</p>
-                                            </div>
-                                        )}
-                                    </button>
+                                    <input ref={assetInputRef} type="file" accept="image/png" className="hidden" onChange={(e) => {
+                                        const input = e.currentTarget;
+                                        if (input.files?.[0]) updateAsset(input.files[0]);
+                                        input.value = '';
+                                    }} />
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => assetInputRef.current?.click()}
+                                            onDragOver={(event) => handleUploadDragOver(event, 'asset')}
+                                            onDragLeave={(event) => handleUploadDragLeave(event, 'asset')}
+                                            onDrop={(event) => handleUploadDrop(event, 'asset')}
+                                            className={`w-full min-h-[150px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'asset' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                        >
+                                            {asset.url ? (
+                                                <img src={asset.url} alt="挂件素材预览" className="w-28 h-28 object-contain rounded-xl" />
+                                            ) : (
+                                                <div className="text-center">
+                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">add_photo_alternate</span>
+                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'asset' ? '松开上传 PNG 素材' : '点击或拖入 PNG 素材'}</p>
+                                                </div>
+                                            )}
+                                        </button>
+                                        {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材')}
+                                    </div>
 
                                     <div className="relative">
                                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-zinc-600">magic_button</span>
@@ -3279,7 +3360,7 @@ const ConfigWorkspace: React.FC = () => {
                                         onClick={generatePromptAsset}
                                         className="w-full h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
                                     >
-                                        用提示词生成 450 x 450 素材
+                                        用提示词生成静态素材
                                     </button>
                                 </div>
 
@@ -3292,27 +3373,34 @@ const ConfigWorkspace: React.FC = () => {
                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(splash.status)}`}>{splash.message}</span>
                                     </div>
 
-                                    <input ref={splashInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => e.target.files?.[0] && updateSplash(e.target.files[0])} />
-                                    <button
-                                        onClick={() => splashInputRef.current?.click()}
-                                        onDragOver={(event) => handleUploadDragOver(event, 'splash')}
-                                        onDragLeave={(event) => handleUploadDragLeave(event, 'splash')}
-                                        onDrop={(event) => handleUploadDrop(event, 'splash')}
-                                        className={`w-full min-h-[190px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'splash' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                    >
-                                        {splash.url ? (
-                                            splash.file?.type.startsWith('video/') ? (
-                                                <video src={splash.url} className="h-44 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                    <input ref={splashInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => {
+                                        const input = e.currentTarget;
+                                        if (input.files?.[0]) updateSplash(input.files[0]);
+                                        input.value = '';
+                                    }} />
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => splashInputRef.current?.click()}
+                                            onDragOver={(event) => handleUploadDragOver(event, 'splash')}
+                                            onDragLeave={(event) => handleUploadDragLeave(event, 'splash')}
+                                            onDrop={(event) => handleUploadDrop(event, 'splash')}
+                                            className={`w-full min-h-[190px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'splash' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                        >
+                                            {splash.url ? (
+                                                splash.file?.type.startsWith('video/') ? (
+                                                    <video src={splash.url} className="h-44 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                                ) : (
+                                                    <img src={splash.url} alt="开屏素材预览" className="h-44 aspect-[9/16] object-cover rounded-xl" />
+                                                )
                                             ) : (
-                                                <img src={splash.url} alt="开屏素材预览" className="h-44 aspect-[9/16] object-cover rounded-xl" />
-                                            )
-                                        ) : (
-                                            <div className="text-center">
-                                                <span className="material-symbols-outlined text-3xl text-zinc-600">perm_media</span>
-                                                <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'splash' ? '松开上传开屏素材' : '点击或拖入图片 / 视频'}</p>
-                                            </div>
-                                        )}
-                                    </button>
+                                                <div className="text-center">
+                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">perm_media</span>
+                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'splash' ? '松开上传开屏素材' : '点击或拖入图片 / 视频'}</p>
+                                                </div>
+                                            )}
+                                        </button>
+                                        {uploadRemoveButton(splash, () => clearUploadState(splash, setSplash), '删除开屏素材')}
+                                    </div>
                                 </div>
                                     </>
                                 )}
