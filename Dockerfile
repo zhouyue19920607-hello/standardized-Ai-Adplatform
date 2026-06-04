@@ -20,14 +20,11 @@ WORKDIR /app
 COPY --from=server-deps /app/node_modules ./node_modules
 COPY --from=frontend-builder /app/dist ./dist
 COPY backend/ ./backend/
-COPY server.mjs ./
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
 COPY index.html ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
 EXPOSE 4000
 ENV NODE_ENV=production
 ENV PORT=4000
 ENV HOSTNAME="0.0.0.0"
-CMD ["node", "server.mjs"]
+CMD ["node", "backend/server.mjs"]

@@ -1,47 +1,64 @@
-# Standardized AI Aid Platform (Fullstack)
+# Standardized AI Aid Platform
 
-## 简介
-这是一个 React + FastAPI 的全栈应用，用于标准化 AI 广告素材生成。
+React + Node.js/Express 的标准化 AI 广告素材生成工具。
 
-## 环境要求
-- Node.js (推荐 18+)
-- Python 3.10+
-
-## 快速开始
-
-### 1. 安装与初始化
-在项目根目录下执行：
+## 本地开发
 
 ```bash
-# 安装前端依赖
 npm install
-
-# 创建 Python 虚拟环境并安装后端依赖
-python3 -m venv venv
-source venv/bin/activate
-pip install -r backend/requirements.txt
-
-# 初始化数据库 (如果是第一次运行)
-python3 backend/seed.py
-```
-
-### 2. 启动服务
-
-你需要打开两个终端窗口分别启动前后端。
-
-**终端 1 (后端):**
-```bash
-source venv/bin/activate
-uvicorn backend.main:app --reload --port 8001
-```
-
-**终端 2 (前端):**
-```bash
 npm run dev
 ```
 
-### 3. 使用
-- 访问 **http://localhost:3000** 使用应用。
-- 访问 **http://localhost:8001/docs** 查看 API 文档。
-- 点击界面上的**设置图标**打开管理后台。
-- 在管理后台可以管理模版尺寸、上传 Mask 遮罩，以及管理 ComfyUI 工作流。
+本地后端：
+
+```bash
+npm run server
+```
+
+默认后端端口为 `4000`，前端会在本地优先请求 `http://localhost:4000/api`。
+
+## 美图谷仓 / Matrix 部署配置
+
+这个仓库以 GitHub 为主要代码源，美图谷仓作为 Matrix 部署仓库。为了避免从 GitHub 同步到美图谷仓后覆盖部署配置，以下文件必须保留并随 GitHub 一起管理：
+
+- `.gitlab-ci.yml`：Matrix CI 构建与部署流程，当前使用 `release` 环境。
+- `matrix.conf`：Matrix 项目与服务名，当前为 `NAMESPACE=ai-saap`、`PROJECT=ai-saap`。
+- `Dockerfile`：Matrix 构建镜像入口，服务端启动命令为 `node backend/server.mjs`。
+- `.env.example`：环境变量示例，只放变量名和示例值，不放真实密钥。
+
+上线同步建议：
+
+```bash
+# 本地改完并提交到 GitHub 后，再同步到美图谷仓
+# 美图谷仓触发 Matrix CI 时，按 .gitlab-ci.yml 和 matrix.conf 部署
+```
+
+## Matrix 环境变量
+
+真实密钥不要提交到 GitHub 或美图谷仓。请在 Matrix 服务的环境变量里配置：
+
+```bash
+AIGC_AK=你的开放平台AK
+AIGC_SK=你的开放平台SK
+AIGC_BIZ=ai-saap
+AIGC_API_HOST=https://inference-api-pre.meitu.com
+AIGC_TASK=/v1/mtimage_expand_v4_async
+AIGC_MAX_POLLS=120
+AIGC_POLL_INTERVAL_MS=2000
+```
+
+当前 AI 扩图后端入口：
+
+```http
+POST /api/aigc/image-expand
+```
+
+示例请求：
+
+```json
+{
+  "imageUrl": "https://example.com/input.jpg",
+  "targetWidth": 1440,
+  "targetHeight": 2340
+}
+```

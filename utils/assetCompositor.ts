@@ -132,8 +132,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     // DEBUG: 打印关键变量帮助排查
     console.log(`[Compositor] id=${asset.id} category=${asset.category} isPopup=${isPopup} isScorePopup=${isScorePopup} showMask=${showMask} needsComposite=${needsComposite} maskUrl=${asset.maskUrl} url.slice0-20=${asset.url?.slice(0, 20)}`);
 
+    // NOTE: 开屏/焦点视窗静态图即使没有蒙版也要走 compositor，以确保下载体积压到 200KB 内。
+    const shouldForceSizeLimit = asset.category === '开屏' || asset.category === '焦点视窗';
     // NOTE: mt-ib-1 always goes through compositor to guarantee 720×960 canvas output
-    if (!needsComposite && !isMts1 && !isHotRecommend) {
+    if (!needsComposite && !isMts1 && !isHotRecommend && !shouldForceSizeLimit) {
         console.log('[Compositor] EARLY RETURN - fetching asset.url directly');
         const resp = await fetch(asset.url);
         return await resp.blob();

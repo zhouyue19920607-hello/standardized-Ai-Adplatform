@@ -11,6 +11,7 @@ import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
 import { compositeAsset } from './utils/assetCompositor';
+import fallbackTemplates from './backend/data/templates.json';
 
 const HEADER_HEIGHT = 73;
 const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
@@ -162,23 +163,27 @@ const App: React.FC = () => {
   const loadTemplates = async () => {
     try {
       const data = await getTemplates();
-      setTemplates(prev => {
-        return data.map(tpl => {
-          const old = prev.find(p => p.id === tpl.id);
-          return {
-            ...tpl,
-            checked: old ? old.checked : false,
-            smartExtract: old ? old.smartExtract : (tpl.smartExtract ?? true),
-            iconColor: old ? old.iconColor : (tpl.iconColor || '#FF00FF'),
-            gradientColor: old ? old.gradientColor : (tpl.gradientColor || '#FF6B6B'),
-            palette: old ? old.palette : (tpl.palette || [])
-          };
-        });
-      });
+      applyTemplates(data);
       setConfig(prev => ({ ...prev, assetsVersion: Date.now() }));
     } catch (error) {
       console.error("Failed to load templates", error);
+      applyTemplates(fallbackTemplates as AdTemplate[]);
     }
+  };
+  const applyTemplates = (data: AdTemplate[]) => {
+    setTemplates(prev => {
+      return data.map(tpl => {
+        const old = prev.find(p => p.id === tpl.id);
+        return {
+          ...tpl,
+          checked: old ? old.checked : false,
+          smartExtract: old ? old.smartExtract : (tpl.smartExtract ?? true),
+          iconColor: old ? old.iconColor : (tpl.iconColor || '#FF00FF'),
+          gradientColor: old ? old.gradientColor : (tpl.gradientColor || '#FF6B6B'),
+          palette: old ? old.palette : (tpl.palette || [])
+        };
+      });
+    });
   };
   const [config, setConfig] = useState<AdConfig>({
     showMask: false,

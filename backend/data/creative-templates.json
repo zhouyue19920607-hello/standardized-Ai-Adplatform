@@ -68,7 +68,7 @@
     "groupId": "home",
     "groupName": "首页创意模版",
     "name": "焕新UI/底导",
-    "dimensions": "上方icon 600 x 335 x2 / 下方icon 288 x 315 x4 / 底导 1126 x 252",
+    "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252",
     "enabled": true
   }
 ]

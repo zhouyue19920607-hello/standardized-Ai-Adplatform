@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { AdTemplate, AdAsset, AnalyticsSummary } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || (['localhost', '127.0.0.1'].includes(window.location.hostname) ? 'http://localhost:4000/api' : '/api');
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 export const ASSETS_URL = API_URL.replace('/api', '');
 
 export const api = axios.create({
@@ -72,6 +72,15 @@ export const uploadBadgeOverlay = async (id: string, file: File) => {
     return response.data;
 };
 
+export const uploadTemplatePreviewVideo = async (id: string, file: File): Promise<{ preview_video_path: string }> => {
+    const formData = new FormData();
+    formData.append('video', file);
+    const response = await api.post<{ preview_video_path: string }>(`/templates/${id}/preview-video`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
 export const getWorkflows = async () => {
     const response = await api.get('/workflows');
     return response.data;
@@ -110,6 +119,131 @@ export const smartCropImage = async (file: File, width = 1440, height = 2340, ma
     formData.append('maxSizeKB', maxSizeKB.toString());
 
     const response = await api.post('/smart-crop', formData);
+    return response.data;
+};
+
+export interface AigcImageExpandRequest {
+    imageUrl: string;
+    targetWidth?: number;
+    targetHeight?: number;
+    expandPixels?: { left: number; right: number; top: number; bottom: number };
+    prompt?: string;
+    seed?: number;
+    highQuality?: boolean;
+}
+
+export interface AigcImageExpandResponse {
+    ok: boolean;
+    provider: string;
+    task: string;
+    taskId: string;
+    resultUrl: string;
+    remoteResultUrl?: string;
+    freeExpandPixel: { left: number; right: number; top: number; bottom: number };
+    mediaInfo?: unknown;
+    raw?: unknown;
+}
+
+export const expandImageWithAigc = async (payload: AigcImageExpandRequest): Promise<AigcImageExpandResponse> => {
+    const response = await api.post<AigcImageExpandResponse>('/aigc/image-expand', payload);
+    return response.data;
+};
+
+export interface AigcTaskResponse {
+    ok: boolean;
+    provider: string;
+    task: string;
+    taskId: string;
+    resultUrl: string;
+    remoteResultUrl?: string;
+    mediaInfo?: unknown;
+    raw?: unknown;
+}
+
+export const generateImageWithAigc = async (payload: {
+    prompt: string;
+    ratio?: string;
+    seed?: number;
+    baseModelName?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/text-to-image', payload);
+    return response.data;
+};
+
+export const outpaintImageWithAigc = async (payload: {
+    imageUrl: string;
+    prompt?: string;
+    targetRatio?: string;
+    baseModelName?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/image-outpaint', payload);
+    return response.data;
+};
+
+export const smartCropImageWithAigc = async (payload: {
+    imageUrl: string;
+    targetWidth: number;
+    targetHeight: number;
+    baseModelName?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/smart-crop', payload);
+    return response.data;
+};
+
+export const generateVideoWithAigc = async (payload: {
+    prompt: string;
+    ratio?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/text-to-video', payload);
+    return response.data;
+};
+
+export const animateImageWithAigc = async (payload: {
+    imageUrl: string;
+    prompt?: string;
+    width?: number;
+    height?: number;
+    duration?: number;
+    fps?: number;
+    seed?: number;
+    baseModelName?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/image-to-video', payload);
+    return response.data;
+};
+
+export const expandVideoWithAigc = async (payload: {
+    videoUrl: string;
+    targetWidth?: number;
+    targetHeight?: number;
+    r_w_left?: number;
+    r_w_right?: number;
+    r_h_up?: number;
+    r_h_down?: number;
+    prompt?: string;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/video-expand', payload);
+    return response.data;
+};
+
+export const clipVideoWithAigc = async (payload: {
+    videoIdOrUrl: string;
+    clipVideoLength?: string | number;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/video-clip', payload);
+    return response.data;
+};
+
+export const composeImageWithAigc = async (payload: {
+    backgroundPicName: string;
+    foregroundPicUrl: string;
+    rectX?: number;
+    rectY?: number;
+    rectW: number;
+    rectH: number;
+    type?: number;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/image-composition', payload);
     return response.data;
 };
 

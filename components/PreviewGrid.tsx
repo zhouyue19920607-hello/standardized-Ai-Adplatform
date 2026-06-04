@@ -147,6 +147,9 @@ const AdCard: React.FC<{
         const shouldLimitFocalVideo =
           asset.category === '焦点视窗' &&
           videoBlob.size > 10 * 1024 * 1024;
+        const shouldLimitSplashVideo =
+          asset.category === '开屏' &&
+          videoBlob.size > 3 * 1024 * 1024;
         const shouldLimitScorePopupVideo =
           asset.id.includes('mt-p-1') &&
           videoBlob.size > 4 * 1024 * 1024;
@@ -158,6 +161,7 @@ const AdCard: React.FC<{
           targetH: params.targetH,
           videoRect: params.videoRect,
           ...(shouldLimitFocalVideo ? { maxSizeMB: 10 } : {}),
+          ...(shouldLimitSplashVideo ? { maxSizeMB: 3 } : {}),
           ...(shouldLimitScorePopupVideo ? { maxSizeMB: 4 } : {}),
           ...(shouldLimitHotRecommendVideo ? { maxSizeMB: 4 } : {}),
           ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
@@ -422,7 +426,7 @@ const AdCard: React.FC<{
       </div>
 
       {/* Bottom Toolbar Layout Match (Moved Above Mask Style) */}
-      <div className="px-3 py-3 flex items-center justify-center gap-[12px] w-full max-w-full overflow-hidden shrink-0 mt-auto bg-transparent">
+      <div className="px-4 py-3 flex items-center justify-center gap-[14px] w-full max-w-full overflow-hidden shrink-0 mt-auto bg-transparent">
         {/* Toggle Mask Button */}
         <button
           onClick={() => setLocalShowMask(!localShowMask)}
@@ -544,6 +548,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   const [selectedAssetInfo, setSelectedAssetInfo] = useState<{ asset: AdAsset, showMask: boolean, showCrop?: boolean, showBadge?: boolean } | null>(null);
 
   const filteredAssets = activeTab === 'all' ? assets : assets.filter(a => a.category === activeTab);
+  const templatePreviewAsset = assets.find(asset => asset.id.startsWith('template-preview-'));
   const selectedAsset = selectedAssetInfo?.asset;
   const shouldOffsetSelectedMeiyanFocal = !!selectedAsset && selectedAssetInfo?.showMask && selectedAsset.category === '焦点视窗' && selectedAsset.app === '美颜' && !!selectedAsset.maskUrl;
   const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
@@ -625,6 +630,35 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
     );
   }
 
+  if (templatePreviewAsset && !isGenerating) {
+    return (
+      <div className="w-full">
+        <div className="px-6 pt-2 pb-6 flex items-start justify-center">
+          <div className="animate-in fade-in zoom-in-95 duration-200">
+            <div className="mb-2 flex items-center justify-center gap-2 text-xs font-black text-slate-500">
+              <span className="material-symbols-outlined text-[16px] text-blue-500">movie</span>
+              <span>{templatePreviewAsset.templateName} 样式预览</span>
+            </div>
+            <div
+              className="relative overflow-hidden rounded-[24px] bg-black shadow-2xl ring-1 ring-black/10"
+              style={{ aspectRatio: '1440 / 2340', height: 'min(52vh, 520px)' }}
+            >
+              <video
+                src={templatePreviewAsset.url}
+                className="absolute inset-0 h-full w-full object-cover"
+                controls={false}
+                autoPlay
+                playsInline
+                loop
+                muted
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       <div className="p-6 pt-0 relative">
@@ -634,7 +668,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             <p className="text-slate-800 font-bold tracking-widest text-xs uppercase animate-pulse">{t('preview.generating')}</p>
           </div>
         )}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8 gap-6 pb-20">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 pb-20">
           {filteredAssets.map(asset => (
             <AdCard key={asset.id} asset={asset} globalShowMask={config.showMask} config={config} onZoom={(a, showMask, showCrop, showBadge) => setSelectedAssetInfo({ asset: a, showMask, showCrop, showBadge })} onUpdate={updates => onUpdateAsset?.(asset.id, updates)} />
           ))}

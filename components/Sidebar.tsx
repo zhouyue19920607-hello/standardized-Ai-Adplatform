@@ -12,6 +12,7 @@ interface SidebarProps {
   isProcessing: boolean;
   generationProgress?: { current: number; total: number } | null;
   onTemplateUpdate: (id: string, updates: Partial<AdTemplate>) => void;
+  onTemplatePreviewHover?: (template: AdTemplate | null) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -23,7 +24,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onGenerate,
   isProcessing,
   generationProgress,
-  onTemplateUpdate
+  onTemplateUpdate,
+  onTemplatePreviewHover
 }) => {
   const { t } = useLanguage();
   if (!Array.isArray(templates)) return null;
@@ -31,6 +33,13 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // NOTE: 三平台开屏 — 仅取美图秀秀的开屏模板作为代表，生成时自动关联三平台蒙版
   const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏' && tpl.splashGroup !== 'bubble');
+  const canPreviewTemplate = (tpl: AdTemplate) => Boolean(tpl.preview_video_path || tpl.id === 'mt-s-1');
+  const handleTemplatePreviewEnter = (tpl: AdTemplate) => {
+    if (canPreviewTemplate(tpl)) onTemplatePreviewHover?.(tpl);
+  };
+  const handleTemplatePreviewLeave = (tpl: AdTemplate) => {
+    if (canPreviewTemplate(tpl)) onTemplatePreviewHover?.(null);
+  };
 
   // State for collapsible sub-categories (Key format: "AppName-CategoryName")
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
@@ -108,6 +117,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {meituSplashTemplates.map(tpl => (
                       <div key={tpl.id} className="px-1 relative group/template">
                         <label
+                          onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
+                          onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
+                          onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
+                          onPointerLeave={() => handleTemplatePreviewLeave(tpl)}
                           className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
                         >
                           <div className="flex items-center justify-center">
@@ -215,6 +228,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
                   <div className="px-1 relative group/template">
                     <label
+                      onMouseEnter={() => handleTemplatePreviewEnter(focalTpl)}
+                      onMouseLeave={() => handleTemplatePreviewLeave(focalTpl)}
+                      onPointerEnter={() => handleTemplatePreviewEnter(focalTpl)}
+                      onPointerLeave={() => handleTemplatePreviewLeave(focalTpl)}
                       className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
                         ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                       }
@@ -381,6 +398,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                               {subTemplates.map(tpl => (
                                 <div key={tpl.id} className="px-1 relative group/template">
                                   <label
+                                    onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
+                                    onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
+                                    onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
+                                    onPointerLeave={() => handleTemplatePreviewLeave(tpl)}
                                     title={tpl.name === '动态开屏' ? t('sidebar.cardPreviewOnly') : undefined}
                                     className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
                                                             ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`

@@ -140,6 +140,10 @@ const REFRESH_TOP_ICON_W = 600;
 const REFRESH_TOP_ICON_H = 335;
 const REFRESH_BOTTOM_ICON_W = 288;
 const REFRESH_BOTTOM_ICON_H = 315;
+const REFRESH_ICON_SHEET_W = 1228;
+const REFRESH_ICON_SHEET_H = 674;
+const REFRESH_ICON_LAYER_W = 1028;
+const REFRESH_ICON_LAYER_H = 565;
 const REFRESH_BOTTOM_NAV_W = 1126;
 const REFRESH_BOTTOM_NAV_H = 252;
 const BREAK_FOCAL_W = 1126;
@@ -162,7 +166,7 @@ const REFRESH_TOP_ICON_SLOTS = [
     y: slot.y * FOCAL_UI_SCALE_Y,
     width: slot.width * FOCAL_UI_SCALE_X,
     height: slot.height * FOCAL_UI_SCALE_Y,
-    radius: 10 * FOCAL_UI_SCALE_X,
+    radius: 40,
 }));
 const REFRESH_BOTTOM_ICON_SLOTS = [
     { x: 20, y: 392, width: 102, height: 90 },
@@ -174,8 +178,90 @@ const REFRESH_BOTTOM_ICON_SLOTS = [
     y: slot.y * FOCAL_UI_SCALE_Y,
     width: slot.width * FOCAL_UI_SCALE_X,
     height: slot.height * FOCAL_UI_SCALE_Y,
-    radius: 8 * FOCAL_UI_SCALE_X,
+    radius: 40,
 }));
+const getRefreshSlotRadius = (slot: { width: number; height: number; radius: number }) => (
+    Math.min(slot.radius, slot.width / 2, slot.height / 2)
+);
+const getRefreshPreviewBorderRadius = (slot: { width: number; height: number; radius: number }) => {
+    const radius = getRefreshSlotRadius(slot);
+    return `${(radius / slot.width) * 100}% / ${(radius / slot.height) * 100}%`;
+};
+const getRefreshIconLayerFrame = () => {
+    const slots = [...REFRESH_TOP_ICON_SLOTS, ...REFRESH_BOTTOM_ICON_SLOTS];
+    const minX = Math.min(...slots.map((slot) => slot.x));
+    const bottomY = Math.min(...REFRESH_BOTTOM_ICON_SLOTS.map((slot) => slot.y));
+    const sheetScale = REFRESH_ICON_LAYER_W / REFRESH_ICON_SHEET_W;
+    const sourceBottomRowY = (REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H) * sheetScale;
+    return {
+        x: minX,
+        y: bottomY - sourceBottomRowY,
+        width: REFRESH_ICON_LAYER_W,
+        height: REFRESH_ICON_LAYER_H,
+    };
+};
+const getRefreshSheetPreviewImageStyle = (
+    slot: { x: number; y: number; width: number; height: number; radius: number },
+): React.CSSProperties => ({
+    position: 'absolute',
+    ...(() => {
+        const layer = getRefreshIconLayerFrame();
+        return {
+            width: `${(layer.width / slot.width) * 100}%`,
+            height: `${(layer.height / slot.height) * 100}%`,
+            left: `${((layer.x - slot.x) / slot.width) * 100}%`,
+            top: `${((layer.y - slot.y) / slot.height) * 100}%`,
+        };
+    })(),
+    objectFit: 'fill',
+    maxWidth: 'none',
+    maxHeight: 'none',
+});
+const getRefreshIconMaskStyle = (): React.CSSProperties => {
+    const layer = getRefreshIconLayerFrame();
+    const slots = [...REFRESH_TOP_ICON_SLOTS, ...REFRESH_BOTTOM_ICON_SLOTS];
+    const svg = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${layer.width}" height="${layer.height}" viewBox="0 0 ${layer.width} ${layer.height}">`,
+        ...slots.map((slot) => (
+            `<rect x="${slot.x - layer.x}" y="${slot.y - layer.y}" width="${slot.width}" height="${slot.height}" rx="${getRefreshSlotRadius(slot)}" ry="${getRefreshSlotRadius(slot)}" fill="white"/>`
+        )),
+        '</svg>',
+    ].join('');
+    const maskUrl = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    return {
+        WebkitMaskImage: maskUrl,
+        maskImage: maskUrl,
+        WebkitMaskSize: '100% 100%',
+        maskSize: '100% 100%',
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+    };
+};
+const getRefreshIconLayerPreviewStyle = (): React.CSSProperties => {
+    const layer = getRefreshIconLayerFrame();
+    return {
+        left: `${(layer.x / BREAK_CANVAS_W) * 100}%`,
+        top: `${(layer.y / BREAK_CANVAS_H) * 100}%`,
+        width: `${(layer.width / BREAK_CANVAS_W) * 100}%`,
+        height: `${(layer.height / BREAK_CANVAS_H) * 100}%`,
+        ...getRefreshIconMaskStyle(),
+    };
+};
+const drawRefreshIconLayer = (
+    ctx: CanvasRenderingContext2D,
+    source: CanvasImageSource,
+) => {
+    const layer = getRefreshIconLayerFrame();
+    const slots = [...REFRESH_TOP_ICON_SLOTS, ...REFRESH_BOTTOM_ICON_SLOTS];
+    ctx.save();
+    ctx.beginPath();
+    slots.forEach((slot) => {
+        ctx.roundRect(slot.x, slot.y, slot.width, slot.height, getRefreshSlotRadius(slot));
+    });
+    ctx.clip();
+    ctx.drawImage(source, layer.x, layer.y, layer.width, layer.height);
+    ctx.restore();
+};
 const POLY_CARD_W = 840;
 const POLY_CARD_H = 360;
 const POLY_CARD_X = 143;
@@ -470,6 +556,7 @@ const getSpotlightLargeFrame = (elapsed: number) => {
 
 const ConfigWorkspace: React.FC = () => {
     const assetInputRef = useRef<HTMLInputElement>(null);
+    const pendantReferenceInputRef = useRef<HTMLInputElement>(null);
     const splashInputRef = useRef<HTMLInputElement>(null);
     const magazineInputRef = useRef<HTMLInputElement>(null);
     const spotlightSmallInputRef = useRef<HTMLInputElement>(null);
@@ -480,17 +567,21 @@ const ConfigWorkspace: React.FC = () => {
     const breakFocalInputRef = useRef<HTMLInputElement>(null);
     const polyBaseInputRef = useRef<HTMLInputElement>(null);
     const polyCardsInputRef = useRef<HTMLInputElement>(null);
+    const polyAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const polyFocalInputRef = useRef<HTMLInputElement>(null);
-    const refreshTopIconsInputRef = useRef<HTMLInputElement>(null);
-    const refreshBottomIconsInputRef = useRef<HTMLInputElement>(null);
+    const refreshIconsInputRef = useRef<HTMLInputElement>(null);
+    const refreshAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const refreshBottomNavInputRef = useRef<HTMLInputElement>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
     const [asset, setAsset] = useState<UploadState>(emptyUpload);
+    const [pendantReference, setPendantReference] = useState<UploadState>(emptyUpload);
     const [splash, setSplash] = useState<UploadState>(emptyUpload);
     const [magazineAssets, setMagazineAssets] = useState<MagazineAsset[]>([]);
-    const [magazinePreviewElapsed, setMagazinePreviewElapsed] = useState(0);
+    const [magazineActiveIndex, setMagazineActiveIndex] = useState(0);
+    const [magazineDragOffset, setMagazineDragOffset] = useState(0);
+    const [isMagazineDragging, setIsMagazineDragging] = useState(false);
     const [spotlightSmallCards, setSpotlightSmallCards] = useState<SpotlightCardAsset[]>([]);
     const [spotlightLargeCard, setSpotlightLargeCard] = useState<UploadState>(emptyUpload);
     const [spotlightSplash, setSpotlightSplash] = useState<UploadState>(emptyUpload);
@@ -509,10 +600,13 @@ const ConfigWorkspace: React.FC = () => {
     const [breakSecondStartSecond, setBreakSecondStartSecond] = useState(7);
     const [polyBase, setPolyBase] = useState<UploadState>(emptyUpload);
     const [polyCards, setPolyCards] = useState<SpotlightCardAsset[]>([]);
+    const [polyAiPrompt, setPolyAiPrompt] = useState('');
+    const [polyAiReference, setPolyAiReference] = useState<UploadState>(emptyUpload);
     const [polyFocal, setPolyFocal] = useState<UploadState>(emptyUpload);
     const [polyPreviewElapsed, setPolyPreviewElapsed] = useState(0);
-    const [refreshTopIcons, setRefreshTopIcons] = useState<SpotlightCardAsset[]>([]);
-    const [refreshBottomIcons, setRefreshBottomIcons] = useState<SpotlightCardAsset[]>([]);
+    const [refreshIconSheet, setRefreshIconSheet] = useState<UploadState>(emptyUpload);
+    const [refreshAiPrompt, setRefreshAiPrompt] = useState('');
+    const [refreshAiReference, setRefreshAiReference] = useState<UploadState>(emptyUpload);
     const [refreshBottomNav, setRefreshBottomNav] = useState<UploadState>(emptyUpload);
     const [prompt, setPrompt] = useState('');
     const [interactionType, setInteractionType] = useState<CreativeTemplateSettings['interactionType']>(defaultCreativeSettings.interactionType);
@@ -521,13 +615,15 @@ const ConfigWorkspace: React.FC = () => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isPreviewPlaying, setIsPreviewPlaying] = useState(true);
     const [saveMessage, setSaveMessage] = useState('');
-    const [dragTarget, setDragTarget] = useState<'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-top-icons' | 'refresh-bottom-icons' | 'refresh-bottom-nav' | null>(null);
+    const [dragTarget, setDragTarget] = useState<'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav' | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
     const [generatedVideoType, setGeneratedVideoType] = useState('video/webm');
     const [error, setError] = useState('');
     const previewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFocalPreviewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFramePreviewVideoRef = useRef<HTMLVideoElement>(null);
+    const magazineDragStartXRef = useRef<number | null>(null);
+    const magazineDragOffsetRef = useRef(0);
     const [breakPreviewElapsed, setBreakPreviewElapsed] = useState(0);
 
     useEffect(() => {
@@ -551,19 +647,19 @@ const ConfigWorkspace: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (expandedTemplate !== 'magazine-flip' || magazineAssets.length <= 1) {
-            setMagazinePreviewElapsed(0);
-            return undefined;
+        if (expandedTemplate !== 'magazine-flip') {
+            setMagazineActiveIndex(0);
+            setMagazineDragOffset(0);
+            setIsMagazineDragging(false);
+            magazineDragStartXRef.current = null;
+            magazineDragOffsetRef.current = 0;
+            return;
         }
-
-        const startedAt = performance.now();
-        let frameId = 0;
-        const tick = (now: number) => {
-            setMagazinePreviewElapsed((now - startedAt) % (magazineAssets.length * MAGAZINE_FRAME_MS));
-            frameId = requestAnimationFrame(tick);
-        };
-        frameId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frameId);
+        setMagazineActiveIndex((current) => Math.min(Math.max(0, current), Math.max(0, magazineAssets.length - 1)));
+        setMagazineDragOffset(0);
+        setIsMagazineDragging(false);
+        magazineDragStartXRef.current = null;
+        magazineDragOffsetRef.current = 0;
     }, [expandedTemplate, magazineAssets.length]);
 
     useEffect(() => {
@@ -642,6 +738,45 @@ const ConfigWorkspace: React.FC = () => {
             video.pause();
             setIsPreviewPlaying(false);
         }
+    };
+
+    const handleMagazinePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (expandedTemplate !== 'magazine-flip' || magazineAssets.length <= 1 || generatedVideoUrl) return;
+        event.preventDefault();
+        magazineDragStartXRef.current = event.clientX;
+        magazineDragOffsetRef.current = 0;
+        setMagazineDragOffset(0);
+        setIsMagazineDragging(true);
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+    };
+
+    const handleMagazinePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (magazineDragStartXRef.current === null || magazineAssets.length <= 1) return;
+        const width = event.currentTarget.getBoundingClientRect().width || 1;
+        const nextOffset = Math.max(-1, Math.min(1, (event.clientX - magazineDragStartXRef.current) / width));
+        magazineDragOffsetRef.current = nextOffset;
+        setMagazineDragOffset(nextOffset);
+    };
+
+    const finishMagazineDrag = () => {
+        if (magazineDragStartXRef.current === null) return;
+        const offset = magazineDragOffsetRef.current;
+        const threshold = 0.22;
+        if (magazineAssets.length > 1 && Math.abs(offset) >= threshold) {
+            setMagazineActiveIndex((current) => {
+                if (offset < 0) return (current + 1) % magazineAssets.length;
+                return (current - 1 + magazineAssets.length) % magazineAssets.length;
+            });
+        }
+        magazineDragStartXRef.current = null;
+        magazineDragOffsetRef.current = 0;
+        setMagazineDragOffset(0);
+        setIsMagazineDragging(false);
+    };
+
+    const handleMagazinePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+        finishMagazineDrag();
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
     };
 
     const handleTemplateSelect = (templateId: string) => {
@@ -1138,58 +1273,442 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
-    const addRefreshIcons = async (
-        fileList: FileList,
-        kind: 'top' | 'bottom',
-    ) => {
+    const replacePolyCards = (nextCards: SpotlightCardAsset[]) => {
+        setPolyCards((current) => {
+            current.forEach((item) => URL.revokeObjectURL(item.url));
+            return nextCards;
+        });
+        resetOutput();
+    };
+
+    const updatePolyAiReference = async (file: File) => {
         setError('');
         resetOutput();
-        const limit = kind === 'top' ? 2 : 4;
-        const expectedWidth = kind === 'top' ? REFRESH_TOP_ICON_W : REFRESH_BOTTOM_ICON_W;
-        const expectedHeight = kind === 'top' ? REFRESH_TOP_ICON_H : REFRESH_BOTTOM_ICON_H;
-        const label = kind === 'top' ? '上方 icon 底图' : '下方 icon 底图';
-        const nextItems: SpotlightCardAsset[] = [];
-
-        for (const file of Array.from(fileList).slice(0, limit)) {
-            const url = URL.createObjectURL(file);
-            try {
-                if (!file.type.startsWith('image/')) {
-                    URL.revokeObjectURL(url);
-                    continue;
-                }
-                const size = await getImageSize(file);
-                if (size.width !== expectedWidth || size.height !== expectedHeight) {
-                    URL.revokeObjectURL(url);
-                    setError(`${label}需 ${expectedWidth} x ${expectedHeight}px，${file.name} 当前 ${size.width} x ${size.height}`);
-                    continue;
-                }
-                nextItems.push({
-                    id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+        const url = URL.createObjectURL(file);
+        try {
+            if (!file.type.startsWith('image/')) {
+                URL.revokeObjectURL(url);
+                setPolyAiReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
+                return;
+            }
+            setPolyAiReference((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
                     file,
                     url,
-                    message: `${expectedWidth} x ${expectedHeight}，符合规范`,
-                });
-            } catch (err) {
-                URL.revokeObjectURL(url);
-                setError(err instanceof Error ? err.message : `${label}读取失败`);
-            }
-        }
-
-        if (kind === 'top') {
-            setRefreshTopIcons((current) => [...current, ...nextItems].slice(0, limit));
-        } else {
-            setRefreshBottomIcons((current) => [...current, ...nextItems].slice(0, limit));
+                    status: 'valid',
+                    message: '图生图参考图已上传',
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setPolyAiReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '参考图读取失败' });
         }
     };
 
-    const removeRefreshIcon = (kind: 'top' | 'bottom', id: string) => {
-        const setter = kind === 'top' ? setRefreshTopIcons : setRefreshBottomIcons;
-        setter((current) => {
-            const target = current.find((item) => item.id === id);
-            if (target) URL.revokeObjectURL(target.url);
-            return current.filter((item) => item.id !== id);
+    const removePolyAiReference = () => {
+        clearUploadState(polyAiReference, setPolyAiReference);
+    };
+
+    const createPolyCardBlob = async (
+        label: string,
+        index: number,
+        referenceImage?: HTMLImageElement,
+    ) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = POLY_CARD_W;
+        canvas.height = POLY_CARD_H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('无法创建多态翻卡图片');
+
+        const palettes = [
+            ['#1D2B64', '#3BC8FF', '#F8CDDA'],
+            ['#132A13', '#56AB2F', '#F2FF8F'],
+            ['#311847', '#A4508B', '#FFB86C'],
+            ['#141E30', '#557C93', '#FCE38A'],
+        ];
+        const palette = palettes[index % palettes.length];
+        const gradient = ctx.createLinearGradient(0, 0, POLY_CARD_W, POLY_CARD_H);
+        gradient.addColorStop(0, palette[0]);
+        gradient.addColorStop(0.52, palette[1]);
+        gradient.addColorStop(1, palette[2]);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, POLY_CARD_W, POLY_CARD_H);
+
+        if (referenceImage) {
+            ctx.save();
+            ctx.globalAlpha = 0.78;
+            const offset = 18 * index;
+            drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, 420 - offset, -18, 440, 396);
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = `rgba(255,255,255,${0.12 + index * 0.03})`;
+            ctx.fillRect(0, 0, POLY_CARD_W, POLY_CARD_H);
+            ctx.restore();
+        }
+
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        for (let i = 0; i < 6; i += 1) {
+            ctx.beginPath();
+            ctx.arc(84 + i * 132, 270 - i * 24 + index * 8, 42 + i * 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.34)';
+        ctx.beginPath();
+        ctx.roundRect(42, 68, 380, 190, 38);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = '900 54px PingFang SC, sans-serif';
+        ctx.fillText(label || `多态卡片 ${index + 1}`, 76, 142);
+        ctx.font = '700 28px PingFang SC, sans-serif';
+        ctx.fillText(`CARD 0${index + 1}`, 80, 204);
+
+        return new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((result) => result ? resolve(result) : reject(new Error('多态翻卡图片生成失败')), 'image/png');
         });
+    };
+
+    const generatePolyCardsByPrompt = async (source: 'text' | 'image') => {
+        if (source === 'image' && !polyAiReference.url) {
+            setError('请先上传多态翻卡图生图参考图');
+            return;
+        }
+        setError('');
         resetOutput();
+        const text = polyAiPrompt.trim() || '多态翻卡';
+        try {
+            const referenceImage = source === 'image' && polyAiReference.url ? await loadImage(polyAiReference.url) : undefined;
+            const labels = ['第一态', '第二态', '第三态', '最终态'];
+            const blobs = await Promise.all(labels.map((label, index) => createPolyCardBlob(`${text.slice(0, 6)} ${label}`, index, referenceImage)));
+            const nextCards = blobs.map((blob, index) => {
+                const file = new File([blob], `poly-ai-card-${index + 1}.png`, { type: 'image/png' });
+                return {
+                    id: `poly-ai-card-${index + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    file,
+                    url: URL.createObjectURL(blob),
+                    message: '840 x 360，符合规范',
+                };
+            });
+            replacePolyCards(nextCards);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '多态翻卡 AI 图片生成失败');
+        }
+    };
+
+    const updateRefreshIconSheet = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        try {
+            if (file.type.startsWith('image/')) {
+                const size = await getImageSize(file);
+                const isValid = size.width === REFRESH_ICON_SHEET_W && size.height === REFRESH_ICON_SHEET_H;
+                if (!isValid) {
+                    URL.revokeObjectURL(url);
+                    setRefreshIconSheet((current) => {
+                        if (current.url) URL.revokeObjectURL(current.url);
+                        return {
+                            file: null,
+                            url: null,
+                            status: 'invalid',
+                            message: `当前 ${size.width} x ${size.height}，需 1228 x 674px`,
+                        };
+                    });
+                    return;
+                }
+                setRefreshIconSheet((current) => {
+                    if (current.url) URL.revokeObjectURL(current.url);
+                    return {
+                        file,
+                        url,
+                        status: 'valid',
+                        message: 'icon 底图 1228 x 674，符合规范',
+                    };
+                });
+                return;
+            }
+            if (file.type.startsWith('video/')) {
+                const meta = await getVideoMeta(file);
+                const isValid = meta.width === REFRESH_ICON_SHEET_W && meta.height === REFRESH_ICON_SHEET_H;
+                if (!isValid) {
+                    URL.revokeObjectURL(url);
+                    setRefreshIconSheet((current) => {
+                        if (current.url) URL.revokeObjectURL(current.url);
+                        return {
+                            file: null,
+                            url: null,
+                            status: 'invalid',
+                            message: `视频 ${meta.width} x ${meta.height}，需 1228 x 674px`,
+                        };
+                    });
+                    return;
+                }
+                setRefreshIconSheet((current) => {
+                    if (current.url) URL.revokeObjectURL(current.url);
+                    return {
+                        file,
+                        url,
+                        status: 'valid',
+                        message: `icon 视频 1228 x 674，${meta.duration.toFixed(1)}s`,
+                    };
+                });
+                return;
+            }
+            URL.revokeObjectURL(url);
+            setRefreshIconSheet({ file: null, url: null, status: 'invalid', message: 'icon 底图仅支持图片或视频' });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setRefreshIconSheet({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : 'icon 底图读取失败' });
+        }
+    };
+
+    const updateRefreshAiReference = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        try {
+            if (!file.type.startsWith('image/')) {
+                URL.revokeObjectURL(url);
+                setRefreshAiReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
+                return;
+            }
+            setRefreshAiReference((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: '参考图已上传',
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setRefreshAiReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '参考图读取失败' });
+        }
+    };
+
+    const removeRefreshIconSheet = () => {
+        setRefreshIconSheet((current) => {
+            if (current.url) URL.revokeObjectURL(current.url);
+            return emptyUpload;
+        });
+        setError('');
+        resetOutput();
+    };
+
+    const downloadRefreshIconSlot = async (
+        slot: { x: number; y: number; width: number; height: number; radius: number },
+        filename: string,
+    ) => {
+        if (!refreshIconSheet.url || !refreshIconSheet.file) return;
+        setError('');
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(slot.width);
+            canvas.height = Math.round(slot.height);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('无法创建 icon 导出画布');
+
+            const layer = getRefreshIconLayerFrame();
+            const source = refreshIconSheet.file.type.startsWith('video/')
+                ? await loadVideoElement(refreshIconSheet.url)
+                : await loadImage(refreshIconSheet.url);
+            const scaleX = canvas.width / slot.width;
+            const scaleY = canvas.height / slot.height;
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(0, 0, slot.width * scaleX, slot.height * scaleY, getRefreshSlotRadius(slot) * Math.max(scaleX, scaleY));
+            ctx.clip();
+            ctx.scale(scaleX, scaleY);
+            ctx.translate(-slot.x, -slot.y);
+            ctx.drawImage(source, layer.x, layer.y, layer.width, layer.height);
+            ctx.restore();
+            if (source instanceof HTMLVideoElement) source.pause();
+
+            const blob = await new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob((result) => result ? resolve(result) : reject(new Error('icon 导出失败')), 'image/png');
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${filename}.png`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'icon 导出失败');
+        }
+    };
+
+    const removeRefreshAiReference = () => {
+        clearUploadState(refreshAiReference, setRefreshAiReference);
+    };
+
+    const generateRefreshIconSheetByPrompt = async () => {
+        const text = refreshAiPrompt.trim() || '焕新UI icon底图';
+        setError('');
+        resetOutput();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = REFRESH_ICON_SHEET_W;
+        canvas.height = REFRESH_ICON_SHEET_H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('无法创建 icon 底图');
+
+        const topGradient = ctx.createLinearGradient(0, 0, REFRESH_ICON_SHEET_W, REFRESH_TOP_ICON_H);
+        topGradient.addColorStop(0, '#101827');
+        topGradient.addColorStop(0.42, '#2846E9');
+        topGradient.addColorStop(1, '#1FD6C2');
+        ctx.fillStyle = topGradient;
+        ctx.fillRect(0, 0, REFRESH_ICON_SHEET_W, REFRESH_TOP_ICON_H);
+
+        const bottomGradient = ctx.createLinearGradient(0, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H);
+        bottomGradient.addColorStop(0, '#151515');
+        bottomGradient.addColorStop(0.5, '#FFB84D');
+        bottomGradient.addColorStop(1, '#F5578A');
+        ctx.fillStyle = bottomGradient;
+        ctx.fillRect(0, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_BOTTOM_ICON_H);
+
+        ctx.fillStyle = '#09090B';
+        ctx.fillRect(0, REFRESH_TOP_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H - REFRESH_TOP_ICON_H - REFRESH_BOTTOM_ICON_H);
+
+        const topCellW = REFRESH_ICON_SHEET_W / 2;
+        const bottomCellW = REFRESH_ICON_SHEET_W / 4;
+        const drawBadge = (x: number, y: number, w: number, h: number, label: string, icon: string) => {
+            ctx.save();
+            ctx.translate(x + w / 2, y + h / 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.16)';
+            ctx.beginPath();
+            ctx.roundRect(-w * 0.34, -h * 0.26, w * 0.68, h * 0.52, 46);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.24)';
+            ctx.beginPath();
+            ctx.arc(-w * 0.2, -h * 0.08, h * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '900 44px PingFang SC, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(icon, 0, -h * 0.02);
+            ctx.font = '800 24px PingFang SC, sans-serif';
+            ctx.fillText(label, 0, h * 0.24);
+            ctx.restore();
+        };
+
+        drawBadge(0, 0, topCellW, REFRESH_TOP_ICON_H, text.slice(0, 8), 'AI');
+        drawBadge(topCellW, 0, topCellW, REFRESH_TOP_ICON_H, '焕新入口', 'UI');
+        ['推荐', '玩法', '素材', '我的'].forEach((label, index) => {
+            drawBadge(bottomCellW * index, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, bottomCellW, REFRESH_BOTTOM_ICON_H, label, String(index + 1));
+        });
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob((result) => result ? resolve(result) : reject(new Error('icon 底图生成失败')), 'image/png');
+        });
+        const file = new File([blob], 'refresh-icon-sheet-ai.png', { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        setRefreshIconSheet((current) => {
+            if (current.url) URL.revokeObjectURL(current.url);
+            return {
+                file,
+                url,
+                status: 'valid',
+                message: `文生图已生成 1228 x 674：${text.slice(0, 10)}`,
+            };
+        });
+    };
+
+    const generateRefreshIconVideoByReference = async () => {
+        if (!refreshAiReference.url) {
+            setError('请先上传 icon 图生视频参考图');
+            return;
+        }
+        const text = refreshAiPrompt.trim() || '焕新UI动态icon';
+        setError('');
+        resetOutput();
+
+        const referenceImage = await loadImage(refreshAiReference.url);
+        const canvas = document.createElement('canvas');
+        canvas.width = REFRESH_ICON_SHEET_W;
+        canvas.height = REFRESH_ICON_SHEET_H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('无法创建 icon 视频');
+
+        const mimeType = [
+            'video/webm;codecs=vp9',
+            'video/webm',
+        ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+        const stream = canvas.captureStream(30);
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 4_000_000 } : { videoBitsPerSecond: 4_000_000 });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (event) => {
+            if (event.data.size > 0) chunks.push(event.data);
+        };
+        const done = new Promise<Blob>((resolve) => {
+            recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
+        });
+
+        const startedAt = performance.now();
+        const duration = 2400;
+        recorder.start();
+
+        const drawAiVideoFrame = (now: number) => {
+            const elapsed = Math.min(now - startedAt, duration);
+            const progress = elapsed / duration;
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H);
+            const topCellW = REFRESH_ICON_SHEET_W / 2;
+            const bottomCellW = REFRESH_ICON_SHEET_W / 4;
+            const drawAnimatedCell = (x: number, y: number, w: number, h: number, index: number) => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x, y, w, h);
+                ctx.clip();
+                const pulse = 1.08 + Math.sin(progress * Math.PI * 2 + index * 0.7) * 0.07;
+                drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, x - w * (pulse - 1) / 2, y - h * (pulse - 1) / 2, w * pulse, h * pulse);
+                const overlay = ctx.createLinearGradient(x, y, x + w, y + h);
+                overlay.addColorStop(0, `rgba(40,70,233,${0.18 + index * 0.02})`);
+                overlay.addColorStop(1, `rgba(31,214,194,${0.26 - index * 0.02})`);
+                ctx.fillStyle = overlay;
+                ctx.fillRect(x, y, w, h);
+                ctx.fillStyle = 'rgba(255,255,255,0.18)';
+                ctx.beginPath();
+                ctx.roundRect(x + w * 0.2, y + h * (0.18 + Math.sin(progress * Math.PI * 2 + index) * 0.04), w * 0.6, h * 0.32, 42);
+                ctx.fill();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `900 ${Math.max(22, Math.round(h * 0.12))}px PingFang SC, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(index < 2 ? text.slice(0, 7) : ['推荐', '玩法', '素材', '我的'][index - 2], x + w / 2, y + h * 0.66);
+                ctx.restore();
+            };
+            drawAnimatedCell(0, 0, topCellW, REFRESH_TOP_ICON_H, 0);
+            drawAnimatedCell(topCellW, 0, topCellW, REFRESH_TOP_ICON_H, 1);
+            for (let index = 0; index < 4; index += 1) {
+                drawAnimatedCell(bottomCellW * index, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, bottomCellW, REFRESH_BOTTOM_ICON_H, index + 2);
+            }
+
+            if (elapsed < duration) {
+                requestAnimationFrame(drawAiVideoFrame);
+            } else {
+                recorder.stop();
+            }
+        };
+        requestAnimationFrame(drawAiVideoFrame);
+
+        const blob = await done;
+        const file = new File([blob], 'refresh-icon-sheet-ai-video.webm', { type: blob.type || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        setRefreshIconSheet((current) => {
+            if (current.url) URL.revokeObjectURL(current.url);
+            return {
+                file,
+                url,
+                status: 'valid',
+                message: `图生视频已生成 1228 x 674：${text.slice(0, 10)}`,
+            };
+        });
     };
 
     const updateRefreshBottomNav = async (file: File) => {
@@ -1423,21 +1942,21 @@ const ConfigWorkspace: React.FC = () => {
         return url;
     };
 
-    const handleUploadDragOver = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-top-icons' | 'refresh-bottom-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDragOver = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
         setDragTarget(target);
     };
 
-    const handleUploadDragLeave = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-top-icons' | 'refresh-bottom-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDragLeave = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
         event.preventDefault();
         event.stopPropagation();
         if (event.currentTarget.contains(event.relatedTarget as Node)) return;
         setDragTarget((current) => current === target ? null : current);
     };
 
-    const handleUploadDrop = async (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-top-icons' | 'refresh-bottom-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDrop = async (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
         event.preventDefault();
         event.stopPropagation();
         setDragTarget(null);
@@ -1456,8 +1975,7 @@ const ConfigWorkspace: React.FC = () => {
         else if (target === 'break-focal') await updateBreakFocal(files[0]);
         else if (target === 'poly-base') await updatePolyBase(files[0]);
         else if (target === 'poly-focal') await updatePolyFocal(files[0]);
-        else if (target === 'refresh-top-icons') await addRefreshIcons(files, 'top');
-        else if (target === 'refresh-bottom-icons') await addRefreshIcons(files, 'bottom');
+        else if (target === 'refresh-icons') await updateRefreshIconSheet(files[0]);
         else if (target === 'refresh-bottom-nav') await updateRefreshBottomNav(files[0]);
         else await addPolyCards(files);
     };
@@ -1533,6 +2051,121 @@ const ConfigWorkspace: React.FC = () => {
             const fallbackUrl = await generateLocalPromptAsset(text);
             setError(err instanceof Error ? `AI 生成暂不可用，已先生成本地预览素材。原因：${err.message}` : 'AI 生成暂不可用，已先生成本地预览素材');
             return fallbackUrl;
+        }
+    };
+
+    const updatePendantReference = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        try {
+            if (!file.type.startsWith('image/')) {
+                URL.revokeObjectURL(url);
+                setPendantReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
+                return;
+            }
+            setPendantReference((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: '图生图参考图已上传',
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setPendantReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '参考图读取失败' });
+        }
+    };
+
+    const removePendantReference = () => {
+        clearUploadState(pendantReference, setPendantReference);
+    };
+
+    const generatePendantAssetFromReference = async () => {
+        if (!pendantReference.url) {
+            setError('请先上传图生图参考图');
+            return null;
+        }
+        const text = prompt.trim() || '炫动开屏素材';
+        setError('');
+        resetOutput();
+
+        try {
+            setAsset((current) => ({
+                ...current,
+                status: 'idle',
+                message: '图生图正在生成 450 x 450 挂件素材...',
+            }));
+            const referenceImage = await loadImage(pendantReference.url);
+            const canvas = document.createElement('canvas');
+            canvas.width = 450;
+            canvas.height = 450;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('无法创建图生图素材');
+
+            const gradient = ctx.createLinearGradient(0, 0, 450, 450);
+            gradient.addColorStop(0, '#111827');
+            gradient.addColorStop(0.45, '#4c6fff');
+            gradient.addColorStop(1, '#ff4d8d');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 450, 450);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(36, 36, 378, 378, 92);
+            ctx.clip();
+            drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, 36, 36, 378, 378);
+            ctx.globalCompositeOperation = 'screen';
+            const shine = ctx.createRadialGradient(150, 120, 20, 230, 230, 290);
+            shine.addColorStop(0, 'rgba(255,255,255,0.56)');
+            shine.addColorStop(0.42, 'rgba(99,230,190,0.28)');
+            shine.addColorStop(1, 'rgba(255,77,141,0.18)');
+            ctx.fillStyle = shine;
+            ctx.fillRect(36, 36, 378, 378);
+            ctx.restore();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.18)';
+            for (let i = 0; i < 7; i += 1) {
+                ctx.beginPath();
+                ctx.arc(70 + i * 55, 360 - i * 34, 26 + i * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillStyle = 'rgba(0,0,0,0.38)';
+            ctx.beginPath();
+            ctx.roundRect(48, 326, 354, 74, 28);
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '800 24px PingFang SC, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text.slice(0, 10), 225, 363);
+
+            const blob = await new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob((result) => result ? resolve(result) : reject(new Error('图生图素材生成失败')), 'image/png');
+            });
+            const file = new File([blob], 'image-to-pendant-asset.png', { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            setAsset((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: '图生图已生成 PNG 450 x 450，符合 MR 标准',
+                };
+            });
+            return url;
+        } catch (err) {
+            setAsset((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : '图生图素材生成失败');
+            return null;
         }
     };
 
@@ -2044,12 +2677,8 @@ const ConfigWorkspace: React.FC = () => {
             setError('请上传 1126 x 900px 的焦点视窗素材');
             return;
         }
-        if (refreshTopIcons.length !== 2) {
-            setError('请上传 2 张 600 x 335px 的上方 icon 底图');
-            return;
-        }
-        if (refreshBottomIcons.length !== 4) {
-            setError('请上传 4 张 288 x 315px 的下方 icon 底图');
+        if (!refreshIconSheet.url || !refreshIconSheet.file || refreshIconSheet.status !== 'valid') {
+            setError('请上传或生成 1 个 1228 x 674px 的 icon 底图');
             return;
         }
         if (!refreshBottomNav.url || !refreshBottomNav.file || refreshBottomNav.status !== 'valid') {
@@ -2065,8 +2694,9 @@ const ConfigWorkspace: React.FC = () => {
             const ctx = canvas.getContext('2d');
             if (!ctx) throw new Error('无法创建焕新UI/底导视频');
 
-            const topImages = await Promise.all(refreshTopIcons.map((item) => loadImage(item.url)));
-            const bottomImages = await Promise.all(refreshBottomIcons.map((item) => loadImage(item.url)));
+            const iconSheetIsVideo = refreshIconSheet.file.type.startsWith('video/');
+            const iconSheetImage = iconSheetIsVideo ? null : await loadImage(refreshIconSheet.url);
+            const iconSheetVideo = iconSheetIsVideo ? await loadVideoElement(refreshIconSheet.url) : null;
             const bottomNavImage = await loadImage(refreshBottomNav.url);
             const focalIsVideo = breakFocal.file.type.startsWith('video/');
             const focalImage = focalIsVideo ? null : await loadImage(breakFocal.url);
@@ -2108,39 +2738,21 @@ const ConfigWorkspace: React.FC = () => {
                 }
                 ctx.drawImage(focalBg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 ctx.drawImage(focalGradientLayer, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
 
                 ctx.save();
                 ctx.globalAlpha = entrance;
                 ctx.translate(0, (1 - entrance) * 28);
-                topImages.forEach((image, index) => {
-                    const slot = REFRESH_TOP_ICON_SLOTS[index];
-                    if (!slot) return;
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.roundRect(slot.x, slot.y, slot.width, slot.height, slot.radius);
-                    ctx.clip();
-                    drawCoverAt(ctx, image, image.naturalWidth, image.naturalHeight, slot.x, slot.y, slot.width, slot.height);
-                    ctx.restore();
-                });
-                bottomImages.forEach((image, index) => {
-                    const slot = REFRESH_BOTTOM_ICON_SLOTS[index];
-                    if (!slot) return;
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.roundRect(slot.x, slot.y, slot.width, slot.height, slot.radius);
-                    ctx.clip();
-                    drawCoverAt(ctx, image, image.naturalWidth, image.naturalHeight, slot.x, slot.y, slot.width, slot.height);
-                    ctx.restore();
-                });
+                const iconSheetSource = iconSheetVideo && iconSheetVideo.readyState >= 2 ? iconSheetVideo : iconSheetImage;
+                if (iconSheetSource) drawRefreshIconLayer(ctx, iconSheetSource);
                 drawCoverAt(ctx, bottomNavImage, bottomNavImage.naturalWidth, bottomNavImage.naturalHeight, 0, BREAK_CANVAS_H - REFRESH_BOTTOM_NAV_H, REFRESH_BOTTOM_NAV_W, REFRESH_BOTTOM_NAV_H);
                 ctx.restore();
-
-                ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
 
                 if (elapsed < BREAK_DURATION) {
                     requestAnimationFrame(drawFrame);
                 } else {
                     recorder.stop();
+                    iconSheetVideo?.pause();
                     focalVideo?.pause();
                 }
             };
@@ -2310,7 +2922,7 @@ const ConfigWorkspace: React.FC = () => {
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
     const outputSpec = isMagazineTemplate
-        ? '输出规格 1440 x 2340 / 每 1.5s 翻页'
+        ? '输出规格 1440 x 2340 / 鼠标拖动滑动翻页'
             : isSpotlightTemplate
                 ? '输出规格 1440 x 2340 / 聚光合成'
                 : isPolymorphicFlipCardTemplate
@@ -2318,22 +2930,22 @@ const ConfigWorkspace: React.FC = () => {
                     : isJumpingFocalTemplate
                         ? '输出规格 1126 x 2436 / 跃动破框 1126 x 906'
                     : isRefreshUiBottomNavTemplate
-                        ? '上方icon 600 x 335 x2 / 下方icon 288 x 315 x4 / 底导 1126 x 252'
+                        ? 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252'
                 : isBreakFocalTemplate
                     ? '输出规格 1126 x 2436 / 破框 3D'
                 : '输出规格 1440 x 2340 / 5s';
-    const magazineActiveIndex = magazineAssets.length
-        ? Math.floor(magazinePreviewElapsed / MAGAZINE_FRAME_MS) % magazineAssets.length
+    const magazineCurrentIndex = magazineAssets.length
+        ? Math.min(magazineActiveIndex, magazineAssets.length - 1)
         : 0;
-    const magazineNextIndex = magazineAssets.length ? (magazineActiveIndex + 1) % magazineAssets.length : 0;
-    const magazineSlideProgress = magazineAssets.length
-        ? (magazinePreviewElapsed % MAGAZINE_FRAME_MS) / MAGAZINE_FRAME_MS
-        : 0;
+    const magazineNextIndex = magazineAssets.length ? (magazineCurrentIndex + 1) % magazineAssets.length : 0;
+    const magazinePrevIndex = magazineAssets.length ? (magazineCurrentIndex - 1 + magazineAssets.length) % magazineAssets.length : 0;
     const getMagazinePreviewStyle = (index: number): React.CSSProperties => {
-        if (magazineAssets.length <= 1) return { transform: 'translateX(0%)' };
-        if (index === magazineActiveIndex) return { transform: `translateX(${-magazineSlideProgress * 100}%)` };
-        if (index === magazineNextIndex) return { transform: `translateX(${(1 - magazineSlideProgress) * 100}%)` };
-        return { transform: 'translateX(100%)', visibility: 'hidden' };
+        const transition = isMagazineDragging ? 'none' : 'transform 180ms ease-out';
+        if (magazineAssets.length <= 1) return { transform: 'translateX(0%)', transition };
+        if (index === magazineCurrentIndex) return { transform: `translateX(${magazineDragOffset * 100}%)`, transition };
+        if (magazineDragOffset < 0 && index === magazineNextIndex) return { transform: `translateX(${(1 + magazineDragOffset) * 100}%)`, transition };
+        if (magazineDragOffset > 0 && index === magazinePrevIndex) return { transform: `translateX(${(-1 + magazineDragOffset) * 100}%)`, transition };
+        return { transform: 'translateX(100%)', visibility: 'hidden', transition };
     };
     const polyActiveIndex = polyCards.length
         ? Math.min(polyCards.length - 1, Math.floor(Math.min(polyPreviewElapsed, Math.max(1, polyCards.length - 1) * POLY_CARD_FRAME_MS) / POLY_CARD_FRAME_MS))
@@ -2531,7 +3143,7 @@ const ConfigWorkspace: React.FC = () => {
                     </header>
 
                     <div className="flex-1 overflow-auto p-10 custom-scrollbar">
-                        <div className="grid grid-cols-[420px_minmax(0,1fr)] gap-8 min-h-full">
+                        <div className="grid min-w-[900px] grid-cols-[420px_minmax(420px,1fr)] gap-8 min-h-full">
                             <section className="space-y-5">
                                 {isMagazineTemplate ? (
                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2818,6 +3430,64 @@ const ConfigWorkspace: React.FC = () => {
                                                     </div>
                                                 ))}
                                             </div>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
+                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成翻卡图片</p>
+                                                    </div>
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyAiReference.status)}`}>{polyAiReference.message}</span>
+                                                </div>
+                                                <div className="grid grid-cols-[1fr_96px] gap-3">
+                                                    <textarea
+                                                        value={polyAiPrompt}
+                                                        onChange={(event) => setPolyAiPrompt(event.target.value)}
+                                                        placeholder="填写 4 张翻卡图片的主题、风格、色彩..."
+                                                        className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                    />
+                                                    <div className="relative min-h-[86px]">
+                                                        <button
+                                                            onClick={() => polyAiReferenceInputRef.current?.click()}
+                                                            className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                        >
+                                                            {polyAiReference.url ? (
+                                                                <img src={polyAiReference.url} alt="多态翻卡图生图参考图" className="h-full w-full object-cover" />
+                                                            ) : (
+                                                                <div className="text-center px-2">
+                                                                    <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                        <input
+                                                            ref={polyAiReferenceInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={async (event) => {
+                                                                const input = event.currentTarget;
+                                                                if (input.files?.[0]) await updatePolyAiReference(input.files[0]);
+                                                                input.value = '';
+                                                            }}
+                                                        />
+                                                        {uploadRemoveButton(polyAiReference, removePolyAiReference, '删除多态翻卡参考图')}
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <button
+                                                        onClick={() => generatePolyCardsByPrompt('text')}
+                                                        className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                                    >
+                                                        文生图翻卡图片
+                                                    </button>
+                                                    <button
+                                                        onClick={() => generatePolyCardsByPrompt('image')}
+                                                        className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${polyAiReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                    >
+                                                        图生图翻卡图片
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -2914,89 +3584,175 @@ const ConfigWorkspace: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h2 className="text-white text-sm font-black">上传 icon 底图</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上方 2 张 / 每张 600 x 335px</p>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">整体 1 张 / 1228 x 674px / 等比缩小至 1028 x 565px 后裁进 6 个 icon</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${refreshTopIcons.length === 2 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>{refreshTopIcons.length} / 2</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshIconSheet.status)}`}>{refreshIconSheet.message}</span>
                                             </div>
                                             <input
-                                                ref={refreshTopIconsInputRef}
+                                                ref={refreshIconsInputRef}
                                                 type="file"
-                                                accept="image/*"
-                                                multiple
+                                                accept="image/*,video/*"
                                                 className="hidden"
                                                 onChange={async (e) => {
                                                     const input = e.currentTarget;
-                                                    if (input.files?.length) await addRefreshIcons(input.files, 'top');
+                                                    if (input.files?.[0]) await updateRefreshIconSheet(input.files[0]);
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => refreshTopIconsInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'refresh-top-icons')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-top-icons')}
-                                                onDrop={(event) => handleUploadDrop(event, 'refresh-top-icons')}
-                                                className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-top-icons' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                <div className="text-center">
-                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">dashboard_customize</span>
-                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 2 张上方 icon 底图</p>
-                                                </div>
-                                            </button>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {refreshTopIcons.map((item, index) => (
-                                                    <div key={item.id} className="relative rounded-[14px] border border-white/5 bg-black/30 p-2">
-                                                        <button onClick={() => removeRefreshIcon('top', item.id)} className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center" title="移除">
-                                                            <span className="material-symbols-outlined text-xs">close</span>
-                                                        </button>
-                                                        <img src={item.url} alt={`上方 icon 底图 ${index + 1}`} className="h-16 w-full object-cover rounded-[10px] bg-zinc-950" />
-                                                        <p className="mt-1 text-[9px] font-bold text-zinc-500">上方 {index + 1}</p>
-                                                    </div>
-                                                ))}
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => refreshIconsInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'refresh-icons')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-icons')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'refresh-icons')}
+                                                    className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-icons' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {refreshIconSheet.url && refreshIconSheet.status === 'valid' ? (
+                                                        refreshIconSheet.file?.type.startsWith('video/') ? (
+                                                            <video src={refreshIconSheet.url} className="h-36 w-full object-contain bg-black/30 rounded-xl" muted loop playsInline autoPlay />
+                                                        ) : (
+                                                            <img src={refreshIconSheet.url} alt="icon 底图预览" className="h-36 w-full object-contain bg-black/30 rounded-xl" />
+                                                        )
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">dashboard_customize</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 1 张完整 icon 底图</p>
+                                                            <p className="text-[9px] text-zinc-700 font-bold mt-1">1228 x 674px，结果页按 1028 x 565px 裁剪</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
+                                                    <button onClick={removeRefreshIconSheet} className="absolute right-2 top-2 z-10 h-7 w-7 rounded-full bg-black/70 text-white/80 flex items-center justify-center" title="移除 icon 底图">
+                                                        <span className="material-symbols-outlined text-sm">close</span>
+                                                    </button>
+                                                )}
                                             </div>
+                                            {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
+                                                <div className="space-y-2">
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {REFRESH_TOP_ICON_SLOTS.map((slot, index) => (
+                                                            <div key={`top-${index}`} className="rounded-[12px] border border-white/5 bg-black/30 p-1.5">
+                                                                <div
+                                                                    className="group/refresh-slot relative w-full overflow-hidden bg-zinc-950"
+                                                                    style={{
+                                                                        aspectRatio: `${slot.width} / ${slot.height}`,
+                                                                        borderRadius: getRefreshPreviewBorderRadius(slot),
+                                                                    }}
+                                                                >
+                                                                    {refreshIconSheet.file?.type.startsWith('video/') ? (
+                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted loop playsInline autoPlay />
+                                                                    ) : (
+                                                                        <img src={refreshIconSheet.url!} alt={`上方 ${index + 1}`} style={getRefreshSheetPreviewImageStyle(slot)} />
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            downloadRefreshIconSlot(slot, `${index + 1}`);
+                                                                        }}
+                                                                        className="absolute right-1.5 top-1.5 z-20 h-7 w-7 rounded-full bg-black/75 text-white/90 border border-white/10 shadow-lg opacity-0 group-hover/refresh-slot:opacity-100 transition-opacity flex items-center justify-center"
+                                                                        title={`下载 ${index + 1}`}
+                                                                        aria-label={`下载 ${index + 1}`}
+                                                                    >
+                                                                        <span className="material-symbols-outlined text-[15px]">download</span>
+                                                                    </button>
+                                                                </div>
+                                                                <p className="mt-1 text-[8px] font-bold text-zinc-500">上方 {index + 1}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="grid grid-cols-4 gap-2">
+                                                        {REFRESH_BOTTOM_ICON_SLOTS.map((slot, index) => (
+                                                            <div key={`bottom-${index}`} className="rounded-[12px] border border-white/5 bg-black/30 p-1.5">
+                                                                <div
+                                                                    className="group/refresh-slot relative w-full overflow-hidden bg-zinc-950"
+                                                                    style={{
+                                                                        aspectRatio: `${slot.width} / ${slot.height}`,
+                                                                        borderRadius: getRefreshPreviewBorderRadius(slot),
+                                                                    }}
+                                                                >
+                                                                    {refreshIconSheet.file?.type.startsWith('video/') ? (
+                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted loop playsInline autoPlay />
+                                                                    ) : (
+                                                                        <img src={refreshIconSheet.url!} alt={`下方 ${index + 1}`} style={getRefreshSheetPreviewImageStyle(slot)} />
+                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(event) => {
+                                                                            event.stopPropagation();
+                                                                            downloadRefreshIconSlot(slot, `${index + 3}`);
+                                                                        }}
+                                                                        className="absolute right-1 top-1 z-20 h-6 w-6 rounded-full bg-black/75 text-white/90 border border-white/10 shadow-lg opacity-0 group-hover/refresh-slot:opacity-100 transition-opacity flex items-center justify-center"
+                                                                        title={`下载 ${index + 3}`}
+                                                                        aria-label={`下载 ${index + 3}`}
+                                                                    >
+                                                                        <span className="material-symbols-outlined text-[14px]">download</span>
+                                                                    </button>
+                                                                </div>
+                                                                <p className="mt-1 text-[8px] font-bold text-zinc-500">下方 {index + 1}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">下方 icon 底图</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">下方 4 张 / 每张 288 x 315px</p>
+                                                    <h2 className="text-white text-sm font-black">AI 生成 icon 底图</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">文生图 / 图生视频 / 输出 1228 x 674px</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${refreshBottomIcons.length === 4 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>{refreshBottomIcons.length} / 4</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshAiReference.status)}`}>{refreshAiReference.message}</span>
                                             </div>
-                                            <input
-                                                ref={refreshBottomIconsInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                multiple
-                                                className="hidden"
-                                                onChange={async (e) => {
-                                                    const input = e.currentTarget;
-                                                    if (input.files?.length) await addRefreshIcons(input.files, 'bottom');
-                                                    input.value = '';
-                                                }}
-                                            />
-                                            <button
-                                                onClick={() => refreshBottomIconsInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-icons')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-icons')}
-                                                onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-icons')}
-                                                className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-icons' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                <div className="text-center">
-                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">apps</span>
-                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 4 张下方 icon 底图</p>
+                                            <div className="grid grid-cols-[1fr_104px] gap-3">
+                                                <textarea
+                                                    value={refreshAiPrompt}
+                                                    onChange={(event) => setRefreshAiPrompt(event.target.value)}
+                                                    placeholder="填写 icon 底图风格、主题、色彩和动态方向..."
+                                                    className="w-full min-h-[96px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                />
+                                                <div className="relative min-h-[96px]">
+                                                    <button
+                                                        onClick={() => refreshAiReferenceInputRef.current?.click()}
+                                                        className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                    >
+                                                        {refreshAiReference.url ? (
+                                                            <img src={refreshAiReference.url} alt="icon 参考图" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="text-center px-2">
+                                                                <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                    <input
+                                                        ref={refreshAiReferenceInputRef}
+                                                        type="file"
+                                                        accept="image/*"
+                                                        className="hidden"
+                                                        onChange={async (event) => {
+                                                            const input = event.currentTarget;
+                                                            if (input.files?.[0]) await updateRefreshAiReference(input.files[0]);
+                                                            input.value = '';
+                                                        }}
+                                                    />
+                                                    {uploadRemoveButton(refreshAiReference, removeRefreshAiReference, '删除 icon 参考图')}
                                                 </div>
-                                            </button>
-                                            <div className="grid grid-cols-4 gap-2">
-                                                {refreshBottomIcons.map((item, index) => (
-                                                    <div key={item.id} className="relative rounded-[14px] border border-white/5 bg-black/30 p-2">
-                                                        <button onClick={() => removeRefreshIcon('bottom', item.id)} className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center" title="移除">
-                                                            <span className="material-symbols-outlined text-xs">close</span>
-                                                        </button>
-                                                        <img src={item.url} alt={`下方 icon 底图 ${index + 1}`} className="h-14 w-full object-cover rounded-[10px] bg-zinc-950" />
-                                                        <p className="mt-1 text-[9px] font-bold text-zinc-500">下方 {index + 1}</p>
-                                                    </div>
-                                                ))}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button
+                                                    onClick={generateRefreshIconSheetByPrompt}
+                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                                >
+                                                    文生图
+                                                </button>
+                                                <button
+                                                    onClick={generateRefreshIconVideoByReference}
+                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${refreshAiReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                >
+                                                    图生视频
+                                                </button>
                                             </div>
                                         </div>
 
@@ -3343,25 +4099,62 @@ const ConfigWorkspace: React.FC = () => {
                                         {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材')}
                                     </div>
 
-                                    <div className="relative">
-                                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-zinc-600">magic_button</span>
-                                        <input
-                                            value={prompt}
-                                            onChange={(e) => setPrompt(e.target.value)}
-                                            placeholder="描述挂件主体、风格、材质..."
-                                            className="w-full h-11 bg-zinc-950/80 border border-white/5 rounded-[20px] pl-11 pr-4 text-xs text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
-                                        />
+                                    <div className="grid grid-cols-[1fr_96px] gap-3">
+                                        <div className="relative">
+                                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-zinc-600">magic_button</span>
+                                            <input
+                                                value={prompt}
+                                                onChange={(e) => setPrompt(e.target.value)}
+                                                placeholder="描述挂件主体、风格、材质..."
+                                                className="w-full h-20 bg-zinc-950/80 border border-white/5 rounded-[20px] pl-11 pr-4 text-xs text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                            />
+                                        </div>
+                                        <div className="relative h-20">
+                                            <button
+                                                onClick={() => pendantReferenceInputRef.current?.click()}
+                                                className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                            >
+                                                {pendantReference.url ? (
+                                                    <img src={pendantReference.url} alt="挂件图生图参考图" className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <div className="text-center px-2">
+                                                        <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                    </div>
+                                                )}
+                                            </button>
+                                            <input
+                                                ref={pendantReferenceInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updatePendantReference(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            {uploadRemoveButton(pendantReference, removePendantReference, '删除挂件参考图')}
+                                        </div>
                                     </div>
                                     <div className="flex items-center justify-between rounded-[16px] border border-white/5 bg-white/[0.03] px-4 py-2">
                                         <span className="text-[10px] font-bold text-zinc-600">固定结尾</span>
                                         <span className="text-[10px] font-black text-zinc-300">纯白色背景</span>
                                     </div>
-                                    <button
-                                        onClick={generatePromptAsset}
-                                        className="w-full h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
-                                    >
-                                        用提示词生成静态素材
-                                    </button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={generatePromptAsset}
+                                            className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                        >
+                                            文生图静态素材
+                                        </button>
+                                        <button
+                                            onClick={generatePendantAssetFromReference}
+                                            className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${pendantReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                        >
+                                            图生图静态素材
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -3418,7 +4211,7 @@ const ConfigWorkspace: React.FC = () => {
                                         <h2 className="text-white text-sm font-black">合成预览</h2>
                                         <p className="text-[10px] text-zinc-600 font-bold mt-1">
                                             {isMagazineTemplate
-                                                ? '当前页向左滑出，下一页紧贴右侧滑入，每 1.5s 完成一次翻页'
+                                                ? '按住预览画面左右拖动，拖过阈值后切换上一页或下一页'
                                                 : isSpotlightTemplate
                                                     ? '三张小卡从下往上弹出，同排定位后合并成一张大卡'
                                                     : isPolymorphicFlipCardTemplate
@@ -3454,8 +4247,15 @@ const ConfigWorkspace: React.FC = () => {
 
                                 <div className="flex-1 flex items-center justify-center min-h-0">
                                     <div
-                                        className="relative h-full max-h-[68vh] rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview"
-                                        style={{ aspectRatio: isBreakFocalTemplate ? '1126 / 2436' : '1440 / 2340' }}
+                                        className={`relative h-full max-h-[68vh] rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                                        style={{ aspectRatio: (isBreakFocalTemplate || isJumpingFocalTemplate || isRefreshUiBottomNavTemplate || isPolymorphicFlipCardTemplate) ? '1126 / 2436' : '1440 / 2340' }}
+                                        onPointerDown={handleMagazinePointerDown}
+                                        onPointerMove={handleMagazinePointerMove}
+                                        onPointerUp={handleMagazinePointerUp}
+                                        onPointerCancel={finishMagazineDrag}
+                                        onPointerLeave={() => {
+                                            if (isMagazineDragging) finishMagazineDrag();
+                                        }}
                                     >
                                         {generatedVideoUrl ? (
                                             <>
@@ -3505,7 +4305,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     ) : (
                                                         <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
                                                             <span className="material-symbols-outlined text-6xl">auto_stories</span>
-                                                            <span className="mt-3 text-[10px] font-black tracking-widest uppercase">3-5 Assets / 1.5s Slide</span>
+                                                            <span className="mt-3 text-[10px] font-black tracking-widest uppercase">3-5 Assets / Drag Slide</span>
                                                         </div>
                                                     )
                                                 ) : isSpotlightTemplate ? (
@@ -3662,42 +4462,17 @@ const ConfigWorkspace: React.FC = () => {
                                                             </div>
                                                             <img src="/focal-window/fixed_bg_2.png" className="absolute inset-0 z-[10] w-full h-full object-fill" alt="" />
                                                             <img src="/focal-window/gradient_layer.png" className="absolute inset-0 z-[20] w-full h-full object-fill" alt="" />
-                                                            <div className="absolute inset-0 z-[30]">
-                                                                {refreshTopIcons.map((item, index) => (
-                                                                    REFRESH_TOP_ICON_SLOTS[index] ? (
-                                                                        <img
-                                                                            key={item.id}
-                                                                            src={item.url}
-                                                                            alt={`上方 icon 底图 ${index + 1}`}
-                                                                            className="absolute object-cover shadow-2xl"
-                                                                            style={{
-                                                                                left: `${(REFRESH_TOP_ICON_SLOTS[index].x / BREAK_CANVAS_W) * 100}%`,
-                                                                                top: `${(REFRESH_TOP_ICON_SLOTS[index].y / BREAK_CANVAS_H) * 100}%`,
-                                                                                width: `${(REFRESH_TOP_ICON_SLOTS[index].width / BREAK_CANVAS_W) * 100}%`,
-                                                                                height: `${(REFRESH_TOP_ICON_SLOTS[index].height / BREAK_CANVAS_H) * 100}%`,
-                                                                                borderRadius: `${REFRESH_TOP_ICON_SLOTS[index].radius}px`,
-                                                                            }}
-                                                                        />
-                                                                    ) : null
-                                                                ))}
-                                                                {refreshBottomIcons.map((item, index) => {
-                                                                    const slot = REFRESH_BOTTOM_ICON_SLOTS[index];
-                                                                    return slot ? (
-                                                                        <img
-                                                                            key={item.id}
-                                                                            src={item.url}
-                                                                            alt={`下方 icon 底图 ${index + 1}`}
-                                                                            className="absolute object-cover shadow-2xl"
-                                                                            style={{
-                                                                                left: `${(slot.x / BREAK_CANVAS_W) * 100}%`,
-                                                                                top: `${(slot.y / BREAK_CANVAS_H) * 100}%`,
-                                                                                width: `${(slot.width / BREAK_CANVAS_W) * 100}%`,
-                                                                                height: `${(slot.height / BREAK_CANVAS_H) * 100}%`,
-                                                                                borderRadius: `${slot.radius}px`,
-                                                                            }}
-                                                                        />
-                                                                    ) : null;
-                                                                })}
+                                                            <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 z-[30] w-full h-full object-fill" alt="" />
+                                                            <div className="absolute inset-0 z-[40]">
+                                                                {refreshIconSheet.url && (
+                                                                    <div className="absolute overflow-hidden shadow-2xl" style={getRefreshIconLayerPreviewStyle()}>
+                                                                        {refreshIconSheet.file?.type.startsWith('video/') ? (
+                                                                            <video src={refreshIconSheet.url} className="h-full w-full object-fill" muted loop playsInline autoPlay />
+                                                                        ) : (
+                                                                            <img src={refreshIconSheet.url} alt="icon 底图联合遮罩预览" className="h-full w-full object-fill" />
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                                 {refreshBottomNav.url ? (
                                                                     <img
                                                                         src={refreshBottomNav.url}
@@ -3714,7 +4489,6 @@ const ConfigWorkspace: React.FC = () => {
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                            <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 z-[40] w-full h-full object-fill" alt="" />
                                                         </div>
                                                     </>
                                                 ) : isBreakFocalTemplate ? (
@@ -3859,7 +4633,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 )}
                                                 {isMagazineTemplate && magazineAssets.length > 0 && (
                                                     <div className="absolute right-4 top-4 rounded-full bg-black/55 px-3 py-1 text-[10px] font-black text-white/80 backdrop-blur-md">
-                                                        {magazineActiveIndex + 1} / {magazineAssets.length}
+                                                        {magazineCurrentIndex + 1} / {magazineAssets.length}
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-x-0 bottom-8 text-center">
@@ -3892,7 +4666,7 @@ const ConfigWorkspace: React.FC = () => {
                                             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">交互形式</p>
                                             {isMagazineTemplate ? (
                                                 <div className="h-9 rounded-[12px] bg-white text-black text-[11px] font-black flex items-center justify-center">
-                                                    向左滑动
+                                                    鼠标拖动滑动
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-3 gap-2">

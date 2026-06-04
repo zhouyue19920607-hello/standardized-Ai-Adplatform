@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import Sidebar from './Sidebar';
 import PreviewGrid from './PreviewGrid';
 import Footer from './Footer';
@@ -55,6 +55,27 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     handleUpdateAsset,
     handleBatchDownload,
 }) => {
+    const [hoveredPreviewTemplate, setHoveredPreviewTemplate] = useState<AdTemplate | null>(null);
+    const hoverPreviewAssets = useMemo<AdAsset[]>(() => {
+        const previewVideoUrl = hoveredPreviewTemplate?.preview_video_path || (hoveredPreviewTemplate?.id === 'mt-s-1' ? '/template-previews/bubble-fullscreen.mp4' : '');
+        if (!hoveredPreviewTemplate || !previewVideoUrl) return [];
+        return [{
+            id: `template-preview-${hoveredPreviewTemplate.id}`,
+            url: previewVideoUrl,
+            name: `${hoveredPreviewTemplate.name}展示视频.mp4`,
+            size: 'template-preview',
+            isCompressed: false,
+            type: 'video/mp4',
+            category: hoveredPreviewTemplate.category,
+            app: hoveredPreviewTemplate.app,
+            templateName: hoveredPreviewTemplate.name,
+            dimensions: hoveredPreviewTemplate.dimensions || '1440 x 2340',
+            maskUrl: hoveredPreviewTemplate.mask_path || null,
+            showMask: false,
+        }];
+    }, [hoveredPreviewTemplate]);
+    const previewAssets = hoverPreviewAssets.length > 0 ? hoverPreviewAssets : processedAssets;
+
     const parseDimensions = (value?: string) => {
         const match = value?.match(/(\d+)\s*x\s*(\d+)/i);
         if (!match) return null;
@@ -144,18 +165,19 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                             isProcessing={isProcessing}
                             generationProgress={generationProgress}
                             onTemplateUpdate={handleTemplateUpdate}
+                            onTemplatePreviewHover={setHoveredPreviewTemplate}
                         />
                     </div>
                 </aside>
 
                 {/* Main Content Area */}
-                <div className="flex-1 flex flex-col gap-6">
+                <div className="flex-1 flex flex-col gap-2">
                     {/* Drag-and-drop / Upload Section */}
                     <section
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
-                        className={`relative px-6 pt-6 pb-4 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[120px] overflow-hidden' : 'opacity-100 max-h-[260px] overflow-y-auto custom-scrollbar'}`}
+                        className={`relative px-6 pt-3 pb-3 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[96px] overflow-hidden' : 'opacity-100 max-h-[160px] overflow-y-auto custom-scrollbar'}`}
                     >
                         <input
                             type="file"
@@ -179,27 +201,29 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                         {rawFiles.length === 0 ? (
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="group relative flex flex-col items-center justify-center border-2 border-dashed border-white/20 bg-white/10 hover:bg-white/20 rounded-[32px] p-12 transition-all cursor-pointer shadow-inner liquid-glass"
+                                className="group relative flex items-center justify-center gap-4 min-h-[96px] border-2 border-dashed border-white/20 bg-white/10 hover:bg-white/20 rounded-[24px] px-6 py-4 transition-all cursor-pointer shadow-inner liquid-glass"
                             >
-                                <div className="mb-4 h-16 w-16 liquid-glass flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                                    <span className="material-symbols-outlined text-4xl">cloud_upload</span>
+                                <div className="h-11 w-11 liquid-glass flex items-center justify-center text-primary group-hover:scale-110 transition-transform shrink-0">
+                                    <span className="material-symbols-outlined text-[28px]">cloud_upload</span>
                                 </div>
-                                <h3 className="text-lg font-bold text-slate-900 shadow-sm">{t('main.startCreation')}</h3>
-                                <p className="text-slate-500 text-xs mt-1 font-semibold text-center">{t('main.uploadHint')}</p>
+                                <div className="min-w-0">
+                                    <h3 className="text-base font-bold text-slate-900 shadow-sm">{t('main.startCreation')}</h3>
+                                    <p className="text-slate-500 text-xs mt-0.5 font-semibold">{t('main.uploadHint')}</p>
+                                </div>
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between px-1">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-4 px-1">
                                     <div className="min-w-0">
-                                        <h3 className="text-xs font-black text-slate-700">{t('main.pendingAssets')} ({rawFiles.length})</h3>
-                                        <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                        <h3 className="text-sm leading-tight font-black text-slate-800">{t('main.pendingAssets')} ({rawFiles.length})</h3>
+                                        <p className="text-[11px] text-slate-400 font-bold mt-0.5">
                                             图片/视频会检测是否匹配{activeTemplates.length > 0 ? '已选模板' : '全部平台'}尺寸，不匹配建议使用 AI 适配。
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 shrink-0">
                                         <button
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="h-8 px-3 text-[11px] font-bold text-primary bg-white/70 rounded-xl shadow-ios hover:bg-white transition-all active:scale-95"
+                                            className="h-9 px-4 text-xs font-black text-primary bg-white/85 rounded-[14px] shadow-ios hover:bg-white transition-all active:scale-95"
                                         >
                                             {t('main.addMore')}
                                         </button>
@@ -208,7 +232,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                 setRawFiles([]);
                                                 setProcessedAssets([]);
                                             }}
-                                            className="h-8 px-3 text-[11px] font-bold text-red-500 bg-white/70 rounded-xl shadow-ios hover:bg-red-50 transition-all active:scale-95"
+                                            className="h-9 px-4 text-xs font-black text-red-500 bg-white/85 rounded-[14px] shadow-ios hover:bg-red-50 transition-all active:scale-95"
                                         >
                                             {t('main.clearAll')}
                                         </button>
@@ -223,8 +247,8 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                 ? 'bg-amber-50 text-amber-700 border-amber-100'
                                                 : 'bg-slate-50 text-slate-500 border-slate-100';
                                         return (
-                                            <div key={raw.id} className="group flex items-center gap-3 rounded-2xl bg-white/55 border border-white/50 px-3 py-2 shadow-ios lens-effect">
-                                                <div className="relative w-14 h-14 rounded-xl bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                                            <div key={raw.id} className="group flex items-center gap-3 rounded-[20px] bg-white/60 border border-white/60 px-4 py-3 min-h-[84px] shadow-ios lens-effect">
+                                                <div className="relative w-16 h-16 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
                                                     {raw.file.type.startsWith('video/') ? (
                                                         <>
                                                             {raw.thumbnailUrl ? (
@@ -232,28 +256,28 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                             ) : (
                                                                 <span className="material-symbols-outlined text-slate-400 text-2xl">play_circle</span>
                                                             )}
-                                                            <span className="absolute material-symbols-outlined text-white text-2xl drop-shadow">play_circle</span>
+                                                            <span className="absolute material-symbols-outlined text-white text-[30px] drop-shadow">play_circle</span>
                                                         </>
                                                     ) : (
                                                         <img src={raw.previewUrl} className="w-full h-full object-contain" alt="raw" />
                                                     )}
                                                 </div>
                                                 <div className="min-w-0 flex-1">
-                                                    <p className="text-xs text-slate-800 truncate font-bold">{raw.file.name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
+                                                    <p className="text-sm text-slate-800 truncate font-black">{raw.file.name}</p>
+                                                    <p className="text-xs text-slate-400 font-black mt-0.5">{Math.round(raw.file.size / 1024)} KB</p>
                                                 </div>
                                                 {!isCollapsed && (
-                                                    <div className="hidden md:block min-w-[260px] max-w-[360px]">
-                                                        <div className={`rounded-xl border px-3 py-2 ${statusClass}`}>
-                                                            <p className="text-[9px] font-semibold leading-snug whitespace-pre-line line-clamp-2">{status.detail}</p>
+                                                    <div className="hidden lg:block min-w-[320px] max-w-[520px]">
+                                                        <div className={`rounded-[16px] border px-4 py-2 ${statusClass}`}>
+                                                            <p className="text-xs font-black leading-snug whitespace-pre-line line-clamp-2">{status.detail}</p>
                                                         </div>
                                                     </div>
                                                 )}
                                                 <button
                                                     onClick={() => removeRawFile(raw.id)}
-                                                    className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100"
+                                                    className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all opacity-70 group-hover:opacity-100 shrink-0"
                                                 >
-                                                    <span className="material-symbols-outlined text-[18px]">close</span>
+                                                    <span className="material-symbols-outlined text-[22px]">close</span>
                                                 </button>
                                             </div>
                                         );
@@ -264,7 +288,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     </section>
 
                     {/* Sticky Controller Header */}
-                    <div className="px-6 pt-6 pb-3 sticky top-[76px] z-30 pointer-events-none transition-all duration-300">
+                    <div className="px-6 pt-1 pb-3 sticky top-[76px] z-30 pointer-events-none transition-all duration-300">
                         <div className="flex items-center justify-between px-6 py-4 liquid-glass border border-white/30 shadow-sm pointer-events-auto">
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-3">
@@ -273,7 +297,12 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                     </div>
                                     <h2 className="text-base font-bold text-slate-800">生成预览</h2>
                                 </div>
-                                {processedAssets.length > 0 && !isProcessing && (
+                                {hoverPreviewAssets.length > 0 && !isProcessing && (
+                                    <span className="text-xs font-bold text-blue-600 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full">
+                                        模版效果预览
+                                    </span>
+                                )}
+                                {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && !isProcessing && (
                                     <span className="text-xs font-bold text-primary bg-primary/20 backdrop-blur-md border border-primary/30 px-3 py-1 rounded-full">
                                         {processedAssets.length} 份匹配资产
                                     </span>
@@ -313,7 +342,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                     </label>
                                 </div>
 
-                                {processedAssets.length > 0 && (
+                                {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && (
                                     <button
                                         onClick={() => setProcessedAssets([])}
                                         className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/50 border border-black/5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
@@ -329,7 +358,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     {/* Processed Previews Section */}
                     <div className="w-full pb-24 relative">
                         <PreviewGrid
-                            assets={processedAssets}
+                            assets={previewAssets}
                             config={config}
                             onClear={() => setProcessedAssets([])}
                             onToggleMask={() => handleConfigChange({ showMask: !config.showMask })}

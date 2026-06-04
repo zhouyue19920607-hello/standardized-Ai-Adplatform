@@ -1,19 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AdTemplate, AdAsset, AnalyticsSummary } from '../types';
-import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, getWorkflows, uploadWorkflow, ASSETS_URL, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testRoboneoConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, uploadCreativeTemplateAsset, CreativeTemplateItem, getAnalyticsSummary } from '../services/api';
+import { getTemplates, updateTemplate, uploadMask, uploadCropOverlay, uploadBadgeOverlay, uploadTemplatePreviewVideo, getWorkflows, uploadWorkflow, ASSETS_URL, deleteTemplate, smartCropImage, reorderTemplates, getSettings, updateSettings, testTongyiConnection, testNanobannerConnection, SystemSettings, getCreativeTemplates, updateCreativeTemplate, uploadCreativeTemplateAsset, CreativeTemplateItem, getAnalyticsSummary } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface AdminDashboardProps {
     onClose: () => void;
 }
-
-const PROMPT_PRESETS = [
-    { label: '广告摄影', value: '专业广告摄影风格，画面延伸自然，背景与主体融合协调，高清细腻' },
-    { label: '纯色简约', value: '纯色高级背景，极简现代设计风格，干净整洁，专业质感' },
-    { label: '渐变时尚', value: '流行时尚风格，柔和渐变背景，光线优雅，高端品牌感' },
-    { label: '自然户外', value: '自然光线，户外场景延伸，阳光明媚，清新自然' },
-    { label: '商务办公', value: '商务风格，简洁干净的办公环境，专业正式' },
-];
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const { t } = useLanguage();
@@ -30,7 +22,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     // AI 增强设置 State
     const [aiSettings, setAiSettings] = useState<SystemSettings>({
         aiEnhancedMode: false,
-        aiProvider: 'roboneo',
+        aiProvider: 'nanobanner',
         tongyiApiKey: '',
         roboneoApiKey: '',
         roboneoApiSecret: '',
@@ -56,7 +48,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         // NOTE: 首次加载时拉取 AI 增强设置
         getSettings().then(s => setAiSettings({
             ...s,
-            aiProvider: s.aiProvider === 'tongyi' ? 'roboneo' : s.aiProvider,
+            aiProvider: s.aiProvider === 'tongyi' || s.aiProvider === 'roboneo' ? 'nanobanner' : s.aiProvider,
         })).catch(console.error);
     }, []);
 
@@ -98,22 +90,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 if (result.ok) {
                     setTestStatus('success');
                     setTestMessage(result.quota ? `${result.message}（${result.quota}）` : (result.message || '连接成功'));
-                } else {
-                    setTestStatus('error');
-                    setTestMessage(result.error || '连接失败');
-                }
-            } else if (aiSettings.aiProvider === 'roboneo') {
-                const keyToTest = aiSettings.roboneoApiKey && aiSettings.roboneoApiKey !== '***configured***'
-                    ? aiSettings.roboneoApiKey
-                    : undefined;
-                const secretToTest = aiSettings.roboneoApiSecret && aiSettings.roboneoApiSecret !== '***configured***'
-                    ? aiSettings.roboneoApiSecret
-                    : undefined;
-
-                const result = await testRoboneoConnection(keyToTest, secretToTest);
-                if (result.ok) {
-                    setTestStatus('success');
-                    setTestMessage(result.message || '连接成功');
                 } else {
                     setTestStatus('error');
                     setTestMessage(result.error || '连接失败');
@@ -236,6 +212,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         }
     };
 
+    const handlePreviewVideoUpload = async (id: string, file: File) => {
+        try {
+            const { preview_video_path } = await uploadTemplatePreviewVideo(id, file);
+            setTemplates(prev => prev.map(tpl => tpl.id === id ? { ...tpl, preview_video_path } : tpl));
+            setAssetsVersion(Date.now());
+        } catch (error) {
+            console.error("Failed to upload preview video", error);
+            alert("展示视频上传失败。");
+        }
+    };
+
     const handleWorkflowUpload = async (file: File) => {
         try {
             await uploadWorkflow(file);
@@ -343,6 +330,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         } catch (error) {
             console.error("Failed to upload splash group crop overlay", error);
             alert(t('admin.failUpload'));
+        }
+    };
+
+    const handleSplashGroupPreviewVideoUpload = async (group: AdTemplate[], file: File) => {
+        try {
+            const updated = await Promise.all(group.map(tpl => uploadTemplatePreviewVideo(tpl.id, file)));
+            const previewPathById = new Map(updated.map(tpl => [tpl.id, tpl.preview_video_path]));
+            setTemplates(prev => prev.map(tpl => previewPathById.has(tpl.id) ? { ...tpl, preview_video_path: previewPathById.get(tpl.id) } : tpl));
+            setAssetsVersion(Date.now());
+        } catch (error) {
+            console.error("Failed to upload splash group preview video", error);
+            alert("展示视频上传失败。");
         }
     };
 
@@ -653,7 +652,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                             })}
                                                         </div>
 
-                                                        <div className="ml-auto w-52">
+                                                        <div className="ml-auto w-52 space-y-2">
                                                             <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">统一 ComfyUI 工作流</label>
                                                             <select
                                                                 className="w-full bg-slate-50 border-none rounded-xl text-xs text-slate-600 focus:ring-1 focus:ring-indigo-500 py-2 pl-3 pr-7 cursor-pointer hover:bg-slate-100 transition-colors"
@@ -665,6 +664,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                     <option key={wf.id} value={wf.id}>{wf.name}</option>
                                                                 ))}
                                                             </select>
+                                                            <label className={`relative flex h-9 items-center justify-center gap-1.5 rounded-xl border text-[11px] font-black transition-colors cursor-pointer overflow-hidden ${representative.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                                                                <span className="material-symbols-outlined text-[15px]">{representative.preview_video_path ? 'movie' : 'upload'}</span>
+                                                                <span>{representative.preview_video_path ? '更换展示视频' : '上传展示视频'}</span>
+                                                                <input
+                                                                    type="file"
+                                                                    accept="video/mp4,video/webm,video/quicktime,video/*"
+                                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                    onChange={(e) => e.target.files?.[0] && handleSplashGroupPreviewVideoUpload(group, e.target.files[0])}
+                                                                    title="上传开屏模板展示视频"
+                                                                />
+                                                            </label>
                                                         </div>
                                                     </div>
                                                 );
@@ -834,7 +844,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                             </select>
                                                         </div>
 
-                                                        {/* 6. Delete Action */}
+                                                        {/* 6. Preview Video */}
+                                                        <div className="w-32">
+                                                            <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">展示视频</label>
+                                                            <label className={`relative flex h-8 items-center justify-center gap-1.5 rounded-lg border text-[10px] font-black transition-colors cursor-pointer overflow-hidden ${tpl.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                                                                <span className="material-symbols-outlined text-[14px]">{tpl.preview_video_path ? 'movie' : 'upload'}</span>
+                                                                <span>{tpl.preview_video_path ? '更换视频' : '上传视频'}</span>
+                                                                <input
+                                                                    type="file"
+                                                                    accept="video/mp4,video/webm,video/quicktime,video/*"
+                                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                    onChange={(e) => e.target.files?.[0] && handlePreviewVideoUpload(tpl.id, e.target.files[0])}
+                                                                    title="上传模板展示视频"
+                                                                />
+                                                            </label>
+                                                        </div>
+
+                                                        {/* 7. Delete Action */}
                                                         <button
                                                             onClick={() => handleDeleteTemplate(tpl.id)}
                                                             className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all active:scale-90 ml-auto"
@@ -1045,17 +1071,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <p className="text-xs text-slate-400 font-bold mt-1">（即将支持）</p>
                                             </button>
                                             <button
-                                                onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'roboneo' }))}
-                                                className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'roboneo'
-                                                    ? 'border-fuchsia-500 bg-fuchsia-50'
-                                                    : 'border-slate-200 hover:border-slate-300'
-                                                    }`}
-                                            >
-                                                <p className="text-sm font-bold text-slate-800">美图 RoboNeo</p>
-                                                <p className="text-xs text-slate-400 mt-1">美图自研图像大模型</p>
-                                                <p className="text-xs text-fuchsia-500 font-bold mt-1">企业级 API</p>
-                                            </button>
-                                            <button
                                                 onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'nanobanner' }))}
                                                 className={`p-4 rounded-xl border-2 text-left transition-all ${aiSettings.aiProvider === 'nanobanner'
                                                     ? 'border-red-500 bg-red-50'
@@ -1081,96 +1096,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
                                             />
                                             <p className="text-xs text-amber-500 mt-1.5">⚠️ ComfyUI 集成即将推出，当前选择将在有 GPU 服务器后生效</p>
-                                        </div>
-                                    )}
-
-                                    {/* 美图 RoboNeo 配置 */}
-                                    {aiSettings.aiProvider === 'roboneo' && (
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                    Meitu App Key
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    placeholder={aiSettings.roboneoApiKeyConfigured ? '已配置（输入新值可覆盖）' : '在此输入 App Key'}
-                                                    value={aiSettings.roboneoApiKey === '***configured***' ? '' : aiSettings.roboneoApiKey}
-                                                    onChange={e => {
-                                                        setAiSettings(prev => ({ ...prev, roboneoApiKey: e.target.value }));
-                                                        setTestStatus('idle');
-                                                    }}
-                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                    Meitu App Secret
-                                                </label>
-                                                <input
-                                                    type="password"
-                                                    placeholder={aiSettings.roboneoApiKeyConfigured ? '已配置（输入新值可覆盖）' : '在此输入 App Secret'}
-                                                    value={aiSettings.roboneoApiSecret === '***configured***' ? '' : aiSettings.roboneoApiSecret}
-                                                    onChange={e => {
-                                                        setAiSettings(prev => ({ ...prev, roboneoApiSecret: e.target.value }));
-                                                        setTestStatus('idle');
-                                                    }}
-                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 font-mono"
-                                                />
-                                            </div>
-
-                                            {/* 测试连接按钮 */}
-                                            <div className="mt-3 flex items-center gap-3">
-                                                <button
-                                                    onClick={handleTestConnection}
-                                                    disabled={testStatus === 'testing' || (!aiSettings.roboneoApiKey && !aiSettings.roboneoApiKeyConfigured) || (!aiSettings.roboneoApiSecret && !aiSettings.roboneoApiKeyConfigured)}
-                                                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {testStatus === 'testing' ? (
-                                                        <><span className="material-symbols-outlined text-[14px] animate-spin">sync</span>测试中...</>
-                                                    ) : (
-                                                        <><span className="material-symbols-outlined text-[14px]">wifi</span>测试连接</>
-                                                    )}
-                                                </button>
-
-                                                {/* 测试结果状态显示 */}
-                                                {testStatus === 'success' && (
-                                                    <span className="flex items-center gap-1 text-xs text-green-600 font-bold">
-                                                        <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                        {testMessage}
-                                                    </span>
-                                                )}
-                                                {testStatus === 'error' && (
-                                                    <span className="flex items-center gap-1 text-xs text-red-500 font-bold">
-                                                        <span className="material-symbols-outlined text-[14px]">error</span>
-                                                        {testMessage}
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* 扩图 Prompt 配置 */}
-                                            <div className="mt-4">
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                                    扩图 Prompt
-                                                </label>
-                                                <textarea
-                                                    rows={3}
-                                                    placeholder="例如：高级感背景，自然融合，高清细节"
-                                                    value={aiSettings.tongyiExpandPrompt ?? ''}
-                                                    onChange={e => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: e.target.value }))}
-                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 resize-none leading-relaxed"
-                                                />
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {PROMPT_PRESETS.map(preset => (
-                                                        <button
-                                                            key={preset.label}
-                                                            onClick={() => setAiSettings(prev => ({ ...prev, tongyiExpandPrompt: preset.value }))}
-                                                            className="px-3 py-1 bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-600 rounded-full text-xs font-bold transition-colors border border-fuchsia-200"
-                                                        >
-                                                            {preset.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
                                         </div>
                                     )}
 

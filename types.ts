@@ -15,6 +15,7 @@ export interface AdTemplate {
   workflow_id?: string | null;
   crop_overlay_path?: string | null;
   badge_overlay_path?: string | null;
+  preview_video_path?: string | null;
   // NOTE: 三平台开屏关联分组键（如 'dynamic', 'slide', 'twist', 'bubble', 'nonfull'）
   splashGroup?: string;
   // Per-template settings

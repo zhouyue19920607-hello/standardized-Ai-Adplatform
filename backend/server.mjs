@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
@@ -20,12 +21,38 @@ const PORT = process.env.PORT || 4000;
 const COMFYUI_BASE_URL = process.env.COMFYUI_BASE_URL || "http://127.0.0.1:8188";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
+async function loadLocalEnvFile() {
+  const envFilePath = path.join(ROOT_DIR, ".env.local");
+  try {
+    const content = await fs.readFile(envFilePath, "utf-8");
+    content.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const separatorIndex = trimmed.indexOf("=");
+      if (separatorIndex <= 0) return;
+      const key = trimmed.slice(0, separatorIndex).trim();
+      const rawValue = trimmed.slice(separatorIndex + 1).trim();
+      const value = rawValue.replace(/^['"]|['"]$/g, "");
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    });
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      console.warn("[env] failed to load .env.local:", err.message);
+    }
+  }
+}
+
+await loadLocalEnvFile();
+
 // NOTE: 生产部署时可通过 DATA_DIR / STORAGE_DIR 指向挂载卷，让访问统计、模板配置和上传资产跨容器重启保留。
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "data");
 const STORAGE_DIR = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : path.join(__dirname, "storage");
 const MASKS_DIR = path.join(STORAGE_DIR, "masks");
 const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
 const BADGES_DIR = path.join(STORAGE_DIR, "badges");
+const PREVIEWS_DIR = path.join(STORAGE_DIR, "previews");
 
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 const CREATIVE_TEMPLATES_FILE = path.join(DATA_DIR, "creative-templates.json");
@@ -47,13 +74,13 @@ const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "meiyan-break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "美颜-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "polymorphic-flip-card", groupId: "home", groupName: "首页创意模版", name: "多态翻卡", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900", enabled: true },
-  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "上方icon 600 x 335 x2 / 下方icon 288 x 315 x4 / 底导 1126 x 252", enabled: true }
+  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252", enabled: true }
 ];
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
 const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 // NOTE: 遇罩/裁剪层/角标路径单独存储，不随代码更新被覆盖
-// 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path } }
+// 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path, preview_video_path } }
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
 
 const getShanghaiDateKey = (date = new Date()) => {
@@ -162,7 +189,7 @@ async function ensureDataFiles() {
       { id: "mt-s-8", app: "美图秀秀", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
       { id: "mt-s-9", app: "美图秀秀", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
       { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "焦点视窗", checked: true, dimensions: "1126 x 2436" },
-      { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1126 x 2436" },
+      { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1440 x 2340" },
       { id: "mt-fe-1", app: "美图秀秀", category: "信息流", name: "一键配方图文", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-1", app: "美图秀秀", category: "icon/banner", name: "热推第三位", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920" },
@@ -231,6 +258,7 @@ async function ensureDataFiles() {
   await ensureDir(MASKS_DIR);
   await ensureDir(WORKFLOWS_DIR);
   await ensureDir(BADGES_DIR);
+  await ensureDir(PREVIEWS_DIR);
 }
 
 // ---- Multer 上传：遮罩 PNG & Workflow JSON ----
@@ -242,6 +270,8 @@ const storage = multer.diskStorage({
       cb(null, WORKFLOWS_DIR);
     } else if (file.fieldname === "image") {
       cb(null, BADGES_DIR);
+    } else if (file.fieldname === "video") {
+      cb(null, PREVIEWS_DIR);
     } else {
       cb(null, STORAGE_DIR);
     }
@@ -563,6 +593,47 @@ app.post("/api/templates/:id/badge-overlay", upload.single("image"), async (req,
   res.json(templates[index]);
 });
 
+// 模版展示视频上传 / 更新
+app.post("/api/templates/:id/preview-video", upload.single("video"), async (req, res) => {
+  const { id } = req.params;
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "缺少上传文件字段 'video'" });
+  }
+
+  const templates = await readJson(TEMPLATES_FILE, []);
+  const index = templates.findIndex(t => t.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Template not found" });
+  }
+
+  const ext = path.extname(file.originalname).toLowerCase() || ".mp4";
+  const stableFilename = `${id}_preview${ext}`;
+  const stablePath = path.join(PREVIEWS_DIR, stableFilename);
+
+  try {
+    await fs.rename(file.path, stablePath);
+  } catch (err) {
+    console.error("Rename preview video failed, fallback to original:", err);
+  }
+
+  const previewVideoPath = `/static/previews/${stableFilename}`;
+  templates[index] = {
+    ...templates[index],
+    preview_video_path: previewVideoPath
+  };
+  await writeJson(TEMPLATES_FILE, templates);
+
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  assetOverrides[id] = {
+    ...(assetOverrides[id] || {}),
+    preview_video_path: previewVideoPath
+  };
+  await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
+
+  res.json(templates[index]);
+});
+
 // ---- API：ComfyUI Workflow 管理 ----
 // Workflow 结构：{ id, name, description?, filePath, templateId? }
 app.get("/api/workflows", async (req, res) => {
@@ -709,6 +780,679 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     path: relativePath,
     url
   });
+});
+
+const AIGC_SIGN_ALGORITHM = "SDK-HMAC-SHA256";
+const AIGC_DEFAULT_TASK = "/v1/mtimage_expand_v4_async";
+const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactly, only extend the background outside the original image";
+const AIGC_TASKS = {
+  dispatcher: "/v1/dispatcher",
+  imageExpand: "/v1/mtimage_expand_v4_async",
+  textToVideo: "/v1/t2v_magic_async",
+  imageToVideo: "/v1/mtsdgen_video_async",
+  videoClip: "/v1/hook_videoclip_async",
+  videoExpand: "/v1/video_expand_v3_async"
+};
+
+function getAigcConfig() {
+  return {
+    ak: process.env.AIGC_AK || "",
+    sk: process.env.AIGC_SK || "",
+    biz: process.env.AIGC_BIZ || "ai-saap",
+    apiHost: (process.env.AIGC_API_HOST || "https://inference-api-pre.meitu.com").replace(/\/+$/, ""),
+    hostHeader: process.env.AIGC_HOST_HEADER || "",
+    task: process.env.AIGC_TASK || AIGC_DEFAULT_TASK,
+    maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
+    pollIntervalMs: Math.max(500, Number(process.env.AIGC_POLL_INTERVAL_MS || 2000))
+  };
+}
+
+function sha256Hex(value) {
+  return crypto.createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function hmacSha256Hex(secret, value) {
+  return crypto.createHmac("sha256", secret).update(value, "utf8").digest("hex");
+}
+
+function formatSdkDate(date = new Date()) {
+  return date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+function canonicalUri(pathname) {
+  return pathname.endsWith("/") ? pathname : `${pathname}/`;
+}
+
+function canonicalQuery(searchParams) {
+  return [...searchParams.entries()]
+    .sort(([aKey, aVal], [bKey, bVal]) => aKey.localeCompare(bKey) || aVal.localeCompare(bVal))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+}
+
+function signAigcRequest(url, method, headers, body, ak, sk) {
+  const parsed = new URL(url);
+  const signingHeaders = {
+    ...headers,
+    "X-Sdk-Date": headers["X-Sdk-Date"] || formatSdkDate()
+  };
+  const signedHeaderNames = Object.keys(signingHeaders).map(key => key.toLowerCase()).sort();
+  const loweredHeaders = Object.fromEntries(Object.entries(signingHeaders).map(([key, value]) => [key.toLowerCase(), String(value).trim()]));
+  const canonicalHeaders = signedHeaderNames.map(key => `${key}:${loweredHeaders[key]}`).join("\n");
+  const payloadHash = signingHeaders["X-Sdk-Content-Sha256"] || sha256Hex(body || "");
+  const canonicalRequest = [
+    method.toUpperCase(),
+    canonicalUri(parsed.pathname),
+    canonicalQuery(parsed.searchParams),
+    canonicalHeaders,
+    signedHeaderNames.join(";"),
+    payloadHash
+  ].join("\n");
+  const stringToSign = [
+    AIGC_SIGN_ALGORITHM,
+    signingHeaders["X-Sdk-Date"],
+    sha256Hex(canonicalRequest)
+  ].join("\n");
+  const signature = hmacSha256Hex(sk, stringToSign);
+  const authorization = `${AIGC_SIGN_ALGORITHM} Access=${ak}, SignedHeaders=${signedHeaderNames.join(";")}, Signature=${signature}`;
+  return {
+    ...signingHeaders,
+    Authorization: `Bearer ${Buffer.from(authorization, "utf8").toString("base64")}`
+  };
+}
+
+async function aigcJsonRequest(url, method, payload, config) {
+  const body = payload ? JSON.stringify(payload) : "";
+  const parsed = new URL(url);
+  const hostHeader = config.hostHeader || parsed.host;
+  const headers = signAigcRequest(
+    url,
+    method,
+    {
+      ...(payload ? { "Content-Type": "application/json" } : {}),
+      Host: hostHeader
+    },
+    body,
+    config.ak,
+    config.sk
+  );
+  const response = await axios.request({
+    url,
+    method,
+    data: payload ? body : undefined,
+    headers,
+    transformRequest: data => data,
+    timeout: 90000,
+    validateStatus: () => true
+  });
+  return response.data;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function toPositiveInt(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function normalizeExpandPixels(value) {
+  if (!value || typeof value !== "object") return null;
+  return {
+    left: Math.max(0, Math.round(Number(value.left || 0))),
+    right: Math.max(0, Math.round(Number(value.right || 0))),
+    top: Math.max(0, Math.round(Number(value.top || 0))),
+    bottom: Math.max(0, Math.round(Number(value.bottom || 0)))
+  };
+}
+
+async function getImageMetadataForUrl(imageUrl) {
+  if (imageUrl.startsWith("/static/")) {
+    const localPath = path.join(STORAGE_DIR, decodeURIComponent(imageUrl.replace(/^\/static\//, "")));
+    return sharp(localPath).metadata();
+  }
+  const response = await axios.get(imageUrl, {
+    responseType: "arraybuffer",
+    timeout: 60000,
+    maxContentLength: 30 * 1024 * 1024
+  });
+  return sharp(Buffer.from(response.data)).metadata();
+}
+
+async function resolveExpandPixels({ imageUrl, targetWidth, targetHeight, expandPixels }) {
+  const explicitPixels = normalizeExpandPixels(expandPixels);
+  const width = toPositiveInt(targetWidth);
+  const height = toPositiveInt(targetHeight);
+  if (!width && !height) {
+    return explicitPixels || { left: 100, right: 100, top: 100, bottom: 100 };
+  }
+
+  const metadata = await getImageMetadataForUrl(imageUrl);
+  if (!metadata.width || !metadata.height) {
+    throw new Error("无法读取输入图片尺寸");
+  }
+
+  const finalWidth = width || metadata.width;
+  const finalHeight = height || metadata.height;
+  if (finalWidth < metadata.width || finalHeight < metadata.height) {
+    throw new Error(`扩图目标尺寸不能小于原图尺寸，原图为 ${metadata.width}x${metadata.height}`);
+  }
+
+  const extraWidth = finalWidth - metadata.width;
+  const extraHeight = finalHeight - metadata.height;
+  const left = Math.floor(extraWidth / 2);
+  const top = Math.floor(extraHeight / 2);
+  return {
+    left,
+    right: extraWidth - left,
+    top,
+    bottom: extraHeight - top
+  };
+}
+
+function extractAigcResultMedia(statusData) {
+  const taskData = statusData?.data || {};
+  const result = taskData.result || {};
+  if (statusData?.data?.media_url) {
+    return [{
+      media_data: statusData.data.media_url,
+      media_type: statusData.data.media_type,
+      width: statusData.data.width,
+      height: statusData.data.height
+    }];
+  }
+  if (statusData?.media_url) {
+    return [{
+      media_data: statusData.media_url,
+      media_type: statusData.media_type,
+      width: statusData.width,
+      height: statusData.height
+    }];
+  }
+  return result.media_info_list || result.mediaInfoList || statusData?.data?.media_info_list || [];
+}
+
+function extractAigcDirectResultUrl(data) {
+  const mediaList = extractAigcResultMedia(data);
+  if (mediaList.length > 0) {
+    return mediaList[0].media_data || mediaList[0].media_url || "";
+  }
+  return data?.data?.url || data?.data?.result_url || data?.url || data?.result_url || "";
+}
+
+function mediaInfoFromUrl(url) {
+  return {
+    media_data: url,
+    media_profiles: { media_data_type: "url" }
+  };
+}
+
+function initImagesFromMediaInfoList(mediaInfoList = []) {
+  return mediaInfoList
+    .map(item => item?.media_data)
+    .filter(Boolean)
+    .map(url => ({
+      url,
+      profile: {
+        media_profiles: { media_data_type: "url" },
+        media_extra: {},
+        version: "v1"
+      }
+    }));
+}
+
+function getAigcTaskState(statusData) {
+  const taskData = statusData?.data || {};
+  if (statusData?.error_code === 29901) return "processing";
+  if (statusData?.error_code === 0 && extractAigcResultMedia(statusData).length > 0) return "success";
+  if (typeof taskData.status === "number") {
+    if (taskData.status === 10) return "success";
+    if ([2, 9].includes(taskData.status)) return "failed";
+    return "processing";
+  }
+  if (statusData?.code === 0 && extractAigcResultMedia(statusData).length > 0) return "success";
+  return "processing";
+}
+
+function inferAigcFileExt(resultUrl, mediaType, contentType = "") {
+  try {
+    const parsed = new URL(resultUrl);
+    const ext = path.extname(parsed.pathname).toLowerCase();
+    if (ext && ext.length <= 6) return ext;
+  } catch (err) {
+    // Ignore invalid URL parsing and fall back to media/content type.
+  }
+  const lowerType = `${mediaType || ""} ${contentType || ""}`.toLowerCase();
+  if (lowerType.includes("video") || lowerType.includes("mp4")) return ".mp4";
+  if (lowerType.includes("webp")) return ".webp";
+  if (lowerType.includes("jpeg") || lowerType.includes("jpg")) return ".jpg";
+  if (lowerType.includes("png")) return ".png";
+  return ".dat";
+}
+
+async function persistAigcResult(resultUrl, mediaType) {
+  if (!/^https?:\/\//i.test(resultUrl)) return null;
+  const response = await axios.get(resultUrl, {
+    responseType: "arraybuffer",
+    timeout: 120000,
+    maxContentLength: 200 * 1024 * 1024
+  });
+  await ensureDir(STORAGE_DIR);
+  const ext = inferAigcFileExt(resultUrl, mediaType, response.headers?.["content-type"]);
+  const filename = `aigc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}${ext}`;
+  const filePath = path.join(STORAGE_DIR, filename);
+  await fs.writeFile(filePath, Buffer.from(response.data));
+  return `/static/${filename}`;
+}
+
+async function submitAigcTask({
+  task,
+  params,
+  mediaInfoList = [],
+  extra,
+  taskType = "mtlab",
+  rspMediaType = "url",
+  initialDelayMs = 0,
+  pollIntervalMs,
+  maxPolls
+}) {
+  const config = getAigcConfig();
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+
+  const pushUrl = `${config.apiHost}/api/v1/push`;
+  const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
+  const taskPayload = {
+    ...(mediaInfoList.length ? { media_info_list: mediaInfoList } : {}),
+    ...params,
+    ...(extra ? { extra } : {})
+  };
+  const payload = {
+    task,
+    task_type: taskType,
+    biz: config.biz,
+    params: JSON.stringify(taskPayload),
+    rsp_media_type: rspMediaType
+  };
+  const initImages = initImagesFromMediaInfoList(mediaInfoList);
+  if (initImages.length > 0) payload.init_images = initImages;
+
+  const pushed = await aigcJsonRequest(pushUrl, "POST", payload, config);
+  if (pushed?.code !== 0) {
+    throw new Error(pushed?.message || pushed?.error_msg || "AIGC 任务投递失败");
+  }
+  const taskId = pushed?.data?.task_id;
+  if (!taskId) {
+    throw new Error("AIGC 投递成功但未返回 task_id");
+  }
+
+  if (initialDelayMs > 0) {
+    await sleep(initialDelayMs);
+  }
+
+  const pollingInterval = Math.max(500, Number(pollIntervalMs || config.pollIntervalMs));
+  const pollingMax = Math.max(1, Number(maxPolls || config.maxPolls));
+  for (let index = 0; index < pollingMax; index += 1) {
+    await sleep(pollingInterval);
+    const queryUrl = `${statusUrl}?${new URLSearchParams({ task_id: taskId }).toString()}`;
+    const statusData = await aigcJsonRequest(queryUrl, "GET", null, config);
+    const taskData = statusData?.data || {};
+    const mediaInfoList = extractAigcResultMedia(statusData);
+    const state = getAigcTaskState(statusData);
+    if (state === "success" && mediaInfoList.length > 0) {
+      const resultUrl = mediaInfoList[0].media_data || mediaInfoList[0].media_url || "";
+      let storedUrl = "";
+      try {
+        storedUrl = await persistAigcResult(resultUrl, mediaInfoList[0].media_type);
+      } catch (err) {
+        console.warn("[AIGC] result persistence failed, using remote URL:", err.message);
+      }
+      return {
+        taskId,
+        resultUrl: storedUrl || resultUrl,
+        remoteResultUrl: resultUrl,
+        mediaInfo: mediaInfoList[0],
+        raw: statusData
+      };
+    }
+    if (state === "failed") {
+      throw new Error(taskData.message || statusData?.message || statusData?.error_msg || "AIGC 任务处理失败");
+    }
+  }
+
+  throw new Error(`AIGC 任务超时未完成: ${taskId}`);
+}
+
+async function submitAigcDirectRequest(endpoint, payload) {
+  const config = getAigcConfig();
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+  const url = `${config.apiHost}${endpoint}`;
+  const raw = await aigcJsonRequest(url, "POST", payload, config);
+  const errorCode = raw?.error_code ?? raw?.code;
+  if (![undefined, 0].includes(errorCode)) {
+    throw new Error(raw?.error_msg || raw?.message || "AIGC 同步接口调用失败");
+  }
+  const remoteResultUrl = extractAigcDirectResultUrl(raw);
+  let resultUrl = remoteResultUrl;
+  if (remoteResultUrl) {
+    try {
+      resultUrl = await persistAigcResult(remoteResultUrl, raw?.data?.media_type);
+    } catch (err) {
+      console.warn("[AIGC] direct result persistence failed, using remote URL:", err.message);
+    }
+  }
+  return { resultUrl, remoteResultUrl, raw };
+}
+
+async function submitAigcExpandTask({ imageUrl, expandPixels, prompt, seed = -1, highQuality = true }) {
+  const params = {
+    parameter: {
+      rsp_media_type: "url",
+      free_expand_pixel: expandPixels,
+      high_quality_encode: Boolean(highQuality),
+      seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
+      extra_prompt: prompt || AIGC_DEFAULT_PROMPT
+    }
+  };
+  return submitAigcTask({
+    task: getAigcConfig().task,
+    params,
+    mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+  });
+}
+
+function validateRemoteOrStaticUrl(value, fieldName) {
+  if (!value || typeof value !== "string") return `${fieldName} 缺失`;
+  if (!/^https?:\/\//i.test(value) && !value.startsWith("/static/")) {
+    return `${fieldName} 必须是 http(s) URL 或本站 /static/ 路径`;
+  }
+  return "";
+}
+
+app.post("/api/aigc/image-expand", async (req, res) => {
+  try {
+    const { imageUrl, targetWidth, targetHeight, expandPixels, prompt, seed, highQuality } = req.body || {};
+    if (!imageUrl || typeof imageUrl !== "string") {
+      return res.status(400).json({ error: "缺少 imageUrl" });
+    }
+    if (!/^https?:\/\//i.test(imageUrl) && !imageUrl.startsWith("/static/")) {
+      return res.status(400).json({ error: "imageUrl 必须是 http(s) URL 或本站 /static/ 路径" });
+    }
+
+    const freeExpandPixel = await resolveExpandPixels({ imageUrl, targetWidth, targetHeight, expandPixels });
+    const result = await submitAigcExpandTask({
+      imageUrl,
+      expandPixels: freeExpandPixel,
+      prompt,
+      seed,
+      highQuality
+    });
+
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      task: getAigcConfig().task,
+      freeExpandPixel,
+      ...result
+    });
+  } catch (err) {
+    console.error("[AIGC Image Expand] failed:", err.message);
+    res.status(500).json({ error: "AI 扩图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/text-to-image", async (req, res) => {
+  try {
+    const { prompt, ratio = "16:9", seed = -1, baseModelName = "miracle_vision_edit" } = req.body || {};
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "缺少 prompt" });
+    }
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.dispatcher,
+      params: {
+        media_info_list: [],
+        parameter: {
+          base_model_name: baseModelName,
+          prompt,
+          rsp_media_type: "url",
+          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
+          extra_pipe_inputs: { output_image_ratio: ratio }
+        }
+      }
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
+  } catch (err) {
+    console.error("[AIGC Text To Image] failed:", err.message);
+    res.status(500).json({ error: "AI 文生图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/image-outpaint", async (req, res) => {
+  try {
+    const { imageUrl, prompt = AIGC_DEFAULT_PROMPT, targetRatio = "16:9", baseModelName = "miracle_vision_edit" } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.dispatcher,
+      params: {
+        parameter: {
+          base_model_name: baseModelName,
+          prompt,
+          rsp_media_type: "url",
+          extra_pipe_inputs: {
+            task_type: "outpainting",
+            target_ratio: targetRatio
+          }
+        }
+      },
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
+  } catch (err) {
+    console.error("[AIGC Image Outpaint] failed:", err.message);
+    res.status(500).json({ error: "AI 图像扩图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/smart-crop", async (req, res) => {
+  try {
+    const { imageUrl, targetWidth, targetHeight, baseModelName = "miracle_vision_edit" } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const width = toPositiveInt(targetWidth);
+    const height = toPositiveInt(targetHeight);
+    if (!width || !height) {
+      return res.status(400).json({ error: "targetWidth / targetHeight 必须是正整数" });
+    }
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.dispatcher,
+      params: {
+        parameter: {
+          base_model_name: baseModelName,
+          rsp_media_type: "url",
+          extra_pipe_inputs: {
+            task_type: "smart_crop",
+            target_width: width,
+            target_height: height
+          }
+        }
+      },
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
+  } catch (err) {
+    console.error("[AIGC Smart Crop] failed:", err.message);
+    res.status(500).json({ error: "AI 智能裁剪失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/text-to-video", async (req, res) => {
+  try {
+    const { prompt, text, ratio = "16:9" } = req.body || {};
+    const finalText = text || prompt;
+    if (!finalText || typeof finalText !== "string") {
+      return res.status(400).json({ error: "缺少 prompt/text" });
+    }
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.textToVideo,
+      params: {
+        media_info_list: [],
+        parameter: { text: finalText, ratio }
+      },
+      extra: {},
+      initialDelayMs: 10000,
+      pollIntervalMs: 5000
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.textToVideo, ...result });
+  } catch (err) {
+    console.error("[AIGC Text To Video] failed:", err.message);
+    res.status(500).json({ error: "AI 文生视频失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/image-to-video", async (req, res) => {
+  try {
+    const {
+      imageUrl,
+      prompt = "主体轻微运动，背景光影自然流动，保持商业海报质感",
+      width = 1280,
+      height = 720,
+      duration = 5,
+      fps = 24,
+      seed = -1,
+      baseModelName = "miracle-vision-video-i2v_5b-720p-ref-beta1.zip"
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.imageToVideo,
+      params: {
+        parameter: {
+          base_model_name: baseModelName,
+          prompt,
+          rsp_media_type: "url",
+          height: toPositiveInt(height) || 720,
+          width: toPositiveInt(width) || 1280,
+          duration: toPositiveInt(duration) || 5,
+          fps: toPositiveInt(fps) || 24,
+          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1
+        }
+      },
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      initialDelayMs: 10000,
+      pollIntervalMs: 5000
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.imageToVideo, ...result });
+  } catch (err) {
+    console.error("[AIGC Image To Video] failed:", err.message);
+    res.status(500).json({ error: "AI 图生视频失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/video-expand", async (req, res) => {
+  try {
+    const {
+      videoUrl,
+      targetWidth = 1920,
+      targetHeight = 1080,
+      r_w_left = 0.25,
+      r_w_right = 0.25,
+      r_h_up = 0,
+      r_h_down = 0,
+      prompt = "扩展画面背景，保持动态连贯",
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.videoExpand,
+      params: {
+        parameter: {
+          target_width: toPositiveInt(targetWidth) || 1920,
+          target_height: toPositiveInt(targetHeight) || 1080,
+          r_w_left: Number(r_w_left) || 0,
+          r_w_right: Number(r_w_right) || 0,
+          r_h_up: Number(r_h_up) || 0,
+          r_h_down: Number(r_h_down) || 0,
+          prompt,
+          rsp_media_type: "url"
+        }
+      },
+      mediaInfoList: [mediaInfoFromUrl(videoUrl)],
+      initialDelayMs: 10000,
+      pollIntervalMs: 5000
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, ...result });
+  } catch (err) {
+    console.error("[AIGC Video Expand] failed:", err.message);
+    res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/video-clip", async (req, res) => {
+  try {
+    const { videoIdOrUrl, clipVideoLength = "10" } = req.body || {};
+    if (!videoIdOrUrl || typeof videoIdOrUrl !== "string") {
+      return res.status(400).json({ error: "缺少 videoIdOrUrl" });
+    }
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.videoClip,
+      params: {
+        media_info_list: [],
+        parameter: {
+          ID: videoIdOrUrl,
+          clip_video_length: String(clipVideoLength),
+          rsp_media_type: "url"
+        }
+      },
+      initialDelayMs: 10000,
+      pollIntervalMs: 5000
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoClip, ...result });
+  } catch (err) {
+    console.error("[AIGC Video Clip] failed:", err.message);
+    res.status(500).json({ error: "AI 视频裁剪失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/image-composition", async (req, res) => {
+  try {
+    const {
+      backgroundPicName,
+      foregroundPicUrl,
+      rectX = 0,
+      rectY = 0,
+      rectW,
+      rectH,
+      type = 1
+    } = req.body || {};
+    if (!backgroundPicName || typeof backgroundPicName !== "string") {
+      return res.status(400).json({ error: "缺少 backgroundPicName" });
+    }
+    const validationError = validateRemoteOrStaticUrl(foregroundPicUrl, "foregroundPicUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const width = toPositiveInt(rectW);
+    const height = toPositiveInt(rectH);
+    if (!width || !height) {
+      return res.status(400).json({ error: "rectW / rectH 必须是正整数" });
+    }
+    const result = await submitAigcDirectRequest("/v1/alphamix", {
+      backgroundPicName,
+      foregroundPicUrl,
+      rectX: Math.round(Number(rectX) || 0),
+      rectY: Math.round(Number(rectY) || 0),
+      rectW: width,
+      rectH: height,
+      type: Math.round(Number(type) || 1)
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: "/v1/alphamix", ...result });
+  } catch (err) {
+    console.error("[AIGC Image Composition] failed:", err.message);
+    res.status(500).json({ error: "AI 智能排版失败", details: err.message });
+  }
 });
 
 // ---- API：ComfyUI 调用处理 ----
@@ -2061,8 +2805,8 @@ async function cleanupStorage() {
     const expiry = 60 * 60 * 1000; // 1 小时
 
     for (const file of files) {
-      // 排除蒙版、工作流和默认角标目录
-      if (file === "masks" || file === "workflows" || file === "badges") continue;
+      // 排除蒙版、工作流、默认角标和模板展示视频目录
+      if (file === "masks" || file === "workflows" || file === "badges" || file === "previews") continue;
 
       const filePath = path.join(STORAGE_DIR, file);
       const stats = await fs.stat(filePath);
