@@ -53,6 +53,7 @@ const MASKS_DIR = path.join(STORAGE_DIR, "masks");
 const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
 const BADGES_DIR = path.join(STORAGE_DIR, "badges");
 const PREVIEWS_DIR = path.join(STORAGE_DIR, "previews");
+const AIGC_INPUTS_DIR = path.join(STORAGE_DIR, "aigc-inputs");
 
 const TEMPLATES_FILE = path.join(DATA_DIR, "templates.json");
 const CREATIVE_TEMPLATES_FILE = path.join(DATA_DIR, "creative-templates.json");
@@ -259,6 +260,7 @@ async function ensureDataFiles() {
   await ensureDir(WORKFLOWS_DIR);
   await ensureDir(BADGES_DIR);
   await ensureDir(PREVIEWS_DIR);
+  await ensureDir(AIGC_INPUTS_DIR);
 }
 
 // ---- Multer 上传：遮罩 PNG & Workflow JSON ----
@@ -1007,20 +1009,50 @@ function initImagesFromMediaInfoList(mediaInfoList = []) {
     }));
 }
 
-function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
-  return mediaInfoList.map(item => {
+async function standardizeStaticImageForAigc(staticUrl) {
+  const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
+  const sourcePath = path.resolve(STORAGE_DIR, relativePath);
+  const storageRoot = path.resolve(STORAGE_DIR);
+  if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
+    throw new Error("AIGC 素材路径不在允许的静态目录内");
+  }
+
+  const parsed = path.parse(sourcePath);
+  const ext = parsed.ext.toLowerCase();
+  if (![".jpg", ".jpeg", ".png", ".webp", ".avif", ".tif", ".tiff"].includes(ext)) {
+    return staticUrl;
+  }
+
+  await fs.access(sourcePath);
+  await ensureDir(AIGC_INPUTS_DIR);
+  const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
+  await sharp(sourcePath)
+    .rotate()
+    .ensureAlpha()
+    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .toFile(outputPath);
+  return `/static/aigc-inputs/${outputFilename}`;
+}
+
+async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
+  const normalized = [];
+  for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
-    if (typeof mediaData === "string" && mediaData.startsWith("/static/") && config.publicBaseUrl) {
-      return {
-        ...item,
-        media_data: `${config.publicBaseUrl}${mediaData}`
-      };
-    }
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
+      const standardizedMediaData = await standardizeStaticImageForAigc(mediaData);
+      if (config.publicBaseUrl) {
+        normalized.push({
+          ...item,
+          media_data: `${config.publicBaseUrl}${standardizedMediaData}`
+        });
+        continue;
+      }
       throw new Error("AI 图生图/适配需要美图可访问的素材公网 URL。请在上线环境配置 AIGC_PUBLIC_BASE_URL，或传入 http(s) 图片地址。");
     }
-    return item;
-  });
+    normalized.push(item);
+  }
+  return normalized;
 }
 
 function getAigcTaskState(statusData) {
@@ -1213,7 +1245,7 @@ async function submitAigcTask({
 
   const pushUrl = `${config.apiHost}/api/v1/push`;
   const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
-  const normalizedMediaInfoList = normalizeMediaInfoListForAigc(mediaInfoList, config);
+  const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(mediaInfoList, config);
   const taskPayload = {
     ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {}),
     ...params,
