@@ -37,6 +37,8 @@ npm run server
 
 真实密钥不要提交到 GitHub 或美图谷仓。请在 Matrix 服务的环境变量里配置：
 
+美图谷仓部署时，可按 [美图谷仓环境变量配置说明](docs/meitu-gucang-env.md) 填写。
+
 ```bash
 AIGC_AK=你的开放平台AK
 AIGC_SK=你的开放平台SK
