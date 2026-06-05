@@ -799,7 +799,7 @@ function getAigcConfig() {
     ak: process.env.AIGC_AK || "",
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
-    apiHost: (process.env.AIGC_API_HOST || "https://inference-api-pre.meitu.com").replace(/\/+$/, ""),
+    apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
     task: process.env.AIGC_TASK || AIGC_DEFAULT_TASK,
     maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
@@ -824,13 +824,12 @@ function canonicalUri(pathname) {
 }
 
 function canonicalQuery(searchParams) {
-  return [...searchParams.entries()]
-    .sort(([aKey, aVal], [bKey, bVal]) => aKey.localeCompare(bKey) || aVal.localeCompare(bVal))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join("&");
+  const params = new URLSearchParams(searchParams);
+  params.sort();
+  return params.toString();
 }
 
-function signAigcRequest(url, method, headers, body, ak, sk) {
+function signAigcRequest(url, method, headers, body, config) {
   const parsed = new URL(url);
   const signingHeaders = {
     ...headers,
@@ -853,8 +852,8 @@ function signAigcRequest(url, method, headers, body, ak, sk) {
     signingHeaders["X-Sdk-Date"],
     sha256Hex(canonicalRequest)
   ].join("\n");
-  const signature = hmacSha256Hex(sk, stringToSign);
-  const authorization = `${AIGC_SIGN_ALGORITHM} Access=${ak}, SignedHeaders=${signedHeaderNames.join(";")}, Signature=${signature}`;
+  const signature = hmacSha256Hex(config.sk, stringToSign);
+  const authorization = `${AIGC_SIGN_ALGORITHM} Access=${config.ak}, SignedHeaders=${signedHeaderNames.join(";")}, Signature=${signature}`;
   return {
     ...signingHeaders,
     Authorization: `Bearer ${Buffer.from(authorization, "utf8").toString("base64")}`
@@ -870,11 +869,11 @@ async function aigcJsonRequest(url, method, payload, config) {
     method,
     {
       ...(payload ? { "Content-Type": "application/json" } : {}),
+      "X-Sdk-Content-Sha256": "UNSIGNED-PAYLOAD",
       Host: hostHeader
     },
     body,
-    config.ak,
-    config.sk
+    config
   );
   const response = await axios.request({
     url,
@@ -970,7 +969,7 @@ function extractAigcResultMedia(statusData) {
       height: statusData.height
     }];
   }
-  return result.media_info_list || result.mediaInfoList || statusData?.data?.media_info_list || [];
+  return result.media_info_list || result.mediaInfoList || result.data?.media_info_list || statusData?.data?.media_info_list || [];
 }
 
 function extractAigcDirectResultUrl(data) {
@@ -1008,7 +1007,7 @@ function getAigcTaskState(statusData) {
   if (statusData?.error_code === 0 && extractAigcResultMedia(statusData).length > 0) return "success";
   if (typeof taskData.status === "number") {
     if (taskData.status === 10) return "success";
-    if ([2, 9].includes(taskData.status)) return "failed";
+    if (taskData.status === 2) return "failed";
     return "processing";
   }
   if (statusData?.code === 0 && extractAigcResultMedia(statusData).length > 0) return "success";
@@ -1081,7 +1080,7 @@ async function submitAigcTask({
 
   const pushed = await aigcJsonRequest(pushUrl, "POST", payload, config);
   if (pushed?.code !== 0) {
-    throw new Error(pushed?.message || pushed?.error_msg || "AIGC 任务投递失败");
+    throw new Error(pushed?.message || pushed?.error_msg || `AIGC 任务投递失败: ${JSON.stringify(pushed)}`);
   }
   const taskId = pushed?.data?.task_id;
   if (!taskId) {
@@ -1118,7 +1117,8 @@ async function submitAigcTask({
       };
     }
     if (state === "failed") {
-      throw new Error(taskData.message || statusData?.message || statusData?.error_msg || "AIGC 任务处理失败");
+      const resultError = taskData.result?.msg || taskData.result?.data?.ErrorMsg || taskData.result?.mtlab_res?.ErrorMsg || "";
+      throw new Error(resultError || taskData.message || statusData?.message || statusData?.error_msg || `AIGC task failed: ${JSON.stringify(statusData)}`);
     }
   }
 
@@ -1666,8 +1666,6 @@ app.get("/api/settings", async (req, res) => {
     aiEnhancedMode: false,
     aiProvider: "tongyi",
     tongyiApiKey: "",
-    roboneoApiKey: "",
-    roboneoApiSecret: "",
     nanobannerApiKey: "",
     nanobannerBaseUrl: "",
     comfyuiUrl: "http://127.0.0.1:8188"
@@ -1677,9 +1675,6 @@ app.get("/api/settings", async (req, res) => {
     ...settings,
     tongyiApiKey: settings.tongyiApiKey ? "***configured***" : "",
     tongyiApiKeyConfigured: !!settings.tongyiApiKey,
-    roboneoApiKey: settings.roboneoApiKey ? "***configured***" : "",
-    roboneoApiSecret: settings.roboneoApiSecret ? "***configured***" : "",
-    roboneoApiKeyConfigured: !!settings.roboneoApiKey,
     nanobannerApiKey: settings.nanobannerApiKey ? "***configured***" : "",
     nanobannerBaseUrl: settings.nanobannerBaseUrl ? "***configured***" : "",
     nanobannerApiKeyConfigured: !!settings.nanobannerApiKey
@@ -1692,8 +1687,6 @@ app.put("/api/settings", async (req, res) => {
     aiEnhancedMode: false,
     aiProvider: "tongyi",
     tongyiApiKey: "",
-    roboneoApiKey: "",
-    roboneoApiSecret: "",
     nanobannerApiKey: "",
     nanobannerBaseUrl: "",
     comfyuiUrl: "http://127.0.0.1:8188"
@@ -1702,12 +1695,6 @@ app.put("/api/settings", async (req, res) => {
   // NOTE: 如果前端传来 "***configured***" 说明用户没改 key，保持原值
   if (payload.tongyiApiKey === "***configured***") {
     payload.tongyiApiKey = current.tongyiApiKey;
-  }
-  if (payload.roboneoApiKey === "***configured***") {
-    payload.roboneoApiKey = current.roboneoApiKey;
-  }
-  if (payload.roboneoApiSecret === "***configured***") {
-    payload.roboneoApiSecret = current.roboneoApiSecret;
   }
   if (payload.nanobannerApiKey === "***configured***") {
     payload.nanobannerApiKey = current.nanobannerApiKey;
@@ -1929,81 +1916,6 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey,
   throw new Error(`[TongyiOutpaint] 超时：任务 ${taskId} 在 ${maxWait / 1000} 秒内未完成`);
 }
 
-/**
- * 调用美图 RoboNeo (MiracleVision) 进行智能扩图
- * 官方文档: https://ai.meitu.com/ (画面扩展/智能扩图)
- *
- * @param {string} inputImagePath - 本地图片路径
- * @param {number} targetWidth - 目标宽度
- * @param {number} targetHeight - 目标高度
- * @param {string} apiKey - App Key
- * @param {string} apiSecret - App Secret
- * @param {string} customPrompt - 可选 Prompt
- */
-async function roboneoOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, apiSecret, customPrompt = "") {
-  try {
-    // 1. 读取并转 base64
-    const imageBuffer = await fs.readFile(inputImagePath);
-    const base64Data = imageBuffer.toString("base64");
-    const ext = path.extname(inputImagePath).substring(1).toLowerCase() || "jpg";
-
-    // 2. 构造请求
-    // NOTE: 使用美图 AI 开放平台标准扩图接口
-    const apiURL = "https://openapi.mtlab.meitu.com/v1/image_expansion";
-
-    const payload = {
-      api_key: apiKey,
-      api_secret: apiSecret,
-      media_info_list: [
-        {
-          media_data: base64Data,
-          media_profiles: {
-            media_data_type: (ext === "png" || ext === "webp") ? ext : "jpg"
-          }
-        }
-      ],
-      parameter: {
-        rsp_media_type: "jpg",
-        target_width: targetWidth,
-        target_height: targetHeight,
-        // RoboNeo 支持 Prompt 引导背景生成
-        prompt: customPrompt || "自然扩展背景，高清质量，环境融合"
-      }
-    };
-
-    console.log(`[RoboNeoOutpaint] 正在调用美图 API: ${targetWidth}x${targetHeight}...`);
-    const response = await axios.post(apiURL, payload, { timeout: 60000 });
-    const data = response.data;
-
-    // 3. 结果处理
-    if (data.media_info_list && data.media_info_list[0]?.media_data) {
-      const outBuffer = Buffer.from(data.media_info_list[0].media_data, "base64");
-      const outFilename = `roboneo_out_${Date.now()}.jpg`;
-      const outPath = path.join(STORAGE_DIR, outFilename);
-      await fs.writeFile(outPath, outBuffer);
-
-      console.log(`[RoboNeoOutpaint] 完成! 已保存至 ${outPath}`);
-      return {
-        url: `/static/${outFilename}`,
-        width: targetWidth,
-        height: targetHeight,
-        size: outBuffer.byteLength
-      };
-    } else {
-      const errorMsg = data.error_message || data.msg || JSON.stringify(data);
-      throw new Error(`美图 RoboNeo API 响应异常: ${errorMsg}`);
-    }
-  } catch (err) {
-    if (err.response) {
-      console.error("[RoboNeoOutpaint] 接口报错:", err.response.data);
-      throw new Error(`美图 API 报错: ${err.response.data.error_message || err.response.statusText}`);
-    }
-  }
-}
-
-/**
- * 使用 Nano Banner (兼容 OpenAI 格式) 进行生成式扩图/生成
- */
 async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, baseUrl, customPrompt = "") {
   try {
     console.log(`[NanoBanner] 开始处理: ${targetWidth}x${targetHeight}...`);
@@ -2376,40 +2288,6 @@ app.post("/api/tongyi/test", async (req, res) => {
 });
 
 
-app.post("/api/roboneo/test", async (req, res) => {
-  try {
-    const settings = await readJson(SETTINGS_FILE, { roboneoApiKey: "", roboneoApiSecret: "" });
-    const apiKey = req.body?.apiKey || settings.roboneoApiKey;
-    const apiSecret = req.body?.apiSecret || settings.roboneoApiSecret;
-
-    if (!apiKey || apiKey === "***configured***" || !apiSecret || apiSecret === "***configured***") {
-      return res.status(400).json({ ok: false, error: "未配置 Meitu App Key 或 App Secret" });
-    }
-
-    try {
-      await axios.post("https://openapi.mtlab.meitu.com/v1/image_expansion", {
-        api_key: apiKey,
-        api_secret: apiSecret,
-        media_info_list: []
-      }, { timeout: 10000 });
-    } catch (apiErr) {
-      const status = apiErr.response?.status;
-      const data = apiErr.response?.data;
-      if (status === 401 || status === 403 || data?.error_code === 10001) {
-        return res.status(status || 401).json({ ok: false, error: "App Key 或 App Secret 无效" });
-      }
-      if (data && (data.error_code || data.msg)) {
-        return res.json({ ok: true, message: "美图 RoboNeo 身份认证成功，服务连接正常" });
-      }
-    }
-    return res.json({ ok: true, message: "美图 RoboNeo 连通性测试通过" });
-  } catch (err) {
-    console.error("[RoboNeoTest] 连通性测试失败:", err.message);
-    return res.status(500).json({ ok: false, error: `连接失败: ${err.message}` });
-  }
-});
-
-
 app.post("/api/nanobanner/test", async (req, res) => {
   try {
     const settings = await readJson(SETTINGS_FILE, { nanobannerApiKey: "", nanobannerBaseUrl: "" });
@@ -2518,9 +2396,7 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     const settings = await readJson(SETTINGS_FILE, {
       aiEnhancedMode: false,
       aiProvider: "tongyi",
-      tongyiApiKey: "",
-      roboneoApiKey: "",
-      roboneoApiSecret: ""
+      tongyiApiKey: ""
     });
     console.log(`[SmartCrop DEBUG] settings.aiEnhancedMode=${settings.aiEnhancedMode}, aiProvider=${settings.aiProvider}, hasKey=${!!settings.tongyiApiKey}, keyLen=${settings.tongyiApiKey?.length}`);
     if (settings.aiEnhancedMode && settings.aiProvider === "tongyi" && settings.tongyiApiKey) {
@@ -2592,62 +2468,6 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
       } catch (aiErr) {
         console.error("[SmartCrop] 通义万象 Outpaint 失败，回退到常规裁剪:", aiErr.message);
         // NOTE: AI 失败后自动降级到常规裁剪，保证服务可用性
-      }
-    } else if (settings.aiEnhancedMode && settings.aiProvider === "roboneo" && settings.roboneoApiKey && settings.roboneoApiSecret) {
-      try {
-        console.log(`[SmartCrop] AI 增强模式开启，使用美图 RoboNeo Outpaint: ${targetWidth}x${targetHeight}`);
-        const aiPrompt = settings.tongyiExpandPrompt || "高级感背景，自然融合，高清细节";
-        const aiResult = await roboneoOutpaint(file.path, targetWidth, targetHeight, settings.roboneoApiKey, settings.roboneoApiSecret, aiPrompt);
-
-        // NOTE: 复用通义万象的后处理逻辑：读取 AI 输出实际尺寸，再进行目标尺寸的精确缩放与压缩
-        const aiRawPath = path.join(STORAGE_DIR, path.basename(aiResult.url));
-        const aiMeta = await sharp(aiRawPath).metadata();
-        const aiWidth = aiMeta.width;
-        const aiHeight = aiMeta.height;
-        console.log(`[SmartCrop] RoboNeo 输出实际尺寸: ${aiWidth}x${aiHeight}，目标: ${targetWidth}x${targetHeight}`);
-
-        const basename = path.basename(file.originalname, path.extname(file.originalname));
-        const outputFilename = `ai_processed_rb_${Date.now()}_${basename}.jpg`;
-        const outputPath = path.join(STORAGE_DIR, outputFilename);
-
-        const maxSizeBytes = limitKB * 1024;
-        let quality = 85;
-        let buffer;
-
-        // NOTE: 比例校验，决定是 fill 还是 cover
-        const aiAspect = aiWidth / aiHeight;
-        const targetAspect = targetWidth / targetHeight;
-        const fitStrategy = (Math.abs(aiAspect - targetAspect) < 0.05) ? 'fill' : 'cover';
-
-        while (quality >= 10) {
-          buffer = await sharp(aiRawPath)
-            .resize({
-              width: targetWidth,
-              height: targetHeight,
-              fit: fitStrategy,
-              position: 'center',
-              kernel: sharp.kernel.lanczos3
-            })
-            .jpeg({ quality, mozjpeg: true })
-            .toBuffer();
-          if (buffer.length <= maxSizeBytes) break;
-          quality -= 5;
-        }
-
-        await fs.writeFile(outputPath, buffer);
-        fs.unlink(aiRawPath).catch(() => { });
-
-        return res.json({
-          ok: true,
-          url: `/static/${outputFilename}`,
-          width: targetWidth,
-          height: targetHeight,
-          sizeKB: (buffer.length / 1024).toFixed(2),
-          message: `美图 RoboNeo AI 增强完成`,
-          aiEnhanced: true
-        });
-      } catch (aiErr) {
-        console.error("[SmartCrop] 美图 RoboNeo Outpaint 失败，回退到常规裁剪:", aiErr.message);
       }
     } else if (settings.aiEnhancedMode && settings.aiProvider === "nanobanner" && settings.nanobannerApiKey) {
       try {

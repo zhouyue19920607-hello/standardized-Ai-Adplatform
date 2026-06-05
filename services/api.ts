@@ -250,12 +250,9 @@ export const composeImageWithAigc = async (payload: {
 // NOTE: 系统全局设置（AI 增强模式）读取/保存
 export interface SystemSettings {
     aiEnhancedMode: boolean;
-    aiProvider: 'tongyi' | 'comfyui' | 'roboneo' | 'nanobanner';
+    aiProvider: 'tongyi' | 'comfyui' | 'nanobanner';
     tongyiApiKey: string;
     tongyiApiKeyConfigured?: boolean;
-    roboneoApiKey: string;
-    roboneoApiSecret: string;
-    roboneoApiKeyConfigured?: boolean;
     nanobannerApiKey: string;
     nanobannerBaseUrl: string;
     nanobannerApiKeyConfigured?: boolean;
@@ -334,17 +331,6 @@ export const testTongyiConnection = async (apiKey?: string): Promise<{ ok: boole
     const response = await api.post<{ ok: boolean; message?: string; error?: string; quota?: string }>(
         '/tongyi/test',
         apiKey ? { apiKey } : {}
-    );
-    return response.data;
-};
-
-/**
- * 测试美图 RoboNeo API Key 连通性
- */
-export const testRoboneoConnection = async (apiKey?: string, apiSecret?: string): Promise<{ ok: boolean; message?: string; error?: string }> => {
-    const response = await api.post<{ ok: boolean; message?: string; error?: string }>(
-        '/roboneo/test',
-        (apiKey && apiSecret) ? { apiKey, apiSecret } : {}
     );
     return response.data;
 };

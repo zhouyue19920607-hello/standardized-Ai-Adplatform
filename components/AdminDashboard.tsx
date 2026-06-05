@@ -24,8 +24,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         aiEnhancedMode: false,
         aiProvider: 'nanobanner',
         tongyiApiKey: '',
-        roboneoApiKey: '',
-        roboneoApiSecret: '',
         nanobannerApiKey: '',
         nanobannerBaseUrl: '',
         comfyuiUrl: 'http://127.0.0.1:8188'
@@ -48,7 +46,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         // NOTE: 首次加载时拉取 AI 增强设置
         getSettings().then(s => setAiSettings({
             ...s,
-            aiProvider: s.aiProvider === 'tongyi' || s.aiProvider === 'roboneo' ? 'nanobanner' : s.aiProvider,
+            aiProvider: s.aiProvider === 'tongyi' ? 'nanobanner' : s.aiProvider,
         })).catch(console.error);
     }, []);
 
