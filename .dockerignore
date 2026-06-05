@@ -3,6 +3,7 @@ dist
 backend/storage/*
 !backend/storage/.gitkeep
 backend/data/*.json
+!backend/data/templates.json
 *.log
 .git
 .env*
