@@ -8,6 +8,18 @@ export const api = axios.create({
     baseURL: API_URL,
 });
 
+api.interceptors.response.use(
+    response => response,
+    error => {
+        const data = error?.response?.data;
+        const detail = data?.details || data?.error || data?.message;
+        if (detail) {
+            error.message = detail;
+        }
+        return Promise.reject(error);
+    }
+);
+
 export const getTemplates = async (): Promise<AdTemplate[]> => {
     const response = await api.get<AdTemplate[]>('/templates');
     return response.data;
@@ -207,6 +219,7 @@ export const smartCropImageWithAigc = async (payload: {
     imageUrl: string;
     targetWidth: number;
     targetHeight: number;
+    prompt?: string;
     baseModelName?: string;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/smart-crop', payload);

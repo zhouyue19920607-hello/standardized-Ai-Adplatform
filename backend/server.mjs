@@ -1434,7 +1434,7 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
 
 app.post("/api/aigc/smart-crop", async (req, res) => {
   try {
-    const { imageUrl, targetWidth, targetHeight, baseModelName = "miracle_vision_edit" } = req.body || {};
+    const { imageUrl, targetWidth, targetHeight, prompt, baseModelName = "miracle_vision_edit" } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
     const width = toPositiveInt(targetWidth);
@@ -1447,6 +1447,7 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
       params: {
         parameter: {
           base_model_name: baseModelName,
+          ...(prompt ? { prompt } : {}),
           rsp_media_type: "url",
           extra_pipe_inputs: {
             task_type: "smart_crop",
