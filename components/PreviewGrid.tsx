@@ -593,6 +593,27 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                   <span>对于<strong>焦点视窗</strong>，支持智能取色功能以及手动精准调色配置。</span>
                 </li>
               </ul>
+              <div className="rounded-xl border border-blue-100/80 bg-white/70 px-4 py-3">
+                <p className="text-[11px] font-black text-slate-600 mb-2">生成预览工具</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-[11px] font-bold text-slate-500 leading-snug">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-blue-400 shrink-0">visibility</span>
+                    <span>查看不同平台交互样式</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-blue-400 shrink-0">crop</span>
+                    <span>查看开屏裁剪区域</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-blue-400 shrink-0">filter_list</span>
+                    <span>手动输入跳转文案</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-blue-400 shrink-0">download</span>
+                    <span>单独下载当前预览画面</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Situation 2 */}
@@ -609,11 +630,11 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <ul className="space-y-3 text-[12px] text-slate-500 leading-relaxed pt-2">
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-[16px] text-purple-400 shrink-0">smart_toy</span>
-                  <span>开启<strong>「AI 智能增强」</strong>功能后，系统将根据预设的 MR 规范进行<strong>智能排版与扩图</strong>。</span>
+                  <span>当素材尺寸不符合当前模板，或一张图片需要适配多个模板时，系统会提示使用<strong> AI 适配</strong>。</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-[16px] text-purple-400 shrink-0">aspect_ratio</span>
-                  <span>AI 会自动调整或补全画面，输出完美对齐安全区且尺寸合规的广告素材。</span>
+                  <span>AI 仅在确认后参与扩图、裁切、背景补全、主体位置调整、安全区避让与智能排版。</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="material-symbols-outlined text-[16px] text-rose-400 shrink-0">warning</span>

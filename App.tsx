@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, incrementTemplateUsage, reportVisit } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, smartCropImageWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -15,6 +15,51 @@ import fallbackTemplates from './backend/data/templates.json';
 
 const HEADER_HEIGHT = 73;
 const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
+
+const parseTemplateDimensions = (value?: string) => {
+  const match = value?.match(/(\d+)\s*x\s*(\d+)/i);
+  if (!match) return null;
+  return { width: Number(match[1]), height: Number(match[2]) };
+};
+
+const getTemplateOutputDimensions = (template: AdTemplate) => {
+  const isSplash = template.category === '开屏';
+  const isWink = template.app === 'wink';
+  const isMeiyan = template.app === '美颜';
+  const focalHeight = isWink ? 1410 : (isMeiyan ? 1128 : 900);
+  const isStaticFocal = template.category === '焦点视窗' && template.name.includes('静态') && !template.name.includes('沉浸式');
+  const isDynamicFocal = template.category === '焦点视窗' && (['mt-f-1', 'my-f-1', 'wk-f-1'].includes(template.id) || template.name.includes('动态')) && !template.name.includes('沉浸式');
+  const isImmersive = template.category === '焦点视窗' && template.name.includes('沉浸式');
+  const isNonFullscreenSplash = template.id === 'mt-s-5' || template.id === 'mt-s-6' || template.name.includes('非全屏');
+  const isHotRecommend = template.id === 'mt-ib-1';
+  const isHotSearch = template.id === 'mt-ib-2';
+  const isTopicBg = template.id === 'mt-ib-3';
+  const isTopicBanner = template.id === 'mt-ib-4';
+  const isScorePopup = template.id === 'mt-p-1';
+  const isHomePopup = template.id === 'mt-p-2' || template.id === 'mt-p-3';
+  const isRecipeContent = template.id === 'mt-fe-1';
+
+  if (isSplash) return { width: 1440, height: isNonFullscreenSplash ? 1938 : 2340 };
+  if (isImmersive) return { width: 1440, height: 2340 };
+  if (isStaticFocal || isDynamicFocal) return { width: isMeiyan ? 1284 : 1126, height: focalHeight };
+  if (isHotRecommend || isHomePopup || isRecipeContent) return { width: 720, height: 960 };
+  if (isScorePopup) return { width: 960, height: 1440 };
+  if (isTopicBg) return { width: 1126, height: 640 };
+  if (isTopicBanner) return { width: 1029, height: 288 };
+  if (isHotSearch) return { width: 156, height: 156 };
+  return parseTemplateDimensions(template.dimensions);
+};
+
+const isRawImageMatchingTemplate = (raw: RawFile, template: AdTemplate) => {
+  const target = getTemplateOutputDimensions(template);
+  return Boolean(
+    raw.file.type.startsWith('image/') &&
+    raw.imageDimensions &&
+    target &&
+    raw.imageDimensions.width === target.width &&
+    raw.imageDimensions.height === target.height
+  );
+};
 
 const getVisitorId = () => {
   let visitorId = localStorage.getItem(VISITOR_ID_KEY);
@@ -462,6 +507,37 @@ const App: React.FC = () => {
     const activeTemplates = templates.filter(tpl => tpl.checked);
     if (rawFiles.length === 0 || activeTemplates.length === 0) return;
 
+    const imageFiles = rawFiles.filter(raw => raw.file.type.startsWith('image/'));
+    const pendingDimensionFiles = imageFiles.filter(raw => !raw.imageDimensions);
+    if (pendingDimensionFiles.length > 0) {
+      alert(`图片尺寸仍在检测中，请稍后再生成。\n\n${pendingDimensionFiles.map(raw => raw.file.name).join('\n')}`);
+      return;
+    }
+
+    const mismatchReasons = imageFiles.flatMap(raw => {
+      return activeTemplates
+        .filter(template => !isRawImageMatchingTemplate(raw, template))
+        .map(template => {
+          const target = getTemplateOutputDimensions(template);
+          const sourceSize = raw.imageDimensions ? `${raw.imageDimensions.width}x${raw.imageDimensions.height}` : '未知尺寸';
+          const targetSize = target ? `${target.width}x${target.height}` : (template.dimensions || '未知模板尺寸');
+          return `${raw.file.name}：${sourceSize} -> ${template.app}${template.name} ${targetSize}`;
+        });
+    });
+    const requiresCrossTemplateAi = imageFiles.length === 1 && activeTemplates.length > 1;
+    const requiresAiAdaptation = mismatchReasons.length > 0 || requiresCrossTemplateAi;
+    if (requiresAiAdaptation) {
+      const reasonText = [
+        requiresCrossTemplateAi ? '同一张图片需要适配多个广告模板。' : '',
+        ...mismatchReasons.slice(0, 6),
+        mismatchReasons.length > 6 ? `还有 ${mismatchReasons.length - 6} 个适配项未展示。` : ''
+      ].filter(Boolean).join('\n');
+      const confirmed = window.confirm(
+        `当前生成需要使用 AI 适配：\n\n${reasonText}\n\nAI 将用于扩图、裁切、构图调整、背景补全、主体位置调整、安全区避让和智能排版。是否继续？`
+      );
+      if (!confirmed) return;
+    }
+
     setIsProcessing(true);
     setProcessedAssets([]);
     setGenerationProgress({ current: 0, total: rawFiles.length * activeTemplates.length });
@@ -539,6 +615,7 @@ const App: React.FC = () => {
         }
 
         let finalUrl = raw.previewUrl;
+        const shouldBypassAiForExactImage = raw.file.type.startsWith('image/') && activeTemplates.length === 1 && isRawImageMatchingTemplate(raw, template);
 
         // category check
         const isSplash = template.category === '开屏';
@@ -571,11 +648,46 @@ const App: React.FC = () => {
           return compressed?.url ? `${ASSETS_URL}${compressed.url}` : capturedFrame;
         };
 
+        const shouldUseAigcForImageAdaptation =
+          raw.file.type.startsWith('image/') &&
+          requiresAiAdaptation &&
+          !shouldBypassAiForExactImage;
+        const aigcTarget = getTemplateOutputDimensions(template);
+
         // 1. If Workflow exists -> Try ComfyUI -> Fallback to Smart Crop (if image) or Thumbnail (if video)
         // Special handling: If splash frame capture is enabled, skip workflow entirely
         const shouldCaptureFrame = isSplash && isVideo && (config.captureFirstFrame || config.captureLastFrameSplash);
 
-        if (shouldCaptureFrame) {
+        if (shouldBypassAiForExactImage) {
+          console.log(`[AI Gate] ${raw.file.name} matches ${template.name}; skip AI adaptation and use direct template compositing.`);
+        }
+        else if (shouldUseAigcForImageAdaptation && aigcTarget) {
+          try {
+            console.log(`[AIGC Adapt] ${raw.file.name} -> ${template.app}${template.name} ${aigcTarget.width}x${aigcTarget.height}`);
+            const uploaded = await uploadRawAsset(raw.file);
+            const aigcResult = await smartCropImageWithAigc({
+              imageUrl: uploaded.url,
+              targetWidth: aigcTarget.width,
+              targetHeight: aigcTarget.height,
+              prompt: [
+                `将素材适配到广告模板：${template.app}${template.name}`,
+                `目标尺寸 ${aigcTarget.width} x ${aigcTarget.height}`,
+                '保持主体清晰，必要时扩图、裁切、背景补全、主体位置调整',
+                '避开安全区，保留核心商品或人物，输出适合营销广告的完整画面'
+              ].join('。')
+            });
+            finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
+          } catch (e) {
+            console.error('[AIGC Adapt] failed', e);
+            const message = e instanceof Error ? e.message : '美图 AI 适配失败';
+            alert(`美图 AI 适配失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
+            setProcessedAssets(results);
+            setIsProcessing(false);
+            setGenerationProgress(null);
+            return;
+          }
+        }
+        else if (shouldCaptureFrame) {
           // Skip workflow, directly capture and process selected frame
           const seekPoint = config.captureLastFrameSplash ? 'end' : 'start';
           console.log(`[Splash Debug] ${seekPoint} frame capture enabled for ${template.id}, skipping workflow...`);

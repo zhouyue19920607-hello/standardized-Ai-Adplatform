@@ -41,13 +41,13 @@ npm run server
 AIGC_AK=你的开放平台AK
 AIGC_SK=你的开放平台SK
 AIGC_BIZ=ai-saap
-AIGC_API_HOST=https://inference-api-pre.meitu.com
-AIGC_TASK=/v1/mtimage_expand_v4_async
+AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_PUBLIC_BASE_URL=https://你的线上站点域名
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
 ```
 
-当前 AI 扩图后端入口：
+当前 AI 图像扩展后端入口会走 `/v1/dispatcher` 的 `outpainting` 参数：
 
 ```http
 POST /api/aigc/image-expand

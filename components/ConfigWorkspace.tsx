@@ -1,5 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ASSETS_URL, CreativeTemplateItem, CreativeTemplateSettings, generatePendantAsset, getCreativeSettings, getCreativeTemplates } from '../services/api';
+import {
+    ASSETS_URL,
+    CreativeTemplateItem,
+    CreativeTemplateSettings,
+    animateImageWithAigc,
+    editImageWithAigc,
+    exportVideoWithSize,
+    generateImageWithAigc,
+    generateVideoWithAigc,
+    getCreativeSettings,
+    getCreativeTemplates,
+    uploadRawAsset,
+} from '../services/api';
 import { extractSmartPalette } from '../utils/smartColor';
 
 type UploadStatus = 'idle' | 'valid' | 'adapted' | 'invalid';
@@ -25,6 +37,8 @@ interface SpotlightCardAsset {
     url: string;
     message: string;
 }
+
+type PolyAiTarget = 'base' | `card-${0 | 1 | 2 | 3}`;
 
 const emptyUpload: UploadState = {
     file: null,
@@ -509,6 +523,38 @@ const easeInOutCubic = (value: number) => {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 };
 
+const resolveApiAssetUrl = (url: string) => (
+    url.startsWith('http') ? url : `${ASSETS_URL}${url}`
+);
+
+const fileFromGeneratedUrl = async (url: string, filename: string, fallbackType: string) => {
+    const response = await fetch(resolveApiAssetUrl(url));
+    if (!response.ok) throw new Error('AI 生成素材下载失败');
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type || fallbackType });
+};
+
+const imageFileFromUrlAtSize = async (url: string, filename: string, width: number, height: number) => {
+    const image = await loadImage(resolveApiAssetUrl(url));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('无法创建图片适配画布');
+    ctx.clearRect(0, 0, width, height);
+    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('图片适配失败')), 'image/png');
+    });
+    return {
+        file: new File([blob], filename, { type: 'image/png' }),
+        url: URL.createObjectURL(blob),
+    };
+};
+
 const getSpotlightSmallFrame = (index: number, elapsed: number) => {
     const availableW = CANVAS_W - SPOTLIGHT_SIDE_MARGIN * 2;
     const gap = (availableW - SPOTLIGHT_SMALL_W * 3) / 2;
@@ -572,6 +618,7 @@ const ConfigWorkspace: React.FC = () => {
     const refreshIconsInputRef = useRef<HTMLInputElement>(null);
     const refreshAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const refreshBottomNavInputRef = useRef<HTMLInputElement>(null);
+    const refreshBottomNavAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
@@ -602,17 +649,21 @@ const ConfigWorkspace: React.FC = () => {
     const [polyCards, setPolyCards] = useState<SpotlightCardAsset[]>([]);
     const [polyAiPrompt, setPolyAiPrompt] = useState('');
     const [polyAiReference, setPolyAiReference] = useState<UploadState>(emptyUpload);
+    const [polyAiTarget, setPolyAiTarget] = useState<PolyAiTarget>('base');
     const [polyFocal, setPolyFocal] = useState<UploadState>(emptyUpload);
     const [polyPreviewElapsed, setPolyPreviewElapsed] = useState(0);
     const [refreshIconSheet, setRefreshIconSheet] = useState<UploadState>(emptyUpload);
     const [refreshAiPrompt, setRefreshAiPrompt] = useState('');
     const [refreshAiReference, setRefreshAiReference] = useState<UploadState>(emptyUpload);
     const [refreshBottomNav, setRefreshBottomNav] = useState<UploadState>(emptyUpload);
+    const [refreshBottomNavAiPrompt, setRefreshBottomNavAiPrompt] = useState('');
+    const [refreshBottomNavAiReference, setRefreshBottomNavAiReference] = useState<UploadState>(emptyUpload);
     const [prompt, setPrompt] = useState('');
     const [interactionType, setInteractionType] = useState<CreativeTemplateSettings['interactionType']>(defaultCreativeSettings.interactionType);
     const [cropAreaEnabled, setCropAreaEnabled] = useState(defaultCreativeSettings.cropAreaEnabled);
     const [selectedPlatforms, setSelectedPlatforms] = useState<CreativeTemplateSettings['platforms']>(defaultCreativeSettings.platforms);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [aiGeneratingKey, setAiGeneratingKey] = useState<string | null>(null);
     const [isPreviewPlaying, setIsPreviewPlaying] = useState(true);
     const [saveMessage, setSaveMessage] = useState('');
     const [dragTarget, setDragTarget] = useState<'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav' | null>(null);
@@ -802,24 +853,149 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
+    const loadImageForDownload = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('图片读取失败，无法下载 PNG'));
+        image.src = url;
+    });
+
+    const loadVideoFrameForDownload = (url: string) => new Promise<HTMLVideoElement>((resolve, reject) => {
+        const video = document.createElement('video');
+        video.crossOrigin = 'anonymous';
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        let settled = false;
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            resolve(video);
+        };
+        video.onloadeddata = () => {
+            if (video.currentTime === 0) requestAnimationFrame(done);
+            else video.currentTime = 0;
+        };
+        video.onseeked = done;
+        video.onerror = () => reject(new Error('视频读取失败，无法下载 PNG'));
+        video.src = url;
+    });
+
+    const downloadUploadStateAsPng = async (
+        state: UploadState,
+        options: { width?: number; height?: number; filename?: string } = {},
+    ) => {
+        if (!state.url) return;
+        setError('');
+        try {
+            const sourceUrl = state.url.startsWith('/static') ? `${ASSETS_URL}${state.url}` : state.url;
+            const isVideo = state.file?.type.startsWith('video/');
+            if (isVideo) {
+                const video = await loadVideoFrameForDownload(sourceUrl);
+                const sourceWidth = video.videoWidth || options.width || CANVAS_W;
+                const sourceHeight = video.videoHeight || options.height || CANVAS_H;
+                const width = Math.max(1, Math.round(options.width || sourceWidth));
+                const height = Math.max(1, Math.round(options.height || sourceHeight));
+                const exportSource = state.url.startsWith('/static')
+                    ? state.url
+                    : state.file
+                        ? (await uploadRawAsset(state.file)).url
+                        : '';
+                if (!exportSource) throw new Error('视频素材未上传，无法导出对应尺寸视频');
+                const exported = await exportVideoWithSize({
+                    url: exportSource,
+                    width,
+                    height,
+                    maxDurationSec: 5,
+                });
+                const link = document.createElement('a');
+                link.href = resolveApiAssetUrl(exported.url);
+                link.download = options.filename?.replace(/\.png$/i, '.mp4') || `${state.file?.name?.replace(/\.[^.]+$/, '') || 'creative-video'}-${width}x${height}.mp4`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                return;
+            }
+            const source = isVideo
+                ? await loadVideoFrameForDownload(sourceUrl)
+                : await loadImageForDownload(sourceUrl);
+            const sourceWidth = isVideo
+                ? ((source as HTMLVideoElement).videoWidth || options.width || PENDANT_SIZE)
+                : ((source as HTMLImageElement).naturalWidth || options.width || PENDANT_SIZE);
+            const sourceHeight = isVideo
+                ? ((source as HTMLVideoElement).videoHeight || options.height || PENDANT_SIZE)
+                : ((source as HTMLImageElement).naturalHeight || options.height || PENDANT_SIZE);
+            const width = Math.max(1, Math.round(options.width || sourceWidth));
+            const height = Math.max(1, Math.round(options.height || sourceHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('无法创建 PNG 下载画布');
+            ctx.clearRect(0, 0, width, height);
+            const scale = Math.min(width / sourceWidth, height / sourceHeight);
+            const drawWidth = sourceWidth * scale;
+            const drawHeight = sourceHeight * scale;
+            const drawX = (width - drawWidth) / 2;
+            const drawY = (height - drawHeight) / 2;
+            ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+            const blob = await new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob((result) => result ? resolve(result) : reject(new Error('PNG 导出失败')), 'image/png');
+            });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = options.filename || `${state.file?.name?.replace(/\.[^.]+$/, '') || 'creative-asset'}-${width}x${height}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(objectUrl);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'PNG 下载失败');
+        }
+    };
+
     const uploadRemoveButton = (
         state: UploadState,
         onRemove: () => void,
         title = '删除素材',
+        downloadOptions: { width?: number; height?: number; filename?: string } = {},
     ) => state.url ? (
-        <button
-            type="button"
-            onClick={(event) => {
-                event.stopPropagation();
-                onRemove();
-            }}
-            className="absolute right-3 top-3 z-20 h-7 w-7 rounded-full bg-black/75 text-white/85 shadow-lg shadow-black/30 border border-white/10 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
-            title={title}
-            aria-label={title}
-        >
-            <span className="material-symbols-outlined text-[15px]">close</span>
-        </button>
+        <div className="absolute right-3 top-3 z-20 flex flex-col gap-2">
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove();
+                }}
+                className="h-7 w-7 rounded-full bg-black/75 text-white/85 shadow-lg shadow-black/30 border border-white/10 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+                title={title}
+                aria-label={title}
+            >
+                <span className="material-symbols-outlined text-[15px]">close</span>
+            </button>
+            <button
+                type="button"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    void downloadUploadStateAsPng(state, downloadOptions);
+                }}
+                className="h-7 w-7 rounded-full bg-black/75 text-white/85 shadow-lg shadow-black/30 border border-white/10 flex items-center justify-center hover:bg-primary hover:text-white transition-all"
+                title="下载素材"
+                aria-label="下载素材"
+            >
+                <span className="material-symbols-outlined text-[15px]">download</span>
+            </button>
+        </div>
     ) : null;
+
+    const renderAiButtonContent = (key: string, label: string) => (
+        <>
+            {aiGeneratingKey === key && <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>}
+            <span>{aiGeneratingKey === key ? '生成中...' : label}</span>
+        </>
+    );
 
     const updateAsset = async (file: File) => {
         setError('');
@@ -1281,6 +1457,26 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
+    const upsertPolyCardAt = (index: number, card: SpotlightCardAsset) => {
+        setPolyCards((current) => {
+            const next = [...current];
+            if (next[index]) URL.revokeObjectURL(next[index].url);
+            next[index] = card;
+            return next.filter(Boolean).slice(0, 4);
+        });
+        resetOutput();
+    };
+
+    const getNextPolyAiTarget = (current: PolyAiTarget): PolyAiTarget => {
+        if (current === 'base') return 'card-0';
+        const index = Number(current.replace('card-', ''));
+        return index >= 3 ? 'card-3' : (`card-${index + 1}` as PolyAiTarget);
+    };
+
+    const getPolyAiTargetLabel = (target: PolyAiTarget) => (
+        target === 'base' ? '底图素材' : `翻卡图片 ${Number(target.replace('card-', '')) + 1}`
+    );
+
     const updatePolyAiReference = async (file: File) => {
         setError('');
         resetOutput();
@@ -1370,29 +1566,114 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generatePolyCardsByPrompt = async (source: 'text' | 'image') => {
-        if (source === 'image' && !polyAiReference.url) {
+        const generationKey = `poly-${source}`;
+        if (source === 'image' && !polyAiReference.file) {
             setError('请先上传多态翻卡图生图参考图');
             return;
         }
+        const shouldUseReference = !!polyAiReference.file;
         setError('');
         resetOutput();
         const text = polyAiPrompt.trim() || '多态翻卡';
+        setAiGeneratingKey(generationKey);
         try {
-            const referenceImage = source === 'image' && polyAiReference.url ? await loadImage(polyAiReference.url) : undefined;
             const labels = ['第一态', '第二态', '第三态', '最终态'];
-            const blobs = await Promise.all(labels.map((label, index) => createPolyCardBlob(`${text.slice(0, 6)} ${label}`, index, referenceImage)));
-            const nextCards = blobs.map((blob, index) => {
-                const file = new File([blob], `poly-ai-card-${index + 1}.png`, { type: 'image/png' });
+            const referenceUpload = shouldUseReference
+                ? await uploadRawAsset(polyAiReference.file)
+                : null;
+            const results = await Promise.all(labels.map((label, index) => {
+                const promptText = [
+                    text,
+                    label,
+                    '生成一张适合 App 首页多态翻卡的横向营销图片',
+                    '画面干净，有明确主体，高级商业视觉，不要文字，不要 UI 截图'
+                ].join('，');
+                return referenceUpload
+                    ? editImageWithAigc({ imageUrl: referenceUpload.url, prompt: promptText, ratio: '7:3' })
+                    : generateImageWithAigc({ prompt: promptText, ratio: '7:3' });
+            }));
+            const nextCards = await Promise.all(results.map(async (result, index) => {
+                const file = await fileFromGeneratedUrl(result.resultUrl, `poly-ai-card-${index + 1}.png`, 'image/png');
                 return {
                     id: `poly-ai-card-${index + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                     file,
-                    url: URL.createObjectURL(blob),
-                    message: '840 x 360，符合规范',
+                    url: result.resultUrl,
+                    message: referenceUpload ? '美图图生图已生成翻卡图片' : '美图文生图已生成翻卡图片',
                 };
-            });
+            }));
             replacePolyCards(nextCards);
         } catch (err) {
             setError(err instanceof Error ? err.message : '多态翻卡 AI 图片生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
+    };
+
+    const generateSelectedPolyAsset = async () => {
+        const generationKey = `poly-${polyAiTarget}`;
+        const text = polyAiPrompt.trim() || '多态翻卡';
+        const target = polyAiTarget;
+        const isBaseTarget = target === 'base';
+        const cardIndex = isBaseTarget ? -1 : Number(target.replace('card-', ''));
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(generationKey);
+
+        try {
+            const referenceUpload = polyAiReference.file
+                ? await uploadRawAsset(polyAiReference.file)
+                : null;
+            const promptText = isBaseTarget
+                ? [
+                    text,
+                    '生成一张适合 App 首页多态翻卡的底图背景',
+                    '完整横向画面，整体连贯，适合作为卡片翻转前的视觉底座',
+                    '不要分格，不要按钮，不要 UI 元素，不要 App 截图，不要文字，不要 logo',
+                    '高级、清晰、商业视觉'
+                ].join('，')
+                : [
+                    text,
+                    `第 ${cardIndex + 1} 张翻卡图片`,
+                    '生成一张适合 App 首页多态翻卡的横向营销图片',
+                    '画面干净，有明确主体，高级商业视觉，不要文字，不要 UI 截图'
+                ].join('，');
+            const result = referenceUpload
+                ? await editImageWithAigc({
+                    imageUrl: referenceUpload.url,
+                    prompt: promptText,
+                    ratio: isBaseTarget ? '4:3' : '16:9',
+                })
+                : await generateImageWithAigc({
+                    prompt: promptText,
+                    ratio: isBaseTarget ? '4:3' : '16:9',
+                });
+
+            if (isBaseTarget) {
+                const fitted = await imageFileFromUrlAtSize(result.resultUrl, 'poly-base-ai.png', BREAK_FOCAL_W, BREAK_FOCAL_H);
+                setPolyBase((current) => {
+                    if (current.url) URL.revokeObjectURL(current.url);
+                    return {
+                        file: fitted.file,
+                        url: fitted.url,
+                        status: 'valid',
+                        message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成底图 1126 x 900`,
+                    };
+                });
+            } else {
+                const fitted = await imageFileFromUrlAtSize(result.resultUrl, `poly-card-${cardIndex + 1}-ai.png`, POLY_CARD_W, POLY_CARD_H);
+                upsertPolyCardAt(cardIndex, {
+                    id: `poly-ai-card-${cardIndex + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    file: fitted.file,
+                    url: fitted.url,
+                    message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成 840 x 360`,
+                });
+            }
+
+            setPolyAiTarget(getNextPolyAiTarget(target));
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '多态翻卡 AI 生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
         }
     };
 
@@ -1547,168 +1828,105 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generateRefreshIconSheetByPrompt = async () => {
+        const generationKey = 'refresh-text';
         const text = refreshAiPrompt.trim() || '焕新UI icon底图';
         setError('');
         resetOutput();
-
-        const canvas = document.createElement('canvas');
-        canvas.width = REFRESH_ICON_SHEET_W;
-        canvas.height = REFRESH_ICON_SHEET_H;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('无法创建 icon 底图');
-
-        const topGradient = ctx.createLinearGradient(0, 0, REFRESH_ICON_SHEET_W, REFRESH_TOP_ICON_H);
-        topGradient.addColorStop(0, '#101827');
-        topGradient.addColorStop(0.42, '#2846E9');
-        topGradient.addColorStop(1, '#1FD6C2');
-        ctx.fillStyle = topGradient;
-        ctx.fillRect(0, 0, REFRESH_ICON_SHEET_W, REFRESH_TOP_ICON_H);
-
-        const bottomGradient = ctx.createLinearGradient(0, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H);
-        bottomGradient.addColorStop(0, '#151515');
-        bottomGradient.addColorStop(0.5, '#FFB84D');
-        bottomGradient.addColorStop(1, '#F5578A');
-        ctx.fillStyle = bottomGradient;
-        ctx.fillRect(0, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_BOTTOM_ICON_H);
-
-        ctx.fillStyle = '#09090B';
-        ctx.fillRect(0, REFRESH_TOP_ICON_H, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H - REFRESH_TOP_ICON_H - REFRESH_BOTTOM_ICON_H);
-
-        const topCellW = REFRESH_ICON_SHEET_W / 2;
-        const bottomCellW = REFRESH_ICON_SHEET_W / 4;
-        const drawBadge = (x: number, y: number, w: number, h: number, label: string, icon: string) => {
-            ctx.save();
-            ctx.translate(x + w / 2, y + h / 2);
-            ctx.fillStyle = 'rgba(255,255,255,0.16)';
-            ctx.beginPath();
-            ctx.roundRect(-w * 0.34, -h * 0.26, w * 0.68, h * 0.52, 46);
-            ctx.fill();
-            ctx.fillStyle = 'rgba(255,255,255,0.24)';
-            ctx.beginPath();
-            ctx.arc(-w * 0.2, -h * 0.08, h * 0.18, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = '900 44px PingFang SC, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(icon, 0, -h * 0.02);
-            ctx.font = '800 24px PingFang SC, sans-serif';
-            ctx.fillText(label, 0, h * 0.24);
-            ctx.restore();
-        };
-
-        drawBadge(0, 0, topCellW, REFRESH_TOP_ICON_H, text.slice(0, 8), 'AI');
-        drawBadge(topCellW, 0, topCellW, REFRESH_TOP_ICON_H, '焕新入口', 'UI');
-        ['推荐', '玩法', '素材', '我的'].forEach((label, index) => {
-            drawBadge(bottomCellW * index, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, bottomCellW, REFRESH_BOTTOM_ICON_H, label, String(index + 1));
-        });
-
-        const blob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob((result) => result ? resolve(result) : reject(new Error('icon 底图生成失败')), 'image/png');
-        });
-        const file = new File([blob], 'refresh-icon-sheet-ai.png', { type: 'image/png' });
-        const url = URL.createObjectURL(blob);
-        setRefreshIconSheet((current) => {
-            if (current.url) URL.revokeObjectURL(current.url);
-            return {
-                file,
-                url,
-                status: 'valid',
-                message: `文生图已生成 1228 x 674：${text.slice(0, 10)}`,
-            };
-        });
+        setAiGeneratingKey(generationKey);
+        try {
+            setRefreshIconSheet((current) => ({
+                ...current,
+                status: 'idle',
+                message: '美图 AI 正在生成 icon 背景底图...',
+            }));
+            const promptText = [
+                text,
+                '生成一张完整的横向大图背景，必须是一整张连续画面',
+                '不要分格，不要拼贴，不要九宫格，不要多个小画面，不要 icon 容器边框',
+                '画面整体连贯、纹理自然、主体不要太碎，后续系统会自动裁切到不同 icon 位置',
+                '不要生成 icon，不要按钮，不要 UI 元素，不要 App 截图，不要文字，不要 logo',
+                '高级、清晰、商业视觉'
+            ].join('，');
+            const referenceUpload = refreshAiReference.file
+                ? await uploadRawAsset(refreshAiReference.file)
+                : null;
+            const result = referenceUpload
+                ? await editImageWithAigc({ imageUrl: referenceUpload.url, prompt: promptText, ratio: '16:9' })
+                : await generateImageWithAigc({ prompt: promptText, ratio: '16:9' });
+            const fitted = await imageFileFromUrlAtSize(
+                result.resultUrl,
+                'refresh-icon-sheet-ai.png',
+                REFRESH_ICON_SHEET_W,
+                REFRESH_ICON_SHEET_H,
+            );
+            setRefreshIconSheet((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file: fitted.file,
+                    url: fitted.url,
+                    status: 'valid',
+                    message: `${referenceUpload ? '美图图生图' : '美图文生图'}已适配 ${REFRESH_ICON_SHEET_W} x ${REFRESH_ICON_SHEET_H}`,
+                };
+            });
+        } catch (err) {
+            setRefreshIconSheet((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : 'icon 底图生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
     };
 
     const generateRefreshIconVideoByReference = async () => {
-        if (!refreshAiReference.url) {
-            setError('请先上传 icon 图生视频参考图');
+        const generationKey = 'refresh-i2v';
+        const sourceFile = refreshIconSheet.file && refreshIconSheet.file.type.startsWith('image/')
+            ? refreshIconSheet.file
+            : refreshAiReference.file;
+        if (!sourceFile) {
+            setError('请先生成/上传 icon 底图，或上传图生视频参考图');
             return;
         }
         const text = refreshAiPrompt.trim() || '焕新UI动态icon';
         setError('');
         resetOutput();
-
-        const referenceImage = await loadImage(refreshAiReference.url);
-        const canvas = document.createElement('canvas');
-        canvas.width = REFRESH_ICON_SHEET_W;
-        canvas.height = REFRESH_ICON_SHEET_H;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('无法创建 icon 视频');
-
-        const mimeType = [
-            'video/webm;codecs=vp9',
-            'video/webm',
-        ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
-        const stream = canvas.captureStream(30);
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 4_000_000 } : { videoBitsPerSecond: 4_000_000 });
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (event) => {
-            if (event.data.size > 0) chunks.push(event.data);
-        };
-        const done = new Promise<Blob>((resolve) => {
-            recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
-        });
-
-        const startedAt = performance.now();
-        const duration = 2400;
-        recorder.start();
-
-        const drawAiVideoFrame = (now: number) => {
-            const elapsed = Math.min(now - startedAt, duration);
-            const progress = elapsed / duration;
-            ctx.fillStyle = '#050505';
-            ctx.fillRect(0, 0, REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H);
-            const topCellW = REFRESH_ICON_SHEET_W / 2;
-            const bottomCellW = REFRESH_ICON_SHEET_W / 4;
-            const drawAnimatedCell = (x: number, y: number, w: number, h: number, index: number) => {
-                ctx.save();
-                ctx.beginPath();
-                ctx.rect(x, y, w, h);
-                ctx.clip();
-                const pulse = 1.08 + Math.sin(progress * Math.PI * 2 + index * 0.7) * 0.07;
-                drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, x - w * (pulse - 1) / 2, y - h * (pulse - 1) / 2, w * pulse, h * pulse);
-                const overlay = ctx.createLinearGradient(x, y, x + w, y + h);
-                overlay.addColorStop(0, `rgba(40,70,233,${0.18 + index * 0.02})`);
-                overlay.addColorStop(1, `rgba(31,214,194,${0.26 - index * 0.02})`);
-                ctx.fillStyle = overlay;
-                ctx.fillRect(x, y, w, h);
-                ctx.fillStyle = 'rgba(255,255,255,0.18)';
-                ctx.beginPath();
-                ctx.roundRect(x + w * 0.2, y + h * (0.18 + Math.sin(progress * Math.PI * 2 + index) * 0.04), w * 0.6, h * 0.32, 42);
-                ctx.fill();
-                ctx.fillStyle = '#FFFFFF';
-                ctx.font = `900 ${Math.max(22, Math.round(h * 0.12))}px PingFang SC, sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(index < 2 ? text.slice(0, 7) : ['推荐', '玩法', '素材', '我的'][index - 2], x + w / 2, y + h * 0.66);
-                ctx.restore();
-            };
-            drawAnimatedCell(0, 0, topCellW, REFRESH_TOP_ICON_H, 0);
-            drawAnimatedCell(topCellW, 0, topCellW, REFRESH_TOP_ICON_H, 1);
-            for (let index = 0; index < 4; index += 1) {
-                drawAnimatedCell(bottomCellW * index, REFRESH_ICON_SHEET_H - REFRESH_BOTTOM_ICON_H, bottomCellW, REFRESH_BOTTOM_ICON_H, index + 2);
-            }
-
-            if (elapsed < duration) {
-                requestAnimationFrame(drawAiVideoFrame);
-            } else {
-                recorder.stop();
-            }
-        };
-        requestAnimationFrame(drawAiVideoFrame);
-
-        const blob = await done;
-        const file = new File([blob], 'refresh-icon-sheet-ai-video.webm', { type: blob.type || 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setRefreshIconSheet((current) => {
-            if (current.url) URL.revokeObjectURL(current.url);
-            return {
-                file,
-                url,
-                status: 'valid',
-                message: `图生视频已生成 1228 x 674：${text.slice(0, 10)}`,
-            };
-        });
+        setAiGeneratingKey(generationKey);
+        try {
+            setRefreshIconSheet((current) => ({
+                ...current,
+                status: 'idle',
+                message: '美图 AI 正在生成 icon 动态底图...',
+            }));
+            const uploaded = await uploadRawAsset(sourceFile);
+            const result = await animateImageWithAigc({
+                imageUrl: uploaded.url,
+                prompt: `${text}，让 icon 底图轻微动态流动，光影自然，高级 App UI 动效`,
+                width: REFRESH_ICON_SHEET_W,
+                height: REFRESH_ICON_SHEET_H,
+                duration: 5,
+            });
+            const file = await fileFromGeneratedUrl(result.resultUrl, 'refresh-icon-sheet-ai-video.mp4', 'video/mp4');
+            setRefreshIconSheet((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url: result.resultUrl,
+                    status: 'valid',
+                    message: `美图图生视频已生成：${sourceFile === refreshIconSheet.file ? '基于 icon 底图' : '基于参考图'}`,
+                };
+            });
+        } catch (err) {
+            setRefreshIconSheet((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : 'icon 图生视频生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
     };
 
     const updateRefreshBottomNav = async (file: File) => {
@@ -1716,23 +1934,165 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
         const url = URL.createObjectURL(file);
         try {
-            if (!file.type.startsWith('image/')) {
-                URL.revokeObjectURL(url);
-                setRefreshBottomNav({ file: null, url: null, status: 'invalid', message: '底导素材仅支持图片' });
+            if (file.type.startsWith('image/')) {
+                const size = await getImageSize(file);
+                const isValid = size.width === REFRESH_BOTTOM_NAV_W && size.height === REFRESH_BOTTOM_NAV_H;
+                setRefreshBottomNav({
+                    file,
+                    url,
+                    status: isValid ? 'valid' : 'invalid',
+                    message: isValid ? '底导图片 1126 x 252，符合规范' : `当前 ${size.width} x ${size.height}，需 1126 x 252px`,
+                });
+                if (!isValid) URL.revokeObjectURL(url);
                 return;
             }
-            const size = await getImageSize(file);
-            const isValid = size.width === REFRESH_BOTTOM_NAV_W && size.height === REFRESH_BOTTOM_NAV_H;
-            setRefreshBottomNav({
-                file,
-                url,
-                status: isValid ? 'valid' : 'invalid',
-                message: isValid ? '底导 1126 x 252，符合规范' : `当前 ${size.width} x ${size.height}，需 1126 x 252px`,
-            });
-            if (!isValid) URL.revokeObjectURL(url);
+            if (file.type.startsWith('video/')) {
+                const meta = await getVideoMeta(file);
+                const isValid = meta.width === REFRESH_BOTTOM_NAV_W && meta.height === REFRESH_BOTTOM_NAV_H;
+                setRefreshBottomNav({
+                    file,
+                    url,
+                    status: isValid ? 'valid' : 'invalid',
+                    message: isValid ? `底导视频 1126 x 252，${meta.duration.toFixed(1)}s` : `视频 ${meta.width} x ${meta.height}，需 1126 x 252px`,
+                });
+                if (!isValid) URL.revokeObjectURL(url);
+                return;
+            }
+            URL.revokeObjectURL(url);
+            setRefreshBottomNav({ file: null, url: null, status: 'invalid', message: '底导素材仅支持图片或视频' });
         } catch (err) {
             URL.revokeObjectURL(url);
             setRefreshBottomNav({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '底导素材读取失败' });
+        }
+    };
+
+    const updateRefreshBottomNavAiReference = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        try {
+            if (!file.type.startsWith('image/')) {
+                URL.revokeObjectURL(url);
+                setRefreshBottomNavAiReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
+                return;
+            }
+            setRefreshBottomNavAiReference((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: '底导参考图已上传',
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setRefreshBottomNavAiReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '底导参考图读取失败' });
+        }
+    };
+
+    const removeRefreshBottomNavAiReference = () => {
+        clearUploadState(refreshBottomNavAiReference, setRefreshBottomNavAiReference);
+    };
+
+    const generateRefreshBottomNavByPrompt = async () => {
+        const generationKey = 'refresh-bottom-nav-text';
+        const text = refreshBottomNavAiPrompt.trim() || '焕新 UI 底导背景';
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(generationKey);
+        try {
+            setRefreshBottomNav((current) => ({
+                ...current,
+                status: 'idle',
+                message: '美图 AI 正在生成底导素材...',
+            }));
+            const promptText = [
+                text,
+                '生成一张完整连续的 App 底部导航栏背景素材',
+                '横向长条画面，整体连贯，适合放在 App 底部导航区域',
+                '不要分格，不要按钮，不要 UI 元素，不要 App 截图，不要文字，不要 logo',
+                '高级、清晰、商业视觉'
+            ].join('，');
+            const referenceUpload = refreshBottomNavAiReference.file
+                ? await uploadRawAsset(refreshBottomNavAiReference.file)
+                : null;
+            const result = referenceUpload
+                ? await editImageWithAigc({ imageUrl: referenceUpload.url, prompt: promptText, ratio: '16:9' })
+                : await generateImageWithAigc({ prompt: promptText, ratio: '16:9' });
+            const fitted = await imageFileFromUrlAtSize(
+                result.resultUrl,
+                'refresh-bottom-nav-ai.png',
+                REFRESH_BOTTOM_NAV_W,
+                REFRESH_BOTTOM_NAV_H,
+            );
+            setRefreshBottomNav((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file: fitted.file,
+                    url: fitted.url,
+                    status: 'valid',
+                    message: `${referenceUpload ? '美图图生图' : '美图文生图'}已适配 ${REFRESH_BOTTOM_NAV_W} x ${REFRESH_BOTTOM_NAV_H}`,
+                };
+            });
+        } catch (err) {
+            setRefreshBottomNav((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : '底导图片生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
+    };
+
+    const generateRefreshBottomNavVideoByReference = async () => {
+        const generationKey = 'refresh-bottom-nav-i2v';
+        const sourceFile = refreshBottomNav.file && refreshBottomNav.file.type.startsWith('image/')
+            ? refreshBottomNav.file
+            : refreshBottomNavAiReference.file;
+        if (!sourceFile) {
+            setError('请先生成/上传底导图片，或上传底导图生视频参考图');
+            return;
+        }
+        const text = refreshBottomNavAiPrompt.trim() || '底导轻微动态流动';
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(generationKey);
+        try {
+            setRefreshBottomNav((current) => ({
+                ...current,
+                status: 'idle',
+                message: '美图 AI 正在生成底导动态素材...',
+            }));
+            const uploaded = await uploadRawAsset(sourceFile);
+            const result = await animateImageWithAigc({
+                imageUrl: uploaded.url,
+                prompt: `${text}，让底部导航栏背景轻微动态流动，光影自然，高级 App UI 动效`,
+                width: REFRESH_BOTTOM_NAV_W,
+                height: REFRESH_BOTTOM_NAV_H,
+                duration: 5,
+            });
+            const file = await fileFromGeneratedUrl(result.resultUrl, 'refresh-bottom-nav-ai-video.mp4', 'video/mp4');
+            setRefreshBottomNav((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url: result.resultUrl,
+                    status: 'valid',
+                    message: `美图图生视频已生成：${sourceFile === refreshBottomNav.file ? '基于底导素材' : '基于参考图'}`,
+                };
+            });
+        } catch (err) {
+            setRefreshBottomNav((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : '底导图生视频生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
         }
     };
 
@@ -1824,122 +2184,80 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generateBreakFrameByPrompt = async (source: 'text' | 'image', phase: 0 | 1) => {
+        const generationKey = `break-${phase}-${source}`;
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
         const frameHeight = isJumpingFrame ? JUMPING_FRAME_H : BREAK_FRAME_H;
         const firstText = breakFirstPrompt.trim() || '第一次破框创意';
         const secondText = breakSecondPrompt.trim() || '第二次破框创意';
         const phaseText = isJumpingFrame ? firstText : (phase === 0 ? firstText : secondText);
-        const firstReference = breakFirstReference.url;
-        const secondReference = breakSecondReference.url;
-        const activeReference = isJumpingFrame ? firstReference : (phase === 0 ? firstReference : secondReference);
-        if (source === 'image' && !activeReference) {
-            setError(`请先上传${isJumpingFrame ? '跃动破框' : (phase === 0 ? '第一次破框' : '第二次破框')}的参考图`);
+        const phaseReferenceFile = isJumpingFrame
+            ? breakFirstReference.file
+            : (phase === 0 ? breakFirstReference.file : breakSecondReference.file);
+        const imageSourceFile = breakFrameAsset.file?.type.startsWith('image/')
+            ? breakFrameAsset.file
+            : phaseReferenceFile;
+        if (source === 'image' && !imageSourceFile) {
+            setError(`请先上传/生成破框图片，或上传${isJumpingFrame ? '跃动破框' : (phase === 0 ? '第一次破框' : '第二次破框')}参考图`);
             return null;
         }
         setError('');
-        const referenceImages = await Promise.all([
-            firstReference ? loadImage(firstReference) : Promise.resolve(null),
-            secondReference ? loadImage(secondReference) : Promise.resolve(null),
-        ]);
+        setAiGeneratingKey(generationKey);
         const fullPrompt = isJumpingFrame
             ? [
                 `跃动破框：${firstText}`,
                 '破框素材从第0秒开始播放',
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
-                source === 'image' ? '已上传参考图作为主体参照' : ''
+                source === 'image' ? (imageSourceFile === breakFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n')
             : [
                 `第一次破框：${firstText}`,
                 `第二次破框：${secondText}`,
                 BREAK_AI_DURATION_RULE,
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
-                source === 'image' ? '已上传参考图作为主体参照' : ''
+                source === 'image' ? (imageSourceFile === breakFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n');
-        const canvas = document.createElement('canvas');
-        canvas.width = BREAK_FRAME_W;
-        canvas.height = frameHeight;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('无法创建破框视频');
-
-        const mimeType = [
-            'video/webm;codecs=vp9',
-            'video/webm',
-        ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
-        const stream = canvas.captureStream(30);
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 4_000_000 } : { videoBitsPerSecond: 4_000_000 });
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (event) => {
-            if (event.data.size > 0) chunks.push(event.data);
-        };
-        const done = new Promise<Blob>((resolve) => {
-            recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
-        });
-        const startedAt = performance.now();
-        const duration = isJumpingFrame ? 1500 : 3000;
-        recorder.start();
-
-        const drawAiFrame = (now: number) => {
-            const elapsed = Math.min(now - startedAt, duration);
-            const phase = isJumpingFrame ? 0 : (elapsed < 1500 ? 0 : 1);
-            const phaseProgress = ((elapsed % 1500) / 1500);
-            ctx.clearRect(0, 0, BREAK_FRAME_W, frameHeight);
-            ctx.save();
-            ctx.translate(BREAK_FRAME_W / 2, frameHeight / 2);
-            const pulse = 1 + Math.sin(phaseProgress * Math.PI) * 0.06;
-            ctx.scale(pulse, pulse);
-            ctx.rotate((phase === 0 ? -1 : 1) * 0.08 * Math.sin(phaseProgress * Math.PI));
-            const gradient = ctx.createLinearGradient(-300, -360, 320, 360);
-            gradient.addColorStop(0, phase === 0 ? '#8DEBFF' : '#A7FF68');
-            gradient.addColorStop(0.5, phase === 0 ? '#7C5CFF' : '#00D6A3');
-            gradient.addColorStop(1, phase === 0 ? '#FF4EB8' : '#35D5FF');
-            ctx.fillStyle = gradient;
-            ctx.shadowColor = phase === 0 ? 'rgba(124,92,255,0.55)' : 'rgba(0,214,163,0.55)';
-            ctx.shadowBlur = 70;
-            ctx.beginPath();
-            ctx.roundRect(-340, -330, 680, 660, 96);
-            ctx.fill();
-            const referenceImage = referenceImages[phase];
-            if (referenceImage) {
-                ctx.save();
-                ctx.beginPath();
-                ctx.roundRect(-300, -290, 600, 560, 80);
-                ctx.clip();
-                ctx.globalAlpha = 0.86;
-                drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, -300, -290, 600, 560);
-                ctx.restore();
-            }
-            ctx.fillStyle = 'rgba(255,255,255,0.24)';
-            ctx.beginPath();
-            ctx.ellipse(-90, -135, 235, 90, -0.45, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '900 58px PingFang SC, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(isJumpingFrame ? '跃动破框' : (phase === 0 ? '第一破框' : '第二次破框'), 0, -18);
-            ctx.font = '700 34px PingFang SC, sans-serif';
-            ctx.fillText((phase === 0 ? firstText : secondText).slice(0, 12), 0, 58);
-            ctx.restore();
-
-            if (elapsed < duration) {
-                requestAnimationFrame(drawAiFrame);
-            } else {
-                recorder.stop();
-            }
-        };
-        requestAnimationFrame(drawAiFrame);
-
-        const blob = await done;
-        const file = new File([blob], 'break-frame-transparent-ai.webm', { type: blob.type || 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setBreakFrameAsset({
-            file,
-            url,
-            status: 'valid',
-            message: `${source === 'text' ? '文生视频' : '图生视频'}已生成：${phaseText.slice(0, 10) || '破框素材'}`,
-        });
-        console.info('破框 AI 固定提示词', fullPrompt);
-        return url;
+        try {
+            setBreakFrameAsset((current) => ({
+                ...current,
+                status: 'idle',
+                message: `美图 AI 正在生成${source === 'text' ? '文生视频' : '图生视频'}...`,
+            }));
+            const promptText = [
+                fullPrompt,
+                `输出适合 ${BREAK_FRAME_W} x ${frameHeight} 的破框透明感营销视频`,
+                '主体轻微跃出边界，光影自然，商业质感，不要文字'
+            ].join('\n');
+            const result = source === 'image'
+                ? await animateImageWithAigc({
+                    imageUrl: (await uploadRawAsset(imageSourceFile as File)).url,
+                    prompt: promptText,
+                    width: BREAK_FRAME_W,
+                    height: frameHeight,
+                    duration: isJumpingFrame ? 3 : 5,
+                })
+                : await generateVideoWithAigc({
+                    prompt: promptText,
+                    ratio: `${BREAK_FRAME_W}:${frameHeight}`,
+                });
+            const file = await fileFromGeneratedUrl(result.resultUrl, 'break-frame-ai.mp4', 'video/mp4');
+            setBreakFrameAsset({
+                file,
+                url: result.resultUrl,
+                status: 'valid',
+                message: `美图${source === 'text' ? '文生视频' : '图生视频'}已生成：${phaseText.slice(0, 10) || '破框素材'}`,
+            });
+            return result.resultUrl;
+        } catch (err) {
+            setBreakFrameAsset((current) => ({
+                ...current,
+                status: current.file ? current.status : 'idle',
+                message: current.file ? current.message : emptyUpload.message,
+            }));
+            setError(err instanceof Error ? err.message : '破框 AI 视频生成失败');
+            return null;
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
     };
 
     const handleUploadDragOver = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
@@ -2023,34 +2341,49 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generatePromptAsset = async () => {
+        const generationKey = 'pendant-text';
         const text = prompt.trim() || '炫动开屏素材';
         setError('');
         resetOutput();
+        setAiGeneratingKey(generationKey);
 
         try {
             setAsset((current) => ({
                 ...current,
                 status: 'idle',
-                message: 'AI 正在生成 450 x 450 挂件素材...',
+                message: '美图 AI 正在生成 450 x 450 挂件素材...',
             }));
-            const result = await generatePendantAsset(text);
-            const url = result.url.startsWith('http') ? result.url : `${ASSETS_URL}${result.url}`;
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('AI 素材下载失败');
-            const blob = await response.blob();
-            const file = new File([blob], 'ai-pendant-asset.png', { type: blob.type || 'image/png' });
+            const promptText = `${text}，单个 450x450 App 开屏挂件素材，透明背景，主体边缘干净，主体清晰，高级商业视觉，不要文字`;
+            const referenceUpload = pendantReference.file
+                ? await uploadRawAsset(pendantReference.file)
+                : null;
+            const result = referenceUpload
+                ? await editImageWithAigc({
+                    imageUrl: referenceUpload.url,
+                    prompt: promptText,
+                    ratio: '1:1',
+                    transparentWhite: true,
+                })
+                : await generateImageWithAigc({
+                    prompt: promptText,
+                    ratio: '1:1',
+                    transparentWhite: true,
+                });
+            const file = await fileFromGeneratedUrl(result.resultUrl, 'ai-pendant-asset.png', 'image/png');
             setAsset({
                 file,
-                url,
+                url: result.resultUrl,
                 status: 'valid',
-                message: result.message || `AI 已生成 PNG 450 x 450（${result.provider}）`,
+                message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成透明 PNG 挂件素材`,
             });
-            return url;
+            return result.resultUrl;
         } catch (err) {
             console.warn('炫动开屏 AI 生成失败，降级本地素材', err);
             const fallbackUrl = await generateLocalPromptAsset(text);
             setError(err instanceof Error ? `AI 生成暂不可用，已先生成本地预览素材。原因：${err.message}` : 'AI 生成暂不可用，已先生成本地预览素材');
             return fallbackUrl;
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
         }
     };
 
@@ -2084,80 +2417,40 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generatePendantAssetFromReference = async () => {
-        if (!pendantReference.url) {
+        const generationKey = 'pendant-image';
+        if (!pendantReference.file) {
             setError('请先上传图生图参考图');
             return null;
         }
         const text = prompt.trim() || '炫动开屏素材';
         setError('');
         resetOutput();
+        setAiGeneratingKey(generationKey);
 
         try {
             setAsset((current) => ({
                 ...current,
                 status: 'idle',
-                message: '图生图正在生成 450 x 450 挂件素材...',
+                message: '美图 AI 图生图正在生成 450 x 450 挂件素材...',
             }));
-            const referenceImage = await loadImage(pendantReference.url);
-            const canvas = document.createElement('canvas');
-            canvas.width = 450;
-            canvas.height = 450;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('无法创建图生图素材');
-
-            const gradient = ctx.createLinearGradient(0, 0, 450, 450);
-            gradient.addColorStop(0, '#111827');
-            gradient.addColorStop(0.45, '#4c6fff');
-            gradient.addColorStop(1, '#ff4d8d');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 450, 450);
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(36, 36, 378, 378, 92);
-            ctx.clip();
-            drawCoverAt(ctx, referenceImage, referenceImage.naturalWidth, referenceImage.naturalHeight, 36, 36, 378, 378);
-            ctx.globalCompositeOperation = 'screen';
-            const shine = ctx.createRadialGradient(150, 120, 20, 230, 230, 290);
-            shine.addColorStop(0, 'rgba(255,255,255,0.56)');
-            shine.addColorStop(0.42, 'rgba(99,230,190,0.28)');
-            shine.addColorStop(1, 'rgba(255,77,141,0.18)');
-            ctx.fillStyle = shine;
-            ctx.fillRect(36, 36, 378, 378);
-            ctx.restore();
-
-            ctx.fillStyle = 'rgba(255,255,255,0.18)';
-            for (let i = 0; i < 7; i += 1) {
-                ctx.beginPath();
-                ctx.arc(70 + i * 55, 360 - i * 34, 26 + i * 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            ctx.fillStyle = 'rgba(0,0,0,0.38)';
-            ctx.beginPath();
-            ctx.roundRect(48, 326, 354, 74, 28);
-            ctx.fill();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = '800 24px PingFang SC, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text.slice(0, 10), 225, 363);
-
-            const blob = await new Promise<Blob>((resolve, reject) => {
-                canvas.toBlob((result) => result ? resolve(result) : reject(new Error('图生图素材生成失败')), 'image/png');
+            const uploaded = await uploadRawAsset(pendantReference.file);
+            const result = await editImageWithAigc({
+                imageUrl: uploaded.url,
+                prompt: `${text}，参考图主体改造成 450x450 App 开屏挂件素材，透明背景，主体边缘干净，主体清晰，高级商业视觉，不要文字`,
+                ratio: '1:1',
+                transparentWhite: true,
             });
-            const file = new File([blob], 'image-to-pendant-asset.png', { type: 'image/png' });
-            const url = URL.createObjectURL(blob);
+            const file = await fileFromGeneratedUrl(result.resultUrl, 'image-to-pendant-asset.png', 'image/png');
             setAsset((current) => {
                 if (current.url) URL.revokeObjectURL(current.url);
                 return {
                     file,
-                    url,
+                    url: result.resultUrl,
                     status: 'valid',
-                    message: '图生图已生成 PNG 450 x 450，符合 MR 标准',
+                    message: '美图图生图已生成透明 PNG 挂件素材',
                 };
             });
-            return url;
+            return result.resultUrl;
         } catch (err) {
             setAsset((current) => ({
                 ...current,
@@ -2166,6 +2459,8 @@ const ConfigWorkspace: React.FC = () => {
             }));
             setError(err instanceof Error ? err.message : '图生图素材生成失败');
             return null;
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
         }
     };
 
@@ -2697,7 +2992,9 @@ const ConfigWorkspace: React.FC = () => {
             const iconSheetIsVideo = refreshIconSheet.file.type.startsWith('video/');
             const iconSheetImage = iconSheetIsVideo ? null : await loadImage(refreshIconSheet.url);
             const iconSheetVideo = iconSheetIsVideo ? await loadVideoElement(refreshIconSheet.url) : null;
-            const bottomNavImage = await loadImage(refreshBottomNav.url);
+            const bottomNavIsVideo = refreshBottomNav.file.type.startsWith('video/');
+            const bottomNavImage = bottomNavIsVideo ? null : await loadImage(refreshBottomNav.url);
+            const bottomNavVideo = bottomNavIsVideo ? await loadVideoElement(refreshBottomNav.url) : null;
             const focalIsVideo = breakFocal.file.type.startsWith('video/');
             const focalImage = focalIsVideo ? null : await loadImage(breakFocal.url);
             const focalVideo = focalIsVideo ? await loadVideoElement(breakFocal.url) : null;
@@ -2738,14 +3035,24 @@ const ConfigWorkspace: React.FC = () => {
                 }
                 ctx.drawImage(focalBg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 ctx.drawImage(focalGradientLayer, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
-                ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
 
                 ctx.save();
                 ctx.globalAlpha = entrance;
                 ctx.translate(0, (1 - entrance) * 28);
                 const iconSheetSource = iconSheetVideo && iconSheetVideo.readyState >= 2 ? iconSheetVideo : iconSheetImage;
                 if (iconSheetSource) drawRefreshIconLayer(ctx, iconSheetSource);
-                drawCoverAt(ctx, bottomNavImage, bottomNavImage.naturalWidth, bottomNavImage.naturalHeight, 0, BREAK_CANVAS_H - REFRESH_BOTTOM_NAV_H, REFRESH_BOTTOM_NAV_W, REFRESH_BOTTOM_NAV_H);
+                ctx.restore();
+
+                ctx.save();
+                ctx.globalAlpha = entrance;
+                ctx.translate(0, (1 - entrance) * 28);
+                ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                const bottomNavSource = bottomNavVideo && bottomNavVideo.readyState >= 2 ? bottomNavVideo : bottomNavImage;
+                if (bottomNavSource) {
+                    const bottomSourceW = bottomNavVideo && bottomNavVideo.readyState >= 2 ? (bottomNavVideo.videoWidth || REFRESH_BOTTOM_NAV_W) : (bottomNavImage?.naturalWidth || REFRESH_BOTTOM_NAV_W);
+                    const bottomSourceH = bottomNavVideo && bottomNavVideo.readyState >= 2 ? (bottomNavVideo.videoHeight || REFRESH_BOTTOM_NAV_H) : (bottomNavImage?.naturalHeight || REFRESH_BOTTOM_NAV_H);
+                    drawCoverAt(ctx, bottomNavSource, bottomSourceW, bottomSourceH, 0, BREAK_CANVAS_H - REFRESH_BOTTOM_NAV_H, REFRESH_BOTTOM_NAV_W, REFRESH_BOTTOM_NAV_H);
+                }
                 ctx.restore();
 
                 if (elapsed < BREAK_DURATION) {
@@ -2753,6 +3060,7 @@ const ConfigWorkspace: React.FC = () => {
                 } else {
                     recorder.stop();
                     iconSheetVideo?.pause();
+                    bottomNavVideo?.pause();
                     focalVideo?.pause();
                 }
             };
@@ -3293,7 +3601,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(spotlightLargeCard, () => clearUploadState(spotlightLargeCard, setSpotlightLargeCard), '删除大卡素材')}
+                                                {uploadRemoveButton(spotlightLargeCard, () => clearUploadState(spotlightLargeCard, setSpotlightLargeCard), '删除大卡素材', { width: SPOTLIGHT_LARGE_W, height: SPOTLIGHT_LARGE_H, filename: `spotlight-large-${SPOTLIGHT_LARGE_W}x${SPOTLIGHT_LARGE_H}.png` })}
                                             </div>
                                         </div>
 
@@ -3337,7 +3645,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(spotlightSplash, () => clearUploadState(spotlightSplash, setSpotlightSplash), '删除开屏素材')}
+                                                {uploadRemoveButton(spotlightSplash, () => clearUploadState(spotlightSplash, setSpotlightSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `splash-${CANVAS_W}x${CANVAS_H}.png` })}
                                             </div>
                                         </div>
                                     </>
@@ -3364,11 +3672,14 @@ const ConfigWorkspace: React.FC = () => {
                                             />
                                             <div className="relative">
                                                 <button
-                                                    onClick={() => polyBaseInputRef.current?.click()}
+                                                    onClick={() => {
+                                                        setPolyAiTarget('base');
+                                                        if (!polyBase.url) polyBaseInputRef.current?.click();
+                                                    }}
                                                     onDragOver={(event) => handleUploadDragOver(event, 'poly-base')}
                                                     onDragLeave={(event) => handleUploadDragLeave(event, 'poly-base')}
                                                     onDrop={(event) => handleUploadDrop(event, 'poly-base')}
-                                                    className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                    className={`w-full min-h-[132px] border rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${polyAiTarget === 'base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-dashed border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
                                                     {polyBase.url ? (
                                                         <img src={polyBase.url} alt="多态翻卡底图预览" className="h-24 w-full object-cover rounded-xl" />
@@ -3379,7 +3690,8 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(polyBase, () => clearUploadState(polyBase, setPolyBase), '删除底图素材')}
+                                                {polyAiTarget === 'base' && <span className="absolute left-3 top-3 rounded-full bg-primary px-2 py-1 text-[9px] font-black text-white">当前生成</span>}
+                                                {uploadRemoveButton(polyBase, () => clearUploadState(polyBase, setPolyBase), '删除底图素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-base-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
 
@@ -3416,33 +3728,66 @@ const ConfigWorkspace: React.FC = () => {
                                                 </div>
                                             </button>
                                             <div className="grid grid-cols-2 gap-2">
-                                                {polyCards.map((item, index) => (
-                                                    <div key={item.id} className="relative rounded-[14px] border border-white/5 bg-black/30 p-2">
+                                                {Array.from({ length: 4 }).map((_, index) => {
+                                                    const item = polyCards[index];
+                                                    const target = `card-${index}` as PolyAiTarget;
+                                                    return (
                                                         <button
-                                                            onClick={() => removePolyCard(item.id)}
-                                                            className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center"
-                                                            title="移除翻卡图片"
+                                                            key={item?.id || target}
+                                                            type="button"
+                                                            onClick={() => setPolyAiTarget(target)}
+                                                            className={`relative rounded-[14px] border p-2 text-left transition-all ${polyAiTarget === target ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
                                                         >
-                                                            <span className="material-symbols-outlined text-xs">close</span>
+                                                            {item && (
+                                                                <span
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        removePolyCard(item.id);
+                                                                    }}
+                                                                    onKeyDown={(event) => {
+                                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                                            event.preventDefault();
+                                                                            event.stopPropagation();
+                                                                            removePolyCard(item.id);
+                                                                        }
+                                                                    }}
+                                                                    className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center"
+                                                                    title="移除翻卡图片"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-xs">close</span>
+                                                                </span>
+                                                            )}
+                                                            {polyAiTarget === target && <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">当前</span>}
+                                                            {item ? (
+                                                                <img src={item.url} alt={`翻卡图片 ${index + 1}`} className="h-16 w-full object-cover rounded-[10px] bg-zinc-950" />
+                                                            ) : (
+                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                                    <span className="material-symbols-outlined text-[18px] text-zinc-600">add_photo_alternate</span>
+                                                                </div>
+                                                            )}
+                                                            <p className="mt-1 text-[9px] font-bold text-zinc-500">翻卡 {index + 1}</p>
                                                         </button>
-                                                        <img src={item.url} alt={`翻卡图片 ${index + 1}`} className="h-16 w-full object-cover rounded-[10px] bg-zinc-950" />
-                                                        <p className="mt-1 text-[9px] font-bold text-zinc-500">翻卡 {index + 1}</p>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                             <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成翻卡图片</p>
+                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成底图 / 翻卡图片</p>
                                                     </div>
-                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyAiReference.status)}`}>{polyAiReference.message}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[9px] font-black px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary">{getPolyAiTargetLabel(polyAiTarget)}</span>
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyAiReference.status)}`}>{polyAiReference.message}</span>
+                                                    </div>
                                                 </div>
                                                 <div className="grid grid-cols-[1fr_96px] gap-3">
                                                     <textarea
                                                         value={polyAiPrompt}
                                                         onChange={(event) => setPolyAiPrompt(event.target.value)}
-                                                        placeholder="填写 4 张翻卡图片的主题、风格、色彩..."
+                                                        placeholder="填写底图与翻卡图片的主题、风格、色彩；生成完会自动进入下一张..."
                                                         className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
                                                     />
                                                     <div className="relative min-h-[86px]">
@@ -3473,18 +3818,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         {uploadRemoveButton(polyAiReference, removePolyAiReference, '删除多态翻卡参考图')}
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-1 gap-3">
                                                     <button
-                                                        onClick={() => generatePolyCardsByPrompt('text')}
-                                                        className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                                        onClick={generateSelectedPolyAsset}
+                                                        disabled={!!aiGeneratingKey}
+                                                        className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                                     >
-                                                        文生图翻卡图片
-                                                    </button>
-                                                    <button
-                                                        onClick={() => generatePolyCardsByPrompt('image')}
-                                                        className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${polyAiReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
-                                                    >
-                                                        图生图翻卡图片
+                                                        {renderAiButtonContent(`poly-${polyAiTarget}`, `生成${getPolyAiTargetLabel(polyAiTarget)}`)}
                                                     </button>
                                                 </div>
                                             </div>
@@ -3530,7 +3870,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(polyFocal, () => clearUploadState(polyFocal, setPolyFocal), '删除焦点视窗素材')}
+                                                {uploadRemoveButton(polyFocal, () => clearUploadState(polyFocal, setPolyFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-focal-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
                                     </>
@@ -3576,7 +3916,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材')}
+                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
 
@@ -3622,9 +3962,27 @@ const ConfigWorkspace: React.FC = () => {
                                                     )}
                                                 </button>
                                                 {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
-                                                    <button onClick={removeRefreshIconSheet} className="absolute right-2 top-2 z-10 h-7 w-7 rounded-full bg-black/70 text-white/80 flex items-center justify-center" title="移除 icon 底图">
-                                                        <span className="material-symbols-outlined text-sm">close</span>
-                                                    </button>
+                                                    <div className="absolute right-2 top-2 z-10 flex flex-col gap-2">
+                                                        <button onClick={removeRefreshIconSheet} className="h-7 w-7 rounded-full bg-black/70 text-white/80 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all" title="移除 icon 底图">
+                                                            <span className="material-symbols-outlined text-sm">close</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                void downloadUploadStateAsPng(refreshIconSheet, {
+                                                                    width: REFRESH_ICON_SHEET_W,
+                                                                    height: REFRESH_ICON_SHEET_H,
+                                                                    filename: `refresh-icon-sheet-${REFRESH_ICON_SHEET_W}x${REFRESH_ICON_SHEET_H}.png`,
+                                                                });
+                                                            }}
+                                                            className="h-7 w-7 rounded-full bg-black/70 text-white/80 flex items-center justify-center hover:bg-primary hover:text-white transition-all"
+                                                            title="下载 icon 底图"
+                                                            aria-label="下载 icon 底图"
+                                                        >
+                                                            <span className="material-symbols-outlined text-sm">download</span>
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                             {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
@@ -3743,15 +4101,17 @@ const ConfigWorkspace: React.FC = () => {
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button
                                                     onClick={generateRefreshIconSheetByPrompt}
-                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                                    disabled={!!aiGeneratingKey}
+                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                                 >
-                                                    文生图
+                                                    {renderAiButtonContent('refresh-text', '生成图片')}
                                                 </button>
                                                 <button
                                                     onClick={generateRefreshIconVideoByReference}
-                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${refreshAiReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                    disabled={!!aiGeneratingKey || !(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url)}
+                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
                                                 >
-                                                    图生视频
+                                                    {renderAiButtonContent('refresh-i2v', '图生视频')}
                                                 </button>
                                             </div>
                                         </div>
@@ -3760,14 +4120,14 @@ const ConfigWorkspace: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h2 className="text-white text-sm font-black">底导素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 1126 x 252px</p>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 视频 / 1126 x 252px</p>
                                                 </div>
                                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNav.status)}`}>{refreshBottomNav.message}</span>
                                             </div>
                                             <input
                                                 ref={refreshBottomNavInputRef}
                                                 type="file"
-                                                accept="image/*"
+                                                accept="image/*,video/*"
                                                 className="hidden"
                                                 onChange={async (e) => {
                                                     const input = e.currentTarget;
@@ -3784,7 +4144,11 @@ const ConfigWorkspace: React.FC = () => {
                                                     className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-nav' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
                                                     {refreshBottomNav.url ? (
-                                                        <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
+                                                        refreshBottomNav.file?.type.startsWith('video/') ? (
+                                                            <video src={refreshBottomNav.url} className="h-20 w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline autoPlay />
+                                                        ) : (
+                                                            <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
+                                                        )
                                                     ) : (
                                                         <div className="text-center">
                                                             <span className="material-symbols-outlined text-3xl text-zinc-600">bottom_navigation</span>
@@ -3792,7 +4156,68 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材')}
+                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` })}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h2 className="text-white text-sm font-black">AI 生成底导素材</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">文生图 / 图生图 / 图生视频 / 输出 1126 x 252px</p>
+                                                </div>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNavAiReference.status)}`}>{refreshBottomNavAiReference.message}</span>
+                                            </div>
+                                            <div className="grid grid-cols-[1fr_104px] gap-3">
+                                                <textarea
+                                                    value={refreshBottomNavAiPrompt}
+                                                    onChange={(event) => setRefreshBottomNavAiPrompt(event.target.value)}
+                                                    placeholder="填写底导背景风格、主题、色彩和动态方向..."
+                                                    className="w-full min-h-[96px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                />
+                                                <div className="relative min-h-[96px]">
+                                                    <button
+                                                        onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
+                                                        className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                    >
+                                                        {refreshBottomNavAiReference.url ? (
+                                                            <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="text-center px-2">
+                                                                <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                    <input
+                                                        ref={refreshBottomNavAiReferenceInputRef}
+                                                        type="file"
+                                                        accept="image/*"
+                                                        className="hidden"
+                                                        onChange={async (event) => {
+                                                            const input = event.currentTarget;
+                                                            if (input.files?.[0]) await updateRefreshBottomNavAiReference(input.files[0]);
+                                                            input.value = '';
+                                                        }}
+                                                    />
+                                                    {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图')}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button
+                                                    onClick={generateRefreshBottomNavByPrompt}
+                                                    disabled={!!aiGeneratingKey}
+                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                                                >
+                                                    {renderAiButtonContent('refresh-bottom-nav-text', '生成图片')}
+                                                </button>
+                                                <button
+                                                    onClick={generateRefreshBottomNavVideoByReference}
+                                                    disabled={!!aiGeneratingKey || !(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url)}
+                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                >
+                                                    {renderAiButtonContent('refresh-bottom-nav-i2v', '图生视频')}
+                                                </button>
                                             </div>
                                         </div>
                                     </>
@@ -3838,7 +4263,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材')}
+                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
 
@@ -3885,7 +4310,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFrameAsset, () => clearUploadState(breakFrameAsset, setBreakFrameAsset), '删除破框素材')}
+                                                {uploadRemoveButton(breakFrameAsset, () => clearUploadState(breakFrameAsset, setBreakFrameAsset), '删除破框素材', { width: BREAK_FRAME_W, height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H, filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png` })}
                                             </div>
                                             <div className="grid gap-3">
                                                 {(isJumpingFocalTemplate ? [
@@ -4032,15 +4457,17 @@ const ConfigWorkspace: React.FC = () => {
                                                         <div className="grid grid-cols-2 gap-3">
                                                             <button
                                                                 onClick={() => generateBreakFrameByPrompt('text', item.phase)}
-                                                                className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                                                disabled={!!aiGeneratingKey}
+                                                                className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                                             >
-                                                                文生视频素材
+                                                                {renderAiButtonContent(`break-${item.phase}-text`, '生成文生视频')}
                                                             </button>
                                                             <button
                                                                 onClick={() => generateBreakFrameByPrompt('image', item.phase)}
-                                                                className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${item.reference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                                disabled={!!aiGeneratingKey || !(breakFrameAsset.file?.type.startsWith('image/') || item.reference.url)}
+                                                                className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(breakFrameAsset.file?.type.startsWith('image/') || item.reference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
                                                             >
-                                                                图生视频素材
+                                                                {renderAiButtonContent(`break-${item.phase}-image`, '图生视频')}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -4096,7 +4523,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 </div>
                                             )}
                                         </button>
-                                        {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材')}
+                                        {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材', { width: PENDANT_SIZE, height: PENDANT_SIZE, filename: `pendant-${PENDANT_SIZE}x${PENDANT_SIZE}.png` })}
                                     </div>
 
                                     <div className="grid grid-cols-[1fr_96px] gap-3">
@@ -4138,21 +4565,16 @@ const ConfigWorkspace: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between rounded-[16px] border border-white/5 bg-white/[0.03] px-4 py-2">
-                                        <span className="text-[10px] font-bold text-zinc-600">固定结尾</span>
-                                        <span className="text-[10px] font-black text-zinc-300">纯白色背景</span>
+                                        <span className="text-[10px] font-bold text-zinc-600">输出格式</span>
+                                        <span className="text-[10px] font-black text-zinc-300">透明 PNG</span>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 gap-3">
                                         <button
                                             onClick={generatePromptAsset}
-                                            className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all"
+                                            disabled={!!aiGeneratingKey}
+                                            className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                         >
-                                            文生图静态素材
-                                        </button>
-                                        <button
-                                            onClick={generatePendantAssetFromReference}
-                                            className={`h-10 rounded-[20px] text-[11px] font-black transition-all ${pendantReference.url ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
-                                        >
-                                            图生图静态素材
+                                            {renderAiButtonContent('pendant-text', '生成图片')}
                                         </button>
                                     </div>
                                 </div>
@@ -4192,7 +4614,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 </div>
                                             )}
                                         </button>
-                                        {uploadRemoveButton(splash, () => clearUploadState(splash, setSplash), '删除开屏素材')}
+                                            {uploadRemoveButton(splash, () => clearUploadState(splash, setSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `dynamic-splash-${CANVAS_W}x${CANVAS_H}.png` })}
                                     </div>
                                 </div>
                                     </>
@@ -4462,24 +4884,36 @@ const ConfigWorkspace: React.FC = () => {
                                                             </div>
                                                             <img src="/focal-window/fixed_bg_2.png" className="absolute inset-0 z-[10] w-full h-full object-fill" alt="" />
                                                             <img src="/focal-window/gradient_layer.png" className="absolute inset-0 z-[20] w-full h-full object-fill" alt="" />
+                                                            {refreshIconSheet.url && (
+                                                                <div className="absolute z-[25] overflow-hidden shadow-2xl" style={getRefreshIconLayerPreviewStyle()}>
+                                                                    {refreshIconSheet.file?.type.startsWith('video/') ? (
+                                                                        <video src={refreshIconSheet.url} className="h-full w-full object-fill" muted loop playsInline autoPlay />
+                                                                    ) : (
+                                                                        <img src={refreshIconSheet.url} alt="icon 底图联合遮罩预览" className="h-full w-full object-fill" />
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                             <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 z-[30] w-full h-full object-fill" alt="" />
                                                             <div className="absolute inset-0 z-[40]">
-                                                                {refreshIconSheet.url && (
-                                                                    <div className="absolute overflow-hidden shadow-2xl" style={getRefreshIconLayerPreviewStyle()}>
-                                                                        {refreshIconSheet.file?.type.startsWith('video/') ? (
-                                                                            <video src={refreshIconSheet.url} className="h-full w-full object-fill" muted loop playsInline autoPlay />
-                                                                        ) : (
-                                                                            <img src={refreshIconSheet.url} alt="icon 底图联合遮罩预览" className="h-full w-full object-fill" />
-                                                                        )}
-                                                                    </div>
-                                                                )}
                                                                 {refreshBottomNav.url ? (
-                                                                    <img
-                                                                        src={refreshBottomNav.url}
-                                                                        alt="底导素材预览"
-                                                                        className="absolute left-0 bottom-0 w-full object-cover"
-                                                                        style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
-                                                                    />
+                                                                    refreshBottomNav.file?.type.startsWith('video/') ? (
+                                                                        <video
+                                                                            src={refreshBottomNav.url}
+                                                                            className="absolute left-0 bottom-0 w-full object-cover"
+                                                                            style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
+                                                                            muted
+                                                                            loop
+                                                                            playsInline
+                                                                            autoPlay
+                                                                        />
+                                                                    ) : (
+                                                                        <img
+                                                                            src={refreshBottomNav.url}
+                                                                            alt="底导素材预览"
+                                                                            className="absolute left-0 bottom-0 w-full object-cover"
+                                                                            style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
+                                                                        />
+                                                                    )
                                                                 ) : (
                                                                     <div
                                                                         className="absolute left-0 bottom-0 w-full border border-dashed border-emerald-300/70 bg-emerald-300/5 flex items-center justify-center"

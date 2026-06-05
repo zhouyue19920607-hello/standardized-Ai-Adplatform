@@ -102,3 +102,29 @@ export async function compressAndCompositeVideo(
         throw new Error(`视频压缩后仍超过 ${options.maxSizeMB}MB，请使用更短的视频素材`);
     }
 }
+
+export async function resizeVideoToDimensions(videoPath, targetW, targetH, outputPath, options = {}) {
+    const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
+
+    return new Promise((resolve, reject) => {
+        let command = ffmpeg(videoPath);
+        if (duration) command = command.duration(duration);
+
+        command
+            .videoFilters([
+                `scale=${Math.round(targetW)}:${Math.round(targetH)}:force_original_aspect_ratio=increase`,
+                `crop=${Math.round(targetW)}:${Math.round(targetH)}:(in_w-${Math.round(targetW)})/2:(in_h-${Math.round(targetH)})/2`
+            ])
+            .outputOptions([
+                '-c:v libx264',
+                '-crf 18',
+                '-preset medium',
+                '-an',
+                '-movflags +faststart',
+                '-pix_fmt yuv420p'
+            ])
+            .save(outputPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err));
+    });
+}

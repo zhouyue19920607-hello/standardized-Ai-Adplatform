@@ -9,7 +9,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
-import { compressAndCompositeVideo } from "./ffmpegUtils.mjs";
+import { compressAndCompositeVideo, resizeVideoToDimensions } from "./ffmpegUtils.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -783,11 +783,9 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 });
 
 const AIGC_SIGN_ALGORITHM = "SDK-HMAC-SHA256";
-const AIGC_DEFAULT_TASK = "/v1/mtimage_expand_v4_async";
 const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactly, only extend the background outside the original image";
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
-  imageExpand: "/v1/mtimage_expand_v4_async",
   textToVideo: "/v1/t2v_magic_async",
   imageToVideo: "/v1/mtsdgen_video_async",
   videoClip: "/v1/hook_videoclip_async",
@@ -800,8 +798,8 @@ function getAigcConfig() {
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
     apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
+    publicBaseUrl: (process.env.AIGC_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
-    task: process.env.AIGC_TASK || AIGC_DEFAULT_TASK,
     maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
     pollIntervalMs: Math.max(500, Number(process.env.AIGC_POLL_INTERVAL_MS || 2000))
   };
@@ -869,7 +867,6 @@ async function aigcJsonRequest(url, method, payload, config) {
     method,
     {
       ...(payload ? { "Content-Type": "application/json" } : {}),
-      "X-Sdk-Content-Sha256": "UNSIGNED-PAYLOAD",
       Host: hostHeader
     },
     body,
@@ -1001,6 +998,22 @@ function initImagesFromMediaInfoList(mediaInfoList = []) {
     }));
 }
 
+function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
+  return mediaInfoList.map(item => {
+    const mediaData = item?.media_data;
+    if (typeof mediaData === "string" && mediaData.startsWith("/static/") && config.publicBaseUrl) {
+      return {
+        ...item,
+        media_data: `${config.publicBaseUrl}${mediaData}`
+      };
+    }
+    if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
+      throw new Error("AI 图生图/适配需要美图可访问的素材公网 URL。请在上线环境配置 AIGC_PUBLIC_BASE_URL，或传入 http(s) 图片地址。");
+    }
+    return item;
+  });
+}
+
 function getAigcTaskState(statusData) {
   const taskData = statusData?.data || {};
   if (statusData?.error_code === 29901) return "processing";
@@ -1030,7 +1043,126 @@ function inferAigcFileExt(resultUrl, mediaType, contentType = "") {
   return ".dat";
 }
 
-async function persistAigcResult(resultUrl, mediaType) {
+async function imageBufferWithTransparentWhiteBackground(imgBuffer, resizeOptions = null) {
+  let pipeline = sharp(imgBuffer);
+  if (resizeOptions) {
+    pipeline = pipeline.resize(resizeOptions.width, resizeOptions.height, {
+      fit: resizeOptions.fit || "contain",
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    });
+  }
+
+  const { data, info } = await pipeline
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { width, height, channels } = info;
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+
+  const isWhiteBackground = (pixelIndex) => {
+    const offset = pixelIndex * channels;
+    const r = data[offset];
+    const g = data[offset + 1];
+    const b = data[offset + 2];
+    const a = data[offset + 3];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    return a > 0 && r >= 238 && g >= 238 && b >= 238 && max - min <= 18;
+  };
+
+  const enqueueIfBackground = (pixelIndex) => {
+    if (visited[pixelIndex] || !isWhiteBackground(pixelIndex)) return;
+    visited[pixelIndex] = 1;
+    queue[tail++] = pixelIndex;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueIfBackground(x);
+    enqueueIfBackground((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueueIfBackground(y * width);
+    enqueueIfBackground(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const pixelIndex = queue[head++];
+    const x = pixelIndex % width;
+    const y = Math.floor(pixelIndex / width);
+
+    if (x > 0) enqueueIfBackground(pixelIndex - 1);
+    if (x < width - 1) enqueueIfBackground(pixelIndex + 1);
+    if (y > 0) enqueueIfBackground(pixelIndex - width);
+    if (y < height - 1) enqueueIfBackground(pixelIndex + width);
+  }
+
+  for (let pixelIndex = 0; pixelIndex < visited.length; pixelIndex += 1) {
+    const offset = pixelIndex * channels;
+    const r = data[offset];
+    const g = data[offset + 1];
+    const b = data[offset + 2];
+    const a = data[offset + 3];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max - min;
+
+    if (visited[pixelIndex]) {
+      data[offset + 3] = 0;
+      continue;
+    }
+
+    // AIGC pendant assets often keep isolated white speckles that are not
+    // connected to the canvas edge. Remove low-saturation near-white residue
+    // so the final video does not show white dots after compositing.
+    if (a > 0 && saturation <= 34 && r >= 238 && g >= 238 && b >= 238) {
+      data[offset + 3] = 0;
+      continue;
+    }
+
+    if (a > 0 && saturation <= 42 && r >= 218 && g >= 218 && b >= 218) {
+      const whiteness = (r + g + b) / 3;
+      const opacityScale = Math.max(0, Math.min(1, (238 - whiteness) / 20));
+      data[offset + 3] = Math.round(a * opacityScale);
+    }
+  }
+
+  const cleaned = new Uint8Array(data);
+  const neighborOffsets = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1]
+  ];
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const pixelIndex = y * width + x;
+      const offset = pixelIndex * channels;
+      if (data[offset + 3] === 0) continue;
+      let transparentNeighbors = 0;
+      for (const [dx, dy] of neighborOffsets) {
+        const nextOffset = ((y + dy) * width + (x + dx)) * channels;
+        if (data[nextOffset + 3] <= 12) transparentNeighbors += 1;
+      }
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const isPaleResidue = max - min <= 52 && r >= 205 && g >= 205 && b >= 205;
+      if (isPaleResidue && transparentNeighbors >= 4) {
+        cleaned[offset + 3] = 0;
+      }
+    }
+  }
+
+  return sharp(cleaned, { raw: { width, height, channels } }).png().toBuffer();
+}
+
+async function persistAigcResult(resultUrl, mediaType, options = {}) {
   if (!/^https?:\/\//i.test(resultUrl)) return null;
   const response = await axios.get(resultUrl, {
     responseType: "arraybuffer",
@@ -1038,10 +1170,14 @@ async function persistAigcResult(resultUrl, mediaType) {
     maxContentLength: 200 * 1024 * 1024
   });
   await ensureDir(STORAGE_DIR);
-  const ext = inferAigcFileExt(resultUrl, mediaType, response.headers?.["content-type"]);
+  const ext = options.transparentWhite ? ".png" : inferAigcFileExt(resultUrl, mediaType, response.headers?.["content-type"]);
   const filename = `aigc_${Date.now()}_${crypto.randomBytes(4).toString("hex")}${ext}`;
   const filePath = path.join(STORAGE_DIR, filename);
-  await fs.writeFile(filePath, Buffer.from(response.data));
+  const rawBuffer = Buffer.from(response.data);
+  const outputBuffer = options.transparentWhite
+    ? await imageBufferWithTransparentWhiteBackground(rawBuffer, options.resize)
+    : rawBuffer;
+  await fs.writeFile(filePath, outputBuffer);
   return `/static/${filename}`;
 }
 
@@ -1054,7 +1190,8 @@ async function submitAigcTask({
   rspMediaType = "url",
   initialDelayMs = 0,
   pollIntervalMs,
-  maxPolls
+  maxPolls,
+  persistOptions
 }) {
   const config = getAigcConfig();
   if (!config.ak || !config.sk) {
@@ -1063,8 +1200,9 @@ async function submitAigcTask({
 
   const pushUrl = `${config.apiHost}/api/v1/push`;
   const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
+  const normalizedMediaInfoList = normalizeMediaInfoListForAigc(mediaInfoList, config);
   const taskPayload = {
-    ...(mediaInfoList.length ? { media_info_list: mediaInfoList } : {}),
+    ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {}),
     ...params,
     ...(extra ? { extra } : {})
   };
@@ -1075,7 +1213,7 @@ async function submitAigcTask({
     params: JSON.stringify(taskPayload),
     rsp_media_type: rspMediaType
   };
-  const initImages = initImagesFromMediaInfoList(mediaInfoList);
+  const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
   if (initImages.length > 0) payload.init_images = initImages;
 
   const pushed = await aigcJsonRequest(pushUrl, "POST", payload, config);
@@ -1104,7 +1242,7 @@ async function submitAigcTask({
       const resultUrl = mediaInfoList[0].media_data || mediaInfoList[0].media_url || "";
       let storedUrl = "";
       try {
-        storedUrl = await persistAigcResult(resultUrl, mediaInfoList[0].media_type);
+        storedUrl = await persistAigcResult(resultUrl, mediaInfoList[0].media_type, persistOptions);
       } catch (err) {
         console.warn("[AIGC] result persistence failed, using remote URL:", err.message);
       }
@@ -1148,18 +1286,21 @@ async function submitAigcDirectRequest(endpoint, payload) {
   return { resultUrl, remoteResultUrl, raw };
 }
 
-async function submitAigcExpandTask({ imageUrl, expandPixels, prompt, seed = -1, highQuality = true }) {
+async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, seed = -1 }) {
   const params = {
     parameter: {
+      base_model_name: "miracle_vision_edit",
+      prompt: prompt || AIGC_DEFAULT_PROMPT,
       rsp_media_type: "url",
-      free_expand_pixel: expandPixels,
-      high_quality_encode: Boolean(highQuality),
       seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
-      extra_prompt: prompt || AIGC_DEFAULT_PROMPT
+      extra_pipe_inputs: {
+        task_type: "outpainting",
+        target_ratio: targetRatio
+      }
     }
   };
   return submitAigcTask({
-    task: getAigcConfig().task,
+    task: AIGC_TASKS.dispatcher,
     params,
     mediaInfoList: [mediaInfoFromUrl(imageUrl)]
   });
@@ -1175,7 +1316,7 @@ function validateRemoteOrStaticUrl(value, fieldName) {
 
 app.post("/api/aigc/image-expand", async (req, res) => {
   try {
-    const { imageUrl, targetWidth, targetHeight, expandPixels, prompt, seed, highQuality } = req.body || {};
+    const { imageUrl, targetWidth, targetHeight, expandPixels, prompt, seed, targetRatio } = req.body || {};
     if (!imageUrl || typeof imageUrl !== "string") {
       return res.status(400).json({ error: "缺少 imageUrl" });
     }
@@ -1186,16 +1327,15 @@ app.post("/api/aigc/image-expand", async (req, res) => {
     const freeExpandPixel = await resolveExpandPixels({ imageUrl, targetWidth, targetHeight, expandPixels });
     const result = await submitAigcExpandTask({
       imageUrl,
-      expandPixels: freeExpandPixel,
+      targetRatio: targetRatio || (targetWidth && targetHeight ? `${targetWidth}:${targetHeight}` : "16:9"),
       prompt,
-      seed,
-      highQuality
+      seed
     });
 
     res.json({
       ok: true,
       provider: "meitu-open-platform",
-      task: getAigcConfig().task,
+      task: AIGC_TASKS.dispatcher,
       freeExpandPixel,
       ...result
     });
@@ -1207,7 +1347,7 @@ app.post("/api/aigc/image-expand", async (req, res) => {
 
 app.post("/api/aigc/text-to-image", async (req, res) => {
   try {
-    const { prompt, ratio = "16:9", seed = -1, baseModelName = "miracle_vision_edit" } = req.body || {};
+    const { prompt, ratio = "16:9", seed = -1, baseModelName = "miracle_vision_edit", transparentWhite = false } = req.body || {};
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "缺少 prompt" });
     }
@@ -1222,7 +1362,10 @@ app.post("/api/aigc/text-to-image", async (req, res) => {
           seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
           extra_pipe_inputs: { output_image_ratio: ratio }
         }
-      }
+      },
+      persistOptions: transparentWhite
+        ? { transparentWhite: true, resize: { width: 450, height: 450, fit: "contain" } }
+        : undefined
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
   } catch (err) {
@@ -1255,6 +1398,37 @@ app.post("/api/aigc/image-outpaint", async (req, res) => {
   } catch (err) {
     console.error("[AIGC Image Outpaint] failed:", err.message);
     res.status(500).json({ error: "AI 图像扩图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/image-to-image", async (req, res) => {
+  try {
+    const { imageUrl, prompt, ratio = "1:1", seed = -1, baseModelName = "miracle_vision_edit", transparentWhite = false } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "缺少 prompt" });
+    }
+    const result = await submitAigcTask({
+      task: AIGC_TASKS.dispatcher,
+      params: {
+        parameter: {
+          base_model_name: baseModelName,
+          prompt,
+          rsp_media_type: "url",
+          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
+          extra_pipe_inputs: { output_image_ratio: ratio }
+        }
+      },
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      persistOptions: transparentWhite
+        ? { transparentWhite: true, resize: { width: 450, height: 450, fit: "contain" } }
+        : undefined
+    });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
+  } catch (err) {
+    console.error("[AIGC Image To Image] failed:", err.message);
+    res.status(500).json({ error: "AI 图生图失败", details: err.message });
   }
 });
 
@@ -2376,6 +2550,48 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
   } catch (err) {
     console.error("[VideoComposite] Error:", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/export-video", async (req, res) => {
+  try {
+    const { url, width, height, maxDurationSec } = req.body || {};
+    const targetWidth = Math.max(1, parseInt(width, 10) || 0);
+    const targetHeight = Math.max(1, parseInt(height, 10) || 0);
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "缺少视频 url" });
+    }
+    if (!targetWidth || !targetHeight) {
+      return res.status(400).json({ error: "width / height 必须是正整数" });
+    }
+    if (!url.startsWith("/static/")) {
+      return res.status(400).json({ error: "当前仅支持导出本地 /static 视频素材" });
+    }
+
+    const relativeStaticPath = decodeURIComponent(url.replace(/^\/static\/+/, ""));
+    const sourcePath = path.resolve(STORAGE_DIR, relativeStaticPath);
+    const storageRoot = path.resolve(STORAGE_DIR);
+    if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
+      return res.status(400).json({ error: "视频路径不合法" });
+    }
+
+    await fs.access(sourcePath);
+    await ensureDir(STORAGE_DIR);
+    const outputFilename = `video_export_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.mp4`;
+    const outputPath = path.join(STORAGE_DIR, outputFilename);
+    await resizeVideoToDimensions(sourcePath, targetWidth, targetHeight, outputPath, { maxDurationSec });
+    const outputStats = await fs.stat(outputPath);
+
+    res.json({
+      ok: true,
+      url: `/static/${outputFilename}`,
+      width: targetWidth,
+      height: targetHeight,
+      sizeMB: Number((outputStats.size / 1024 / 1024).toFixed(2))
+    });
+  } catch (err) {
+    console.error("[ExportVideo] Error:", err.message);
+    res.status(500).json({ error: "视频导出失败", details: err.message });
   }
 });
 

@@ -108,6 +108,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     };
 
     const getAssetDimensionStatus = (raw: RawFile) => {
+        const isCrossTemplateAdaptation = raw.file.type.startsWith('image/') && rawFiles.length === 1 && activeTemplates.length > 1;
         if (raw.file.type.startsWith('video/')) {
             if (!raw.videoDimensions) {
                 return { tone: 'neutral', label: '视频素材', detail: '尺寸已放行' };
@@ -135,11 +136,22 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
         }
         const matches = targetSlots.filter(target => target.width === raw.imageDimensions?.width && target.height === raw.imageDimensions?.height);
         const sizeText = `${raw.imageDimensions.width} x ${raw.imageDimensions.height}`;
+        if (isCrossTemplateAdaptation) {
+            return {
+                tone: 'warn',
+                label: '需 AI 跨模板适配',
+                detail: matches.length
+                    ? `当前图片可匹配${describeMatches(matches)}，但一张图片要适配 ${activeTemplates.length} 个模板\nAI 将用于跨模板扩图、裁切、构图调整和安全区避让`
+                    : `当前 ${sizeText}，需适配 ${activeTemplates.length} 个模板\nAI 将用于扩图、裁切、背景补全、主体位置调整和智能排版`
+            };
+        }
         if (matches.length) {
             return {
                 tone: 'ok',
-                label: '图片尺寸符合',
-                detail: `图片尺寸符合${describeMatches(matches)}尺寸\n${sizeText}`
+                label: activeTemplates.length === 1 ? '尺寸符合，无需 AI' : '图片尺寸符合',
+                detail: activeTemplates.length === 1
+                    ? `图片尺寸符合当前模板\n${sizeText}\n将直接执行模板套用、遮罩叠加、安全区校验和导出`
+                    : `图片尺寸符合${describeMatches(matches)}尺寸\n${sizeText}`
             };
         }
         return {
@@ -217,7 +229,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                     <div className="min-w-0">
                                         <h3 className="text-sm leading-tight font-black text-slate-800">{t('main.pendingAssets')} ({rawFiles.length})</h3>
                                         <p className="text-[11px] text-slate-400 font-bold mt-0.5">
-                                            图片/视频会检测是否匹配{activeTemplates.length > 0 ? '已选模板' : '全部平台'}尺寸，不匹配建议使用 AI 适配。
+                                            AI 不默认开启；尺寸符合当前模板时直接套模板，不符合或需跨模板适配时才提示使用 AI。
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">

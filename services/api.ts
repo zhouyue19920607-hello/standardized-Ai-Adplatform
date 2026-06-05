@@ -81,6 +81,16 @@ export const uploadTemplatePreviewVideo = async (id: string, file: File): Promis
     return response.data;
 };
 
+export const exportVideoWithSize = async (payload: {
+    url: string;
+    width: number;
+    height: number;
+    maxDurationSec?: number;
+}): Promise<{ ok: boolean; url: string; width: number; height: number; sizeMB?: number }> => {
+    const response = await api.post('/export-video', payload);
+    return response.data;
+};
+
 export const getWorkflows = async () => {
     const response = await api.get('/workflows');
     return response.data;
@@ -165,6 +175,7 @@ export const generateImageWithAigc = async (payload: {
     ratio?: string;
     seed?: number;
     baseModelName?: string;
+    transparentWhite?: boolean;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/text-to-image', payload);
     return response.data;
@@ -177,6 +188,18 @@ export const outpaintImageWithAigc = async (payload: {
     baseModelName?: string;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/image-outpaint', payload);
+    return response.data;
+};
+
+export const editImageWithAigc = async (payload: {
+    imageUrl: string;
+    prompt: string;
+    ratio?: string;
+    seed?: number;
+    baseModelName?: string;
+    transparentWhite?: boolean;
+}): Promise<AigcTaskResponse> => {
+    const response = await api.post<AigcTaskResponse>('/aigc/image-to-image', payload);
     return response.data;
 };
 
