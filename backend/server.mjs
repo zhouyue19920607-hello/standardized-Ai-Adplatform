@@ -805,6 +805,15 @@ function getAigcConfig() {
   };
 }
 
+function getRequestPublicBaseUrl(req) {
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const host = forwardedHost || req.get("host") || "";
+  if (!host || /^(localhost|127\.0\.0\.1|\[::1\])(?::|$)/i.test(host)) return "";
+  const proto = forwardedProto || req.protocol || "https";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 function sha256Hex(value) {
   return crypto.createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -1191,9 +1200,13 @@ async function submitAigcTask({
   initialDelayMs = 0,
   pollIntervalMs,
   maxPolls,
-  persistOptions
+  persistOptions,
+  publicBaseUrl
 }) {
   const config = getAigcConfig();
+  if (!config.publicBaseUrl && publicBaseUrl) {
+    config.publicBaseUrl = publicBaseUrl.replace(/\/+$/, "");
+  }
   if (!config.ak || !config.sk) {
     throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
   }
@@ -1392,7 +1405,8 @@ app.post("/api/aigc/image-outpaint", async (req, res) => {
           }
         }
       },
-      mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      publicBaseUrl: getRequestPublicBaseUrl(req)
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
   } catch (err) {
@@ -1456,7 +1470,8 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
           }
         }
       },
-      mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      publicBaseUrl: getRequestPublicBaseUrl(req)
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
   } catch (err) {
