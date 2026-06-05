@@ -8,14 +8,14 @@ RUN npm run build
 
 # ─── Stage 2: Install server dependencies (native modules needed) ─────────
 FROM node:20-alpine AS server-deps
-RUN apk add --no-cache python3 make g++ libc6-compat vips-dev
+RUN apk add --no-cache python3 make g++ libc6-compat
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ─── Stage 3: Production runner ─────────────────────────────────────────────
 FROM node:20-alpine AS runner
-RUN apk add --no-cache libc6-compat vips
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY --from=server-deps /app/node_modules ./node_modules
 COPY --from=frontend-builder /app/dist ./dist
