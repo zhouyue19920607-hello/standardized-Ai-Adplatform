@@ -50,6 +50,28 @@ const getTemplateOutputDimensions = (template: AdTemplate) => {
   return parseTemplateDimensions(template.dimensions);
 };
 
+const getRequestErrorMessage = (error: unknown) => {
+  const maybeAxios = error as {
+    message?: string;
+    response?: {
+      status?: number;
+      data?: unknown;
+    };
+  };
+  const data = maybeAxios?.response?.data;
+  if (data && typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    const detail = record.details || record.error || record.message;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+  }
+  if (typeof data === 'string' && data.trim()) return data;
+  if (maybeAxios?.response?.status) {
+    return `接口返回 ${maybeAxios.response.status}，但没有返回错误详情。请检查后端日志和谷仓环境变量。`;
+  }
+  if (error instanceof Error) return error.message;
+  return '美图 AI 适配失败';
+};
+
 const isRawImageMatchingTemplate = (raw: RawFile, template: AdTemplate) => {
   const target = getTemplateOutputDimensions(template);
   return Boolean(
@@ -679,7 +701,7 @@ const App: React.FC = () => {
             finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
           } catch (e) {
             console.error('[AIGC Adapt] failed', e);
-            const message = e instanceof Error ? e.message : '美图 AI 适配失败';
+            const message = getRequestErrorMessage(e);
             alert(`美图 AI 适配失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
             setProcessedAssets(results);
             setIsProcessing(false);
