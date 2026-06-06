@@ -998,7 +998,7 @@ function mediaInfoFromUrl(url) {
 function initImagesFromMediaInfoList(mediaInfoList = []) {
   return mediaInfoList
     .map(item => item?.media_data)
-    .filter(Boolean)
+    .filter(url => typeof url === "string" && /^https?:\/\//i.test(url))
     .map(url => ({
       url,
       profile: {
@@ -1050,6 +1050,30 @@ async function writeStandardizedAigcImage(input) {
   return `/static/aigc-inputs/${outputFilename}`;
 }
 
+async function standardizeAigcImageToBase64(input) {
+  const metadata = await sharp(input).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("AIGC input image metadata is unreadable");
+  }
+
+  const maxSide = 1600;
+  const shouldResize = Math.max(metadata.width, metadata.height) > maxSide;
+  const buffer = await sharp(input)
+    .rotate()
+    .resize(shouldResize ? {
+      width: metadata.width >= metadata.height ? maxSide : undefined,
+      height: metadata.height > metadata.width ? maxSide : undefined,
+      fit: "inside",
+      withoutEnlargement: true
+    } : undefined)
+    .flatten({ background: "#ffffff" })
+    .toColorspace("srgb")
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+
+  return buffer.toString("base64");
+}
+
 async function standardizeStaticImageForAigc(staticUrl) {
   const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
   const sourcePath = path.resolve(STORAGE_DIR, relativePath);
@@ -1068,6 +1092,17 @@ async function standardizeStaticImageForAigc(staticUrl) {
   return writeStandardizedAigcImage(sourcePath);
 }
 
+async function standardizeStaticImageToBase64ForAigc(staticUrl) {
+  const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
+  const sourcePath = path.resolve(STORAGE_DIR, relativePath);
+  const storageRoot = path.resolve(STORAGE_DIR);
+  if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
+    throw new Error("AIGC 素材路径不在允许的静态目录内");
+  }
+  await fs.access(sourcePath);
+  return standardizeAigcImageToBase64(sourcePath);
+}
+
 async function standardizeRemoteImageForAigc(remoteUrl) {
   const response = await axios.get(remoteUrl, {
     responseType: "arraybuffer",
@@ -1082,45 +1117,68 @@ async function standardizeRemoteImageForAigc(remoteUrl) {
   return writeStandardizedAigcImage(Buffer.from(response.data));
 }
 
+async function standardizeRemoteImageToBase64ForAigc(remoteUrl) {
+  let response;
+  try {
+    response = await axios.get(remoteUrl, {
+      responseType: "arraybuffer",
+      timeout: 60000,
+      maxContentLength: 30 * 1024 * 1024,
+      validateStatus: status => status >= 200 && status < 300,
+      headers: {
+        "User-Agent": "Mozilla/5.0 AIGC image normalizer"
+      }
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const contentType = err.response?.headers?.["content-type"];
+    throw new Error(`AIGC input image download failed${status ? `: HTTP ${status}` : ""}${contentType ? ` ${contentType}` : ""}`);
+  }
+  const contentType = String(response.headers?.["content-type"] || "").toLowerCase();
+  if (contentType && !contentType.includes("image/")) {
+    return "";
+  }
+  try {
+    return await standardizeAigcImageToBase64(Buffer.from(response.data));
+  } catch (err) {
+    throw new Error(`AIGC input image normalization failed: ${err.message}`);
+  }
+}
+
+function mediaInfoWithBase64(item, imageBase64) {
+  return {
+    ...item,
+    media_data: imageBase64,
+    media_profiles: {
+      ...(item?.media_profiles || {}),
+      media_data_type: "jpg"
+    }
+  };
+}
+
 async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
   const normalized = [];
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
-      const standardizedMediaData = await standardizeStaticImageForAigc(mediaData);
-      if (config.publicBaseUrl) {
-        normalized.push({
-          ...item,
-          media_data: `${config.publicBaseUrl}${standardizedMediaData}`
-        });
-        continue;
-      }
-      throw new Error("AI 图生图/适配需要美图可访问的素材公网 URL。请在上线环境配置 AIGC_PUBLIC_BASE_URL，或传入 http(s) 图片地址。");
+      const imageBase64 = await standardizeStaticImageToBase64ForAigc(mediaData);
+      normalized.push(mediaInfoWithBase64(item, imageBase64));
+      continue;
     }
     if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData)) {
-      if (!config.publicBaseUrl) {
-        normalized.push(item);
-        continue;
-      }
       const localStaticUrl = publicUrlToStaticUrl(mediaData, config.publicBaseUrl);
-      const standardizedMediaData = localStaticUrl
-        ? await standardizeStaticImageForAigc(localStaticUrl)
-        : await standardizeRemoteImageForAigc(mediaData);
-      if (!standardizedMediaData) {
-        normalized.push(item);
+      const imageBase64 = localStaticUrl
+        ? await standardizeStaticImageToBase64ForAigc(localStaticUrl)
+        : await standardizeRemoteImageToBase64ForAigc(mediaData);
+      if (imageBase64) {
+        normalized.push(mediaInfoWithBase64(item, imageBase64));
         continue;
       }
-      normalized.push({
-        ...item,
-        media_data: `${config.publicBaseUrl}${standardizedMediaData}`
-      });
-      continue;
     }
     normalized.push(item);
   }
   return normalized;
 }
-
 function getAigcTaskState(statusData) {
   const taskData = statusData?.data || {};
   if (statusData?.error_code === 29901) return "processing";
