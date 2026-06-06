@@ -1024,13 +1024,19 @@ async function standardizeStaticImageForAigc(staticUrl) {
   }
 
   await fs.access(sourcePath);
+  const metadata = await sharp(sourcePath).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("AIGC input image metadata is unreadable");
+  }
+
   await ensureDir(AIGC_INPUTS_DIR);
-  const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.jpg`;
   const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
   await sharp(sourcePath)
     .rotate()
-    .ensureAlpha()
-    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .flatten({ background: "#ffffff" })
+    .toColorspace("srgb")
+    .jpeg({ quality: 92, mozjpeg: true })
     .toFile(outputPath);
   return `/static/aigc-inputs/${outputFilename}`;
 }
