@@ -1075,6 +1075,10 @@ async function standardizeRemoteImageForAigc(remoteUrl) {
     maxContentLength: 30 * 1024 * 1024,
     validateStatus: status => status >= 200 && status < 300
   });
+  const contentType = String(response.headers?.["content-type"] || "").toLowerCase();
+  if (contentType && !contentType.includes("image/")) {
+    return "";
+  }
   return writeStandardizedAigcImage(Buffer.from(response.data));
 }
 
@@ -1093,7 +1097,7 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
       }
       throw new Error("AI 图生图/适配需要美图可访问的素材公网 URL。请在上线环境配置 AIGC_PUBLIC_BASE_URL，或传入 http(s) 图片地址。");
     }
-    if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData) && hasAigcStandardImageExt(mediaData)) {
+    if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData)) {
       if (!config.publicBaseUrl) {
         normalized.push(item);
         continue;
@@ -1102,6 +1106,10 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
       const standardizedMediaData = localStaticUrl
         ? await standardizeStaticImageForAigc(localStaticUrl)
         : await standardizeRemoteImageForAigc(mediaData);
+      if (!standardizedMediaData) {
+        normalized.push(item);
+        continue;
+      }
       normalized.push({
         ...item,
         media_data: `${config.publicBaseUrl}${standardizedMediaData}`
