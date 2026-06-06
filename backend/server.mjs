@@ -1009,6 +1009,47 @@ function initImagesFromMediaInfoList(mediaInfoList = []) {
     }));
 }
 
+const AIGC_STANDARD_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".tif", ".tiff"]);
+
+function hasAigcStandardImageExt(value = "") {
+  try {
+    const parsed = /^https?:\/\//i.test(value) ? new URL(value) : { pathname: value };
+    return AIGC_STANDARD_IMAGE_EXTS.has(path.extname(parsed.pathname).toLowerCase());
+  } catch (err) {
+    return AIGC_STANDARD_IMAGE_EXTS.has(path.extname(value).toLowerCase());
+  }
+}
+
+function publicUrlToStaticUrl(publicUrl, publicBaseUrl = "") {
+  if (!publicBaseUrl || !/^https?:\/\//i.test(publicUrl)) return "";
+  try {
+    const media = new URL(publicUrl);
+    const base = new URL(publicBaseUrl);
+    if (media.origin !== base.origin || !media.pathname.startsWith("/static/")) return "";
+    return decodeURIComponent(media.pathname);
+  } catch (err) {
+    return "";
+  }
+}
+
+async function writeStandardizedAigcImage(input) {
+  const metadata = await sharp(input).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("AIGC input image metadata is unreadable");
+  }
+
+  await ensureDir(AIGC_INPUTS_DIR);
+  const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.jpg`;
+  const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
+  await sharp(input)
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .toColorspace("srgb")
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/aigc-inputs/${outputFilename}`;
+}
+
 async function standardizeStaticImageForAigc(staticUrl) {
   const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
   const sourcePath = path.resolve(STORAGE_DIR, relativePath);
@@ -1024,21 +1065,17 @@ async function standardizeStaticImageForAigc(staticUrl) {
   }
 
   await fs.access(sourcePath);
-  const metadata = await sharp(sourcePath).metadata();
-  if (!metadata.width || !metadata.height) {
-    throw new Error("AIGC input image metadata is unreadable");
-  }
+  return writeStandardizedAigcImage(sourcePath);
+}
 
-  await ensureDir(AIGC_INPUTS_DIR);
-  const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.jpg`;
-  const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
-  await sharp(sourcePath)
-    .rotate()
-    .flatten({ background: "#ffffff" })
-    .toColorspace("srgb")
-    .jpeg({ quality: 92, mozjpeg: true })
-    .toFile(outputPath);
-  return `/static/aigc-inputs/${outputFilename}`;
+async function standardizeRemoteImageForAigc(remoteUrl) {
+  const response = await axios.get(remoteUrl, {
+    responseType: "arraybuffer",
+    timeout: 60000,
+    maxContentLength: 30 * 1024 * 1024,
+    validateStatus: status => status >= 200 && status < 300
+  });
+  return writeStandardizedAigcImage(Buffer.from(response.data));
 }
 
 async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
@@ -1055,6 +1092,21 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
         continue;
       }
       throw new Error("AI 图生图/适配需要美图可访问的素材公网 URL。请在上线环境配置 AIGC_PUBLIC_BASE_URL，或传入 http(s) 图片地址。");
+    }
+    if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData) && hasAigcStandardImageExt(mediaData)) {
+      if (!config.publicBaseUrl) {
+        normalized.push(item);
+        continue;
+      }
+      const localStaticUrl = publicUrlToStaticUrl(mediaData, config.publicBaseUrl);
+      const standardizedMediaData = localStaticUrl
+        ? await standardizeStaticImageForAigc(localStaticUrl)
+        : await standardizeRemoteImageForAigc(mediaData);
+      normalized.push({
+        ...item,
+        media_data: `${config.publicBaseUrl}${standardizedMediaData}`
+      });
+      continue;
     }
     normalized.push(item);
   }
