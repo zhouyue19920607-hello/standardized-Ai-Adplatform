@@ -1020,6 +1020,11 @@ function hasAigcStandardImageExt(value = "") {
   }
 }
 
+function publicStaticUrl(staticUrl, publicBaseUrl = "") {
+  if (!publicBaseUrl || typeof staticUrl !== "string" || !staticUrl.startsWith("/static/")) return staticUrl;
+  return `${publicBaseUrl}${staticUrl}`;
+}
+
 function publicUrlToStaticUrl(publicUrl, publicBaseUrl = "") {
   if (!publicBaseUrl || !/^https?:\/\//i.test(publicUrl)) return "";
   try {
@@ -1161,18 +1166,30 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
-      const imageBase64 = await standardizeStaticImageToBase64ForAigc(mediaData);
-      normalized.push(mediaInfoWithBase64(item, imageBase64));
+      if (hasAigcStandardImageExt(mediaData)) {
+        const imageBase64 = await standardizeStaticImageToBase64ForAigc(mediaData);
+        normalized.push(mediaInfoWithBase64(item, imageBase64));
+      } else {
+        normalized.push({
+          ...item,
+          media_data: publicStaticUrl(mediaData, config.publicBaseUrl)
+        });
+      }
       continue;
     }
     if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData)) {
       const localStaticUrl = publicUrlToStaticUrl(mediaData, config.publicBaseUrl);
-      const imageBase64 = localStaticUrl
-        ? await standardizeStaticImageToBase64ForAigc(localStaticUrl)
-        : await standardizeRemoteImageToBase64ForAigc(mediaData);
-      if (imageBase64) {
+      if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
+        const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
         normalized.push(mediaInfoWithBase64(item, imageBase64));
         continue;
+      }
+      if (!localStaticUrl) {
+        const imageBase64 = await standardizeRemoteImageToBase64ForAigc(mediaData);
+        if (imageBase64) {
+          normalized.push(mediaInfoWithBase64(item, imageBase64));
+          continue;
+        }
       }
     }
     normalized.push(item);
@@ -1729,7 +1746,8 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       },
       mediaInfoList: [mediaInfoFromUrl(videoUrl)],
       initialDelayMs: 10000,
-      pollIntervalMs: 5000
+      pollIntervalMs: 5000,
+      publicBaseUrl: getRequestPublicBaseUrl(req)
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, ...result });
   } catch (err) {

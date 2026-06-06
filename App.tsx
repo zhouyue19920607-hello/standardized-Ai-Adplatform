@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, smartCropImageWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, smartCropImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -367,21 +367,6 @@ const App: React.FC = () => {
     setConfig(prev => ({ ...prev, ...newConfig }));
   };
 
-  // NOTE: 允许的视频尺寸白名单，图片不受此限制
-  const ALLOWED_VIDEO_DIMENSIONS = [
-    { width: 1126, height: 900 },
-    { width: 1126, height: 1410 },
-    { width: 1284, height: 1128 },
-    { width: 1440, height: 2340 },
-    { width: 1440, height: 1938 },
-    { width: 720, height: 960 },
-    { width: 960, height: 1440 },
-  ];
-
-  /**
-   * 校验视频尺寸是否符合要求
-   * @returns true 表示尺寸合法，false 表示尺寸不符合
-   */
   const readVideoDimensions = (file: File): Promise<{ width: number; height: number; duration: number } | null> => {
     return new Promise((resolve) => {
       const video = document.createElement('video');
@@ -401,13 +386,6 @@ const App: React.FC = () => {
       };
       video.src = url;
     });
-  };
-
-  const validateVideoDimensions = async (file: File): Promise<boolean> => {
-    const meta = await readVideoDimensions(file);
-    // 无法读取尺寸时放行，避免误拦截
-    if (!meta) return true;
-    return ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === meta.width && d.height === meta.height);
   };
 
   const readImageDimensions = (file: File): Promise<{ width: number; height: number } | null> => {
@@ -434,16 +412,10 @@ const App: React.FC = () => {
     newFilesArray.forEach(async (f) => {
       const file = f as File;
 
-      // NOTE: 仅对视频格式校验尺寸，图片不受限制
+      // NOTE: 视频不再限制上传尺寸；这里只读取尺寸，后续可交给 AI 视频扩展适配。
       let videoDimensions: { width: number; height: number; duration: number } | null = null;
       if (file.type.startsWith('video/')) {
         videoDimensions = await readVideoDimensions(file);
-        const isValidSize = !videoDimensions || ALLOWED_VIDEO_DIMENSIONS.some(d => d.width === videoDimensions?.width && d.height === videoDimensions?.height);
-        if (!isValidSize) {
-          const allowedList = ALLOWED_VIDEO_DIMENSIONS.map(d => `${d.width}x${d.height}px`).join('、');
-          alert(`视频尺寸不符合要求！\n\n请上传以下尺寸之一的视频：\n${allowedList}\n\n当前文件：${file.name}`);
-          return;
-        }
       }
 
       const id = Math.random().toString(36).substr(2, 9);
@@ -670,6 +642,23 @@ const App: React.FC = () => {
           return compressed?.url ? `${ASSETS_URL}${compressed.url}` : capturedFrame;
         };
 
+        const expandVideoToTemplate = async (target: { width: number; height: number }) => {
+          console.log(`[AIGC Video Expand] ${raw.file.name} -> ${template.app}${template.name} ${target.width}x${target.height}`);
+          const uploaded = await uploadRawAsset(raw.file);
+          const aigcResult = await expandVideoWithAigc({
+            videoUrl: uploaded.url,
+            targetWidth: target.width,
+            targetHeight: target.height,
+            prompt: [
+              '将上传视频智能适配为目标尺寸。保持主体、产品、文案和 Logo 完整不变，不拉伸、不变形、不改字、不重绘 Logo。根据目标尺寸比例自动扩展背景并优化排版，使画面美观、平衡、有广告设计感。',
+              '文案和 Logo 必须距离画面边缘至少 15% 安全距离，避免裁切。禁止裁切主体、文字错乱、Logo 变形、比例异常。',
+              `广告模板：${template.app}${template.name}`,
+              `目标尺寸：${target.width} x ${target.height}`
+            ].join('。')
+          });
+          return aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
+        };
+
         const shouldUseAigcForImageAdaptation =
           raw.file.type.startsWith('image/') &&
           requiresAiAdaptation &&
@@ -679,6 +668,18 @@ const App: React.FC = () => {
         // 1. If Workflow exists -> Try ComfyUI -> Fallback to Smart Crop (if image) or Thumbnail (if video)
         // Special handling: If splash frame capture is enabled, skip workflow entirely
         const shouldCaptureFrame = isSplash && isVideo && (config.captureFirstFrame || config.captureLastFrameSplash);
+        const shouldUseAigcForVideoAdaptation =
+          isVideo &&
+          Boolean(aigcTarget) &&
+          !shouldCaptureFrame &&
+          !isStaticFocal &&
+          !isImmersive &&
+          (
+            !raw.videoDimensions ||
+            raw.videoDimensions.width !== aigcTarget?.width ||
+            raw.videoDimensions.height !== aigcTarget?.height ||
+            activeTemplates.length > 1
+          );
 
         if (shouldBypassAiForExactImage) {
           console.log(`[AI Gate] ${raw.file.name} matches ${template.name}; skip AI adaptation and use direct template compositing.`);
@@ -692,10 +693,9 @@ const App: React.FC = () => {
               targetWidth: aigcTarget.width,
               targetHeight: aigcTarget.height,
               prompt: [
-                `将素材适配到广告模板：${template.app}${template.name}`,
-                `目标尺寸 ${aigcTarget.width} x ${aigcTarget.height}`,
-                '保持主体清晰，必要时扩图、裁切、背景补全、主体位置调整',
-                '避开安全区，保留核心商品或人物，输出适合营销广告的完整画面'
+                '将上传图片智能适配为目标尺寸。保持主体、产品、文案和 Logo 完整不变，不拉伸、不变形、不改字、不重绘 Logo。根据目标尺寸比例自动扩展背景并优化排版，使画面美观、平衡、有广告设计感。文案和 Logo 必须距离画面边缘至少 15% 安全距离，避免裁切。禁止裁切主体、文字错乱、Logo 变形、比例异常。',
+                `广告模板：${template.app}${template.name}`,
+                `目标尺寸：${aigcTarget.width} x ${aigcTarget.height}`
               ].join('。')
             });
             finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
@@ -703,6 +703,19 @@ const App: React.FC = () => {
             console.error('[AIGC Adapt] failed', e);
             const message = getRequestErrorMessage(e);
             alert(`美图 AI 适配失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
+            setProcessedAssets(results);
+            setIsProcessing(false);
+            setGenerationProgress(null);
+            return;
+          }
+        }
+        else if (shouldUseAigcForVideoAdaptation && aigcTarget) {
+          try {
+            finalUrl = await expandVideoToTemplate(aigcTarget);
+          } catch (e) {
+            console.error('[AIGC Video Expand] failed', e);
+            const message = getRequestErrorMessage(e);
+            alert(`美图 AI 视频扩展失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
             setProcessedAssets(results);
             setIsProcessing(false);
             setGenerationProgress(null);

@@ -333,6 +333,20 @@ const defaultBreakColorSchemes = [
     { id: 'fresh', label: '清透绿青', iconColor: '#13C8A8', gradientColor: '#7CFFCB' },
 ];
 
+const getApproxAigcVideoTarget = (targetWidth: number, targetHeight: number) => {
+    const ratio = targetWidth / targetHeight;
+    if (ratio < 0.75) {
+        return { width: 720, height: 1280, ratio: '9:16', label: '9:16 竖版近似比例' };
+    }
+    if (ratio < 1.45) {
+        return { width: 1280, height: 1024, ratio: '5:4', label: '5:4 近似比例' };
+    }
+    if (ratio < 2.2) {
+        return { width: 1280, height: 720, ratio: '16:9', label: '16:9 横版近似比例' };
+    }
+    return { width: 1280, height: 288, ratio: '40:9', label: '40:9 超宽近似比例' };
+};
+
 const isPngFile = (file: File) => file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
 const isPngOrWebpFile = (file: File) => {
     const fileName = file.name.toLowerCase();
@@ -1899,12 +1913,13 @@ const ConfigWorkspace: React.FC = () => {
                 status: 'idle',
                 message: '美图 AI 正在生成 icon 动态底图...',
             }));
+            const videoTarget = getApproxAigcVideoTarget(REFRESH_ICON_SHEET_W, REFRESH_ICON_SHEET_H);
             const uploaded = await uploadRawAsset(sourceFile);
             const result = await animateImageWithAigc({
                 imageUrl: uploaded.url,
-                prompt: `${text}，让 icon 底图轻微动态流动，光影自然，高级 App UI 动效`,
-                width: REFRESH_ICON_SHEET_W,
-                height: REFRESH_ICON_SHEET_H,
+                prompt: `${text}，让 icon 底图轻微动态流动，光影自然，高级 App UI 动效，生成比例接近 ${REFRESH_ICON_SHEET_W}:${REFRESH_ICON_SHEET_H}，后续会裁剪到准确尺寸`,
+                width: videoTarget.width,
+                height: videoTarget.height,
                 duration: 5,
             });
             const file = await fileFromGeneratedUrl(result.resultUrl, 'refresh-icon-sheet-ai-video.mp4', 'video/mp4');
@@ -2066,12 +2081,13 @@ const ConfigWorkspace: React.FC = () => {
                 status: 'idle',
                 message: '美图 AI 正在生成底导动态素材...',
             }));
+            const videoTarget = getApproxAigcVideoTarget(REFRESH_BOTTOM_NAV_W, REFRESH_BOTTOM_NAV_H);
             const uploaded = await uploadRawAsset(sourceFile);
             const result = await animateImageWithAigc({
                 imageUrl: uploaded.url,
-                prompt: `${text}，让底部导航栏背景轻微动态流动，光影自然，高级 App UI 动效`,
-                width: REFRESH_BOTTOM_NAV_W,
-                height: REFRESH_BOTTOM_NAV_H,
+                prompt: `${text}，让底部导航栏背景轻微动态流动，光影自然，高级 App UI 动效，生成比例接近 ${REFRESH_BOTTOM_NAV_W}:${REFRESH_BOTTOM_NAV_H}，后续会裁剪到准确尺寸`,
+                width: videoTarget.width,
+                height: videoTarget.height,
                 duration: 5,
             });
             const file = await fileFromGeneratedUrl(result.resultUrl, 'refresh-bottom-nav-ai-video.mp4', 'video/mp4');
@@ -2222,22 +2238,23 @@ const ConfigWorkspace: React.FC = () => {
                 status: 'idle',
                 message: `美图 AI 正在生成${source === 'text' ? '文生视频' : '图生视频'}...`,
             }));
+            const videoTarget = getApproxAigcVideoTarget(BREAK_FRAME_W, frameHeight);
             const promptText = [
                 fullPrompt,
-                `输出适合 ${BREAK_FRAME_W} x ${frameHeight} 的破框透明感营销视频`,
+                `输出接近 ${videoTarget.label} 的破框透明感营销视频，目标容器为 ${BREAK_FRAME_W} x ${frameHeight}，后续会裁剪到准确尺寸`,
                 '主体轻微跃出边界，光影自然，商业质感，不要文字'
             ].join('\n');
             const result = source === 'image'
                 ? await animateImageWithAigc({
                     imageUrl: (await uploadRawAsset(imageSourceFile as File)).url,
                     prompt: promptText,
-                    width: BREAK_FRAME_W,
-                    height: frameHeight,
+                    width: videoTarget.width,
+                    height: videoTarget.height,
                     duration: isJumpingFrame ? 3 : 5,
                 })
                 : await generateVideoWithAigc({
                     prompt: promptText,
-                    ratio: `${BREAK_FRAME_W}:${frameHeight}`,
+                    ratio: videoTarget.ratio,
                 });
             const file = await fileFromGeneratedUrl(result.resultUrl, 'break-frame-ai.mp4', 'video/mp4');
             setBreakFrameAsset({
