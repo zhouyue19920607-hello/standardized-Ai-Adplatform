@@ -1161,11 +1161,29 @@ function mediaInfoWithBase64(item, imageBase64) {
   };
 }
 
-async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
+function mediaInfoWithUrl(item, url) {
+  return {
+    ...item,
+    media_data: url,
+    media_profiles: {
+      ...(item?.media_profiles || {}),
+      media_data_type: "url"
+    }
+  };
+}
+
+async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options = {}) {
   const normalized = [];
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
+      if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
+        const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
+        if (/^https?:\/\//i.test(publicUrl)) {
+          normalized.push(mediaInfoWithUrl(item, publicUrl));
+          continue;
+        }
+      }
       if (hasAigcStandardImageExt(mediaData)) {
         const imageBase64 = await standardizeStaticImageToBase64ForAigc(mediaData);
         normalized.push(mediaInfoWithBase64(item, imageBase64));
@@ -1178,6 +1196,10 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config) {
       continue;
     }
     if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData)) {
+      if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
+        normalized.push(mediaInfoWithUrl(item, mediaData));
+        continue;
+      }
       const localStaticUrl = publicUrlToStaticUrl(mediaData, config.publicBaseUrl);
       if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
         const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
@@ -1374,7 +1396,8 @@ async function submitAigcTask({
   pollIntervalMs,
   maxPolls,
   persistOptions,
-  publicBaseUrl
+  publicBaseUrl,
+  mediaOptions
 }) {
   const config = getAigcConfig();
   if (!config.publicBaseUrl && publicBaseUrl) {
@@ -1386,7 +1409,7 @@ async function submitAigcTask({
 
   const pushUrl = `${config.apiHost}/api/v1/push`;
   const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
-  const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(mediaInfoList, config);
+  const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(mediaInfoList, config, mediaOptions);
   const taskPayload = {
     ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {}),
     ...params,
@@ -1655,18 +1678,27 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, ratio = "16:9" } = req.body || {};
+    const { prompt, text, ratio = "16:9", duration = 5, seed = -1 } = req.body || {};
     const finalText = text || prompt;
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
     }
+    const finalDuration = toPositiveInt(duration) || 5;
+    const finalSeed = Number.isFinite(Number(seed)) ? Number(seed) : -1;
     const result = await submitAigcTask({
       task: AIGC_TASKS.textToVideo,
       params: {
-        media_info_list: [],
-        parameter: { text: finalText, ratio }
+        parameter: {
+          text: finalText,
+          prompt: finalText,
+          ratio,
+          aspect_ratio: ratio,
+          duration: finalDuration,
+          video_duration: finalDuration,
+          seed: finalSeed,
+          rsp_media_type: "url"
+        }
       },
-      extra: {},
       initialDelayMs: 10000,
       pollIntervalMs: 5000
     });
@@ -1707,7 +1739,9 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
       },
       mediaInfoList: [mediaInfoFromUrl(imageUrl)],
       initialDelayMs: 10000,
-      pollIntervalMs: 5000
+      pollIntervalMs: 5000,
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true }
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.imageToVideo, ...result });
   } catch (err) {
