@@ -1150,21 +1150,6 @@ async function standardizeStaticImageToBase64ForAigc(staticUrl) {
   return standardizeAigcImageToBase64(sourcePath);
 }
 
-async function staticMediaToBase64ForAigc(staticUrl, { maxSizeMB = 10 } = {}) {
-  const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
-  const sourcePath = path.resolve(STORAGE_DIR, relativePath);
-  const storageRoot = path.resolve(STORAGE_DIR);
-  if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
-    throw new Error("AIGC 素材路径不在允许的静态目录内");
-  }
-  const stat = await fs.stat(sourcePath);
-  const maxBytes = Math.max(1, Number(maxSizeMB)) * 1024 * 1024;
-  if (stat.size > maxBytes) {
-    throw new Error(`AIGC 视频 base64 输入超过 ${maxSizeMB}MB，请使用更短或更小的视频素材`);
-  }
-  return fs.readFile(sourcePath, "base64");
-}
-
 async function standardizeRemoteImageForAigc(remoteUrl) {
   const response = await axios.get(remoteUrl, {
     responseType: "arraybuffer",
@@ -1218,17 +1203,6 @@ function mediaInfoWithBase64(item, imageBase64) {
   };
 }
 
-function mediaInfoWithVideoBase64(item, videoBase64) {
-  return {
-    ...item,
-    media_data: videoBase64,
-    media_profiles: {
-      ...(item?.media_profiles || {}),
-      media_data_type: "base64"
-    }
-  };
-}
-
 function mediaInfoWithUrl(item, url) {
   return {
     ...item,
@@ -1245,11 +1219,6 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
-      if (options.preferStaticVideoBase64 && hasAigcStandardVideoExt(mediaData)) {
-        const videoBase64 = await staticMediaToBase64ForAigc(mediaData, { maxSizeMB: options.maxVideoBase64MB || 10 });
-        normalized.push(mediaInfoWithVideoBase64(item, videoBase64));
-        continue;
-      }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
         const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
         if (/^https?:\/\//i.test(publicUrl)) {
@@ -1873,27 +1842,15 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         rsp_media_type: "url"
       }
     };
-    const submitVideoExpand = (mediaOptions) => submitAigcTask({
+    const result = await submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params,
       mediaInfoList: [mediaInfoFromUrl(videoUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req),
-      mediaOptions
+      publicBaseUrl: getRequestPublicBaseUrl(req)
     });
-
-    let inputMode = "base64";
-    let result;
-    try {
-      result = await submitVideoExpand({ preferStaticVideoBase64: true, maxVideoBase64MB: 6 });
-    } catch (primaryErr) {
-      if (!isAigcTimeoutError(primaryErr)) throw primaryErr;
-      console.warn("[AIGC Video Expand] base64 input timed out, retrying with public URL:", primaryErr.message);
-      inputMode = "url";
-      result = await submitVideoExpand({});
-    }
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode, fallbackUsed: inputMode === "url", ...result });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode: "url", fallbackUsed: false, ...result });
   } catch (err) {
     console.error("[AIGC Video Expand] failed:", err.message);
     res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
