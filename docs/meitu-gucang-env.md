@@ -17,6 +17,10 @@ AIGC_AUTH_MODE=query
 AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
+OBSERVER_ACCESS_ID=
+OBSERVER_BIZ=your-bucket/default
+OBSERVER_HOST=https://observer.starii-int.com
+OBSERVER_CDN_DOMAIN=https://your-cdn.example.com
 ```
 
 ## 你需要自己补的内容
@@ -114,7 +118,16 @@ A cat walking on the grass, sunny day, high quality
 
 并将比例先固定为 `16:9` 测试。
 
-视频扩展接口要求输入视频必须是 URL，后端会把本站 `/static` 视频转换成 `AIGC_PUBLIC_BASE_URL` 下的公网地址传给美图。请确认该公网地址能被美图服务直接下载，否则可能出现视频对象为空或 upstream timeout。
+视频扩展接口要求输入视频必须是 URL。推荐配置 Observer 上传中转：
+
+```bash
+OBSERVER_ACCESS_ID=Observer 审批给你的 Access-ID
+OBSERVER_BIZ=bucket-name/default
+OBSERVER_HOST=https://observer.starii-int.com
+OBSERVER_CDN_DOMAIN=https://桶对应的 CDN 域名
+```
+
+配置后，后端会把本站 `/static` 视频上传到 Observer 公共桶，再把 CDN URL 传给美图，避免美图无法下载本站临时 URL。未配置 Observer 时，后端会继续使用 `AIGC_PUBLIC_BASE_URL` 拼接公网地址。
 
 文生视频默认先调用 MOKI 接口：
 

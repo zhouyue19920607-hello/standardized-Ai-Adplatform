@@ -809,6 +809,15 @@ function getAigcConfig() {
   };
 }
 
+function getObserverConfig() {
+  return {
+    accessId: process.env.OBSERVER_ACCESS_ID || "",
+    biz: process.env.OBSERVER_BIZ || "",
+    host: (process.env.OBSERVER_HOST || "https://observer.starii-int.com").replace(/\/+$/, ""),
+    cdnDomain: (process.env.OBSERVER_CDN_DOMAIN || "").replace(/\/+$/, "")
+  };
+}
+
 function getRequestPublicBaseUrl(req) {
   const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
@@ -824,6 +833,10 @@ function sha256Hex(value) {
 
 function hmacSha256Hex(secret, value) {
   return crypto.createHmac("sha256", secret).update(value, "utf8").digest("hex");
+}
+
+function hmacSha1Base64(secret, value) {
+  return crypto.createHmac("sha1", secret).update(value, "utf8").digest("base64");
 }
 
 function formatSdkDate(date = new Date()) {
@@ -1077,6 +1090,79 @@ function publicUrlToStaticUrl(publicUrl, publicBaseUrl = "") {
   } catch (err) {
     return "";
   }
+}
+
+function staticUrlToLocalPath(staticUrl) {
+  const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
+  const sourcePath = path.resolve(STORAGE_DIR, relativePath);
+  const storageRoot = path.resolve(STORAGE_DIR);
+  if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
+    throw new Error("AIGC 素材路径不在允许的静态目录内");
+  }
+  return sourcePath;
+}
+
+async function getObserverSecurityToken(config) {
+  const response = await axios.get(`${config.host}/api/v1/security_token`, {
+    params: { biz: config.biz },
+    headers: { "Access-ID": config.accessId },
+    timeout: 30000
+  });
+  const token = Array.isArray(response.data) ? response.data[0] : response.data?.data?.[0] || response.data;
+  if (!token?.access_key || !token?.secret_key || !token?.security_token || !token?.end_point || !token?.bucket) {
+    throw new Error("Observer 未返回完整临时上传凭证");
+  }
+  return token;
+}
+
+function objectKeyForAigcVideo(sourcePath) {
+  const ext = path.extname(sourcePath).toLowerCase() || ".mp4";
+  return `videos/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${crypto.randomUUID()}${ext}`;
+}
+
+async function uploadBufferToObserverOss(buffer, objectName, contentType = "video/mp4") {
+  const config = getObserverConfig();
+  if (!config.accessId || !config.biz || !config.cdnDomain) {
+    throw new Error("缺少 Observer 上传配置：OBSERVER_ACCESS_ID / OBSERVER_BIZ / OBSERVER_CDN_DOMAIN");
+  }
+  const creds = await getObserverSecurityToken(config);
+  const endpoint = String(creds.end_point).replace(/\/+$/, "");
+  const bucket = String(creds.bucket);
+  const endpointHost = new URL(endpoint).host;
+  const date = new Date().toUTCString();
+  const resource = `/${bucket}/${objectName}`;
+  const stringToSign = [
+    "PUT",
+    "",
+    contentType,
+    date,
+    `x-oss-security-token:${creds.security_token}`,
+    resource
+  ].join("\n");
+  const signature = hmacSha1Base64(creds.secret_key, stringToSign);
+  const uploadUrl = endpointHost.startsWith(`${bucket}.`)
+    ? `${endpoint}/${objectName}`
+    : `${endpoint}/${bucket}/${objectName}`;
+  await axios.put(uploadUrl, buffer, {
+    headers: {
+      "Content-Type": contentType,
+      Date: date,
+      "x-oss-security-token": creds.security_token,
+      Authorization: `OSS ${creds.access_key}:${signature}`
+    },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+    timeout: 120000
+  });
+  return `${config.cdnDomain}/${objectName}`;
+}
+
+async function uploadStaticVideoToObserverUrl(staticUrl) {
+  const sourcePath = staticUrlToLocalPath(staticUrl);
+  await fs.access(sourcePath);
+  const buffer = await fs.readFile(sourcePath);
+  const objectName = objectKeyForAigcVideo(sourcePath);
+  return uploadBufferToObserverOss(buffer, objectName, "video/mp4");
 }
 
 async function writeStandardizedAigcImage(input) {
@@ -1830,6 +1916,14 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
     const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
     const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
+    let videoInputUrl = videoUrl;
+    let inputMode = "url";
+    const observerConfig = getObserverConfig();
+    if (videoUrl.startsWith("/static/") && hasAigcStandardVideoExt(videoUrl) && observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
+      videoInputUrl = await uploadStaticVideoToObserverUrl(videoUrl);
+      inputMode = "observer-url";
+      console.log(`[AIGC Video Expand] uploaded static video to Observer CDN: ${videoInputUrl}`);
+    }
     const params = {
       parameter: {
         target_width: finalTargetWidth,
@@ -1845,12 +1939,12 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     const result = await submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params,
-      mediaInfoList: [mediaInfoFromUrl(videoUrl)],
+      mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
       publicBaseUrl: getRequestPublicBaseUrl(req)
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode: "url", fallbackUsed: false, ...result });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode, fallbackUsed: false, ...result });
   } catch (err) {
     console.error("[AIGC Video Expand] failed:", err.message);
     res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
