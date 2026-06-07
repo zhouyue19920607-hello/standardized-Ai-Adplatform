@@ -13,6 +13,7 @@ AIGC_AK=
 AIGC_SK=
 AIGC_BIZ=ai-saap
 AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_AUTH_MODE=query
 AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
@@ -41,6 +42,7 @@ AIGC_SK=在这里填写你的 SK
 ```bash
 AIGC_BIZ=ai-saap
 AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_AUTH_MODE=query
 AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
@@ -90,6 +92,24 @@ AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 
 ```bash
 AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_AUTH_MODE=query
 ```
 
 同时确认 AK/SK 是正式环境下申请的，并且对应算法权限已开通。
+
+如果使用测试环境 AK/SK，必须把接口域名改为测试环境，例如：
+
+```bash
+AIGC_API_HOST=https://openapi-pre.mtlab.meitu.com
+AIGC_AUTH_MODE=query
+```
+
+`90002 / GATEWAY_AUTHORIZED_ERROR` 通常表示请求在网关层鉴权失败，优先检查 AK/SK 所属环境和 `AIGC_API_HOST` 是否匹配。
+
+`60477` 通常表示鉴权已通过，但算法层拒绝任务。优先用安全提示词和标准比例验证，例如：
+
+```txt
+A cat walking on the grass, sunny day, high quality
+```
+
+并将比例先固定为 `16:9` 测试。

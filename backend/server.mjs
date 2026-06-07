@@ -800,6 +800,7 @@ function getAigcConfig() {
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
     apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
+    authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
     publicBaseUrl: (process.env.AIGC_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
     maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
@@ -869,8 +870,28 @@ function signAigcRequest(url, method, headers, body, config) {
   };
 }
 
+function withAigcQueryAuth(url, config) {
+  const parsed = new URL(url);
+  parsed.searchParams.set("api_key", config.ak);
+  parsed.searchParams.set("api_secret", config.sk);
+  return parsed.toString();
+}
+
 async function aigcJsonRequest(url, method, payload, config) {
   const body = payload ? JSON.stringify(payload) : "";
+  if (config.authMode === "query") {
+    const response = await axios.request({
+      url: withAigcQueryAuth(url, config),
+      method,
+      data: payload ? body : undefined,
+      headers: payload ? { "Content-Type": "application/json" } : undefined,
+      transformRequest: data => data,
+      timeout: 90000,
+      validateStatus: () => true
+    });
+    return response.data;
+  }
+
   const parsed = new URL(url);
   const hostHeader = config.hostHeader || parsed.host;
   const headers = signAigcRequest(
