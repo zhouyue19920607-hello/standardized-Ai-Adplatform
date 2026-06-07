@@ -229,6 +229,9 @@ export const smartCropImageWithAigc = async (payload: {
 export const generateVideoWithAigc = async (payload: {
     prompt: string;
     ratio?: string;
+    duration?: number;
+    seed?: number;
+    preferLtx?: boolean;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/text-to-video', payload);
     return response.data;

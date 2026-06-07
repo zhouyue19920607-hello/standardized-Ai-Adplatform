@@ -113,3 +113,17 @@ A cat walking on the grass, sunny day, high quality
 ```
 
 并将比例先固定为 `16:9` 测试。
+
+文生视频默认先调用 MOKI 接口：
+
+```txt
+/v1/t2v_magic_async
+```
+
+如果该接口因为队列、模型节点或算法层错误失败，后端会自动降级到 LTX 备用接口：
+
+```txt
+/v1/ltx_2_async
+```
+
+接口返回里 `fallbackUsed: true` 表示本次实际使用了 LTX。

@@ -789,6 +789,7 @@ const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactl
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
   textToVideo: "/v1/t2v_magic_async",
+  textToVideoFallback: "/v1/ltx_2_async",
   imageToVideo: "/v1/mtsdgen_video_async",
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
@@ -923,6 +924,11 @@ function sleep(ms) {
 function toPositiveInt(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function isAigcFallbackCandidate(err) {
+  const message = String(err?.message || "");
+  return /60477|timeout|超时|mq|redis|queue|MOKI|GATEWAY|90002/i.test(message);
 }
 
 function normalizeExpandPixels(value) {
@@ -1699,31 +1705,46 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, ratio = "16:9", duration = 5, seed = -1 } = req.body || {};
+    const { prompt, text, ratio = "16:9", duration = 5, seed = -1, preferLtx = false } = req.body || {};
     const finalText = text || prompt;
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
     }
     const finalDuration = toPositiveInt(duration) || 5;
     const finalSeed = Number.isFinite(Number(seed)) ? Number(seed) : -1;
-    const result = await submitAigcTask({
-      task: AIGC_TASKS.textToVideo,
+    const videoParams = {
+      parameter: {
+        text: finalText,
+        prompt: finalText,
+        ratio,
+        aspect_ratio: ratio,
+        duration: finalDuration,
+        video_duration: finalDuration,
+        seed: finalSeed,
+        rsp_media_type: "url"
+      }
+    };
+    const submitTextToVideo = (task) => submitAigcTask({
+      task,
       params: {
-        parameter: {
-          text: finalText,
-          prompt: finalText,
-          ratio,
-          aspect_ratio: ratio,
-          duration: finalDuration,
-          video_duration: finalDuration,
-          seed: finalSeed,
-          rsp_media_type: "url"
-        }
+        ...videoParams,
+        ...(task === AIGC_TASKS.textToVideoFallback ? { task_type: "text_to_video" } : {})
       },
       initialDelayMs: 10000,
       pollIntervalMs: 5000
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.textToVideo, ...result });
+
+    let usedTask = preferLtx ? AIGC_TASKS.textToVideoFallback : AIGC_TASKS.textToVideo;
+    let result;
+    try {
+      result = await submitTextToVideo(usedTask);
+    } catch (primaryErr) {
+      if (preferLtx || !isAigcFallbackCandidate(primaryErr)) throw primaryErr;
+      console.warn(`[AIGC Text To Video] primary ${AIGC_TASKS.textToVideo} failed, falling back to ${AIGC_TASKS.textToVideoFallback}:`, primaryErr.message);
+      usedTask = AIGC_TASKS.textToVideoFallback;
+      result = await submitTextToVideo(usedTask);
+    }
+    res.json({ ok: true, provider: "meitu-open-platform", task: usedTask, fallbackUsed: usedTask !== AIGC_TASKS.textToVideo, ...result });
   } catch (err) {
     console.error("[AIGC Text To Video] failed:", err.message);
     res.status(500).json({ error: "AI 文生视频失败", details: err.message });
