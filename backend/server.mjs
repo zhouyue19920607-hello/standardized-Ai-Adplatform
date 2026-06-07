@@ -1037,6 +1037,7 @@ function initImagesFromMediaInfoList(mediaInfoList = []) {
 }
 
 const AIGC_STANDARD_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".tif", ".tiff"]);
+const AIGC_STANDARD_VIDEO_EXTS = new Set([".mp4", ".mov", ".webm", ".m4v"]);
 
 function hasAigcStandardImageExt(value = "") {
   try {
@@ -1044,6 +1045,15 @@ function hasAigcStandardImageExt(value = "") {
     return AIGC_STANDARD_IMAGE_EXTS.has(path.extname(parsed.pathname).toLowerCase());
   } catch (err) {
     return AIGC_STANDARD_IMAGE_EXTS.has(path.extname(value).toLowerCase());
+  }
+}
+
+function hasAigcStandardVideoExt(value = "") {
+  try {
+    const parsed = /^https?:\/\//i.test(value) ? new URL(value) : { pathname: value };
+    return AIGC_STANDARD_VIDEO_EXTS.has(path.extname(parsed.pathname).toLowerCase());
+  } catch (err) {
+    return AIGC_STANDARD_VIDEO_EXTS.has(path.extname(value).toLowerCase());
   }
 }
 
@@ -1135,6 +1145,21 @@ async function standardizeStaticImageToBase64ForAigc(staticUrl) {
   return standardizeAigcImageToBase64(sourcePath);
 }
 
+async function staticMediaToBase64ForAigc(staticUrl, { maxSizeMB = 10 } = {}) {
+  const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
+  const sourcePath = path.resolve(STORAGE_DIR, relativePath);
+  const storageRoot = path.resolve(STORAGE_DIR);
+  if (!sourcePath.startsWith(`${storageRoot}${path.sep}`)) {
+    throw new Error("AIGC 素材路径不在允许的静态目录内");
+  }
+  const stat = await fs.stat(sourcePath);
+  const maxBytes = Math.max(1, Number(maxSizeMB)) * 1024 * 1024;
+  if (stat.size > maxBytes) {
+    throw new Error(`AIGC 视频 base64 输入超过 ${maxSizeMB}MB，请使用更短或更小的视频素材`);
+  }
+  return fs.readFile(sourcePath, "base64");
+}
+
 async function standardizeRemoteImageForAigc(remoteUrl) {
   const response = await axios.get(remoteUrl, {
     responseType: "arraybuffer",
@@ -1188,6 +1213,17 @@ function mediaInfoWithBase64(item, imageBase64) {
   };
 }
 
+function mediaInfoWithVideoBase64(item, videoBase64) {
+  return {
+    ...item,
+    media_data: videoBase64,
+    media_profiles: {
+      ...(item?.media_profiles || {}),
+      media_data_type: "base64"
+    }
+  };
+}
+
 function mediaInfoWithUrl(item, url) {
   return {
     ...item,
@@ -1204,6 +1240,11 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
+      if (options.preferStaticVideoBase64 && hasAigcStandardVideoExt(mediaData)) {
+        const videoBase64 = await staticMediaToBase64ForAigc(mediaData, { maxSizeMB: options.maxVideoBase64MB || 10 });
+        normalized.push(mediaInfoWithVideoBase64(item, videoBase64));
+        continue;
+      }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
         const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
         if (/^https?:\/\//i.test(publicUrl)) {
@@ -1806,24 +1847,28 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
     if (validationError) return res.status(400).json({ error: validationError });
+    const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
+    const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
+    const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
     const result = await submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params: {
         parameter: {
-          target_width: toPositiveInt(targetWidth) || 1920,
-          target_height: toPositiveInt(targetHeight) || 1080,
-          r_w_left: Number(r_w_left) || 0,
-          r_w_right: Number(r_w_right) || 0,
-          r_h_up: Number(r_h_up) || 0,
-          r_h_down: Number(r_h_down) || 0,
-          prompt,
+          target_width: finalTargetWidth,
+          target_height: finalTargetHeight,
+          r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
+          r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
+          r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
+          r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
+          prompt: finalPrompt,
           rsp_media_type: "url"
         }
       },
       mediaInfoList: [mediaInfoFromUrl(videoUrl)],
       initialDelayMs: 10000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req)
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferStaticVideoBase64: true, maxVideoBase64MB: 10 }
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, ...result });
   } catch (err) {

@@ -114,6 +114,8 @@ A cat walking on the grass, sunny day, high quality
 
 并将比例先固定为 `16:9` 测试。
 
+视频扩展接口会把本站上传的 `/static` 视频转成 base64 传给美图，避免美图后端下载公网 URL 失败导致视频对象为空。为控制请求体大小，base64 输入目前限制原视频不超过 10MB。
+
 文生视频默认先调用 MOKI 接口：
 
 ```txt
