@@ -931,6 +931,11 @@ function isAigcFallbackCandidate(err) {
   return /60477|timeout|超时|mq|redis|queue|MOKI|GATEWAY|90002/i.test(message);
 }
 
+function isAigcTimeoutError(err) {
+  const message = String(err?.message || "");
+  return /timeout|超时|upstream/i.test(message);
+}
+
 function normalizeExpandPixels(value) {
   if (!value || typeof value !== "object") return null;
   return {
@@ -1859,27 +1864,39 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
     const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
     const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
-    const result = await submitAigcTask({
+    const params = {
+      parameter: {
+        target_width: finalTargetWidth,
+        target_height: finalTargetHeight,
+        r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
+        r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
+        r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
+        r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
+        prompt: finalPrompt,
+        rsp_media_type: "url"
+      }
+    };
+    const submitVideoExpand = (mediaOptions) => submitAigcTask({
       task: AIGC_TASKS.videoExpand,
-      params: {
-        parameter: {
-          target_width: finalTargetWidth,
-          target_height: finalTargetHeight,
-          r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
-          r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
-          r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
-          r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
-          prompt: finalPrompt,
-          rsp_media_type: "url"
-        }
-      },
+      params,
       mediaInfoList: [mediaInfoFromUrl(videoUrl)],
-      initialDelayMs: 10000,
+      initialDelayMs: 5000,
       pollIntervalMs: 5000,
       publicBaseUrl: getRequestPublicBaseUrl(req),
-      mediaOptions: { preferStaticVideoBase64: true, maxVideoBase64MB: 10 }
+      mediaOptions
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, ...result });
+
+    let inputMode = "base64";
+    let result;
+    try {
+      result = await submitVideoExpand({ preferStaticVideoBase64: true, maxVideoBase64MB: 6 });
+    } catch (primaryErr) {
+      if (!isAigcTimeoutError(primaryErr)) throw primaryErr;
+      console.warn("[AIGC Video Expand] base64 input timed out, retrying with public URL:", primaryErr.message);
+      inputMode = "url";
+      result = await submitVideoExpand({});
+    }
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode, fallbackUsed: inputMode === "url", ...result });
   } catch (err) {
     console.error("[AIGC Video Expand] failed:", err.message);
     res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
