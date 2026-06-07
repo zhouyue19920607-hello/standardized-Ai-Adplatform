@@ -128,4 +128,4 @@ A cat walking on the grass, sunny day, high quality
 /v1/ltx_2_async
 ```
 
-接口返回里 `fallbackUsed: true` 表示本次实际使用了 LTX。
+LTX 文生视频会在 `parameter` 中传入 `task_type: "t2v"`。接口返回里 `fallbackUsed: true` 表示本次实际使用了 LTX。

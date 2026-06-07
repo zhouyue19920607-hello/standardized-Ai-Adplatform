@@ -1753,7 +1753,7 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     }
     const finalDuration = toPositiveInt(duration) || 5;
     const finalSeed = Number.isFinite(Number(seed)) ? Number(seed) : -1;
-    const videoParams = {
+    const mokiVideoParams = {
       parameter: {
         text: finalText,
         prompt: finalText,
@@ -1765,12 +1765,21 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
         rsp_media_type: "url"
       }
     };
+    const ltxVideoParams = {
+      media_info_list: [],
+      parameter: {
+        task_type: "t2v",
+        prompt: finalText,
+        width: ratio === "9:16" ? 720 : 1280,
+        height: ratio === "9:16" ? 1280 : 720,
+        duration: finalDuration,
+        fps: 24,
+        seed: finalSeed
+      }
+    };
     const submitTextToVideo = (task) => submitAigcTask({
       task,
-      params: {
-        ...videoParams,
-        ...(task === AIGC_TASKS.textToVideoFallback ? { task_type: "text_to_video" } : {})
-      },
+      params: task === AIGC_TASKS.textToVideoFallback ? ltxVideoParams : mokiVideoParams,
       initialDelayMs: 10000,
       pollIntervalMs: 5000
     });
