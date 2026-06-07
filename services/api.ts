@@ -245,7 +245,8 @@ export const animateImageWithAigc = async (payload: {
     duration?: number;
     fps?: number;
     seed?: number;
-    baseModelName?: string;
+    taskType?: string;
+    loraId?: string;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/image-to-video', payload);
     return response.data;

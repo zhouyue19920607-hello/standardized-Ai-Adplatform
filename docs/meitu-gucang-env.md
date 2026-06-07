@@ -122,6 +122,8 @@ A cat walking on the grass, sunny day, high quality
 /v1/t2v_magic_async
 ```
 
+请求参数使用 MOKI 标准格式：`parameter.text` 和 `parameter.ratio`。
+
 如果该接口因为队列、模型节点或算法层错误失败，后端会自动降级到 LTX 备用接口：
 
 ```txt
@@ -129,3 +131,11 @@ A cat walking on the grass, sunny day, high quality
 ```
 
 LTX 文生视频会在 `parameter` 中传入 `task_type: "t2v"`。接口返回里 `fallbackUsed: true` 表示本次实际使用了 LTX。
+
+图生视频直接调用 LTX 接口：
+
+```txt
+/v1/ltx_2_async
+```
+
+并在 `parameter` 中传入 `task_type: "i2v-distilled"`，首帧图片放在 `media_info_list`。

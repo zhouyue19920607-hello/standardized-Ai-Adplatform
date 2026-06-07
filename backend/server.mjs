@@ -790,7 +790,7 @@ const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
   textToVideo: "/v1/t2v_magic_async",
   textToVideoFallback: "/v1/ltx_2_async",
-  imageToVideo: "/v1/mtsdgen_video_async",
+  imageToVideo: "/v1/ltx_2_async",
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
 };
@@ -1759,16 +1759,12 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     const finalDuration = toPositiveInt(duration) || 5;
     const finalSeed = Number.isFinite(Number(seed)) ? Number(seed) : -1;
     const mokiVideoParams = {
+      media_info_list: [],
       parameter: {
         text: finalText,
-        prompt: finalText,
-        ratio,
-        aspect_ratio: ratio,
-        duration: finalDuration,
-        video_duration: finalDuration,
-        seed: finalSeed,
-        rsp_media_type: "url"
-      }
+        ratio
+      },
+      extra: {}
     };
     const ltxVideoParams = {
       media_info_list: [],
@@ -1816,7 +1812,8 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
       duration = 5,
       fps = 24,
       seed = -1,
-      baseModelName = "miracle-vision-video-i2v_5b-720p-ref-beta1.zip"
+      taskType = "i2v-distilled",
+      loraId = ""
     } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
@@ -1824,14 +1821,14 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
       task: AIGC_TASKS.imageToVideo,
       params: {
         parameter: {
-          base_model_name: baseModelName,
+          task_type: taskType || "i2v-distilled",
           prompt,
-          rsp_media_type: "url",
-          height: toPositiveInt(height) || 720,
           width: toPositiveInt(width) || 1280,
+          height: toPositiveInt(height) || 720,
           duration: toPositiveInt(duration) || 5,
           fps: toPositiveInt(fps) || 24,
-          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1
+          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
+          lora_id: loraId || ""
         }
       },
       mediaInfoList: [mediaInfoFromUrl(imageUrl)],
