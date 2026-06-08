@@ -153,7 +153,8 @@ export async function resizeVideoToMaxSide(videoPath, maxSide, outputPath, optio
         if (duration) command = command.duration(duration);
 
         const filters = [
-            `scale=${side}:${side}:force_original_aspect_ratio=decrease:force_divisible_by=8`
+            `scale=min(iw\\,${side}):min(ih\\,${side}):force_original_aspect_ratio=decrease`,
+            `scale=max(8\\,trunc(iw/8)*8):max(8\\,trunc(ih/8)*8)`
         ];
         if (fps) filters.push(`fps=${fps}`);
 
