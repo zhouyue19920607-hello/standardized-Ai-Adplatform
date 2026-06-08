@@ -2397,6 +2397,7 @@ const ConfigWorkspace: React.FC = () => {
         const firstText = (isJumpingFrame ? jumpingPrompt : breakFirstPrompt).trim() || '第一次破框创意';
         const secondText = breakSecondPrompt.trim() || '第二次破框创意';
         const phaseText = isJumpingFrame ? firstText : (phase === 0 ? firstText : secondText);
+        const phaseTitle = isJumpingFrame ? '跃动破框' : (phase === 0 ? '第一次破框' : '第二次破框');
         const phaseReferenceFile = isJumpingFrame
             ? jumpingReference.file
             : (phase === 0 ? breakFirstReference.file : breakSecondReference.file);
@@ -2417,9 +2418,8 @@ const ConfigWorkspace: React.FC = () => {
                 source === 'image' ? (imageSourceFile === activeFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n')
             : [
-                `第一次破框：${firstText}`,
-                `第二次破框：${secondText}`,
-                BREAK_AI_DURATION_RULE,
+                `${phaseTitle}：${phaseText}`,
+                `${phaseTitle}${phase === 0 ? '在第一次触发时间出现' : '在第二次触发时间出现'}，${BREAK_AI_DURATION_RULE}`,
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
                 source === 'image' ? (imageSourceFile === activeFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n');
