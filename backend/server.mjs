@@ -801,7 +801,7 @@ const AIGC_TASKS = {
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
 };
-const AIGC_VIDEO_EXPAND_MAX_FRAMES = 90;
+const AIGC_VIDEO_EXPAND_MAX_FRAMES = 81;
 const AIGC_VIDEO_EXPAND_MAX_SIDE = 1024;
 
 function getAigcConfig() {
@@ -964,13 +964,19 @@ function ceilToMultiple(value, multiple = 8) {
   return Math.ceil(parsed / multiple) * multiple;
 }
 
+function floorToMultiple(value, multiple = 8) {
+  const parsed = toPositiveInt(value);
+  if (!parsed) return null;
+  return Math.max(multiple, Math.floor(parsed / multiple) * multiple);
+}
+
 function getAigcVideoEncodeDimensions(width, height) {
   const sourceWidth = toPositiveInt(width) || 1920;
   const sourceHeight = toPositiveInt(height) || 1080;
   const scale = Math.min(1, AIGC_VIDEO_EXPAND_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
   return {
-    width: ceilToMultiple(sourceWidth * scale, 8) || 1024,
-    height: ceilToMultiple(sourceHeight * scale, 8) || 576
+    width: floorToMultiple(sourceWidth * scale, 16) || 1024,
+    height: floorToMultiple(sourceHeight * scale, 16) || 576
   };
 }
 

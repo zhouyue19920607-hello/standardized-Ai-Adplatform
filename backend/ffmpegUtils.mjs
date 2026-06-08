@@ -138,7 +138,7 @@ export async function resizeVideoToDimensions(videoPath, targetW, targetH, outpu
 export async function resizeVideoToMaxSide(videoPath, maxSide, outputPath, options = {}) {
     const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
     const fps = Number(options.fps) > 0 ? Math.round(Number(options.fps)) : null;
-    const side = Math.max(8, Math.round(maxSide || 1024));
+    const side = Math.max(16, Math.round(maxSide || 1024));
     const outputOptions = [
         '-c:v libx264',
         '-crf 18',
@@ -154,7 +154,7 @@ export async function resizeVideoToMaxSide(videoPath, maxSide, outputPath, optio
 
         const filters = [
             `scale=min(iw\\,${side}):min(ih\\,${side}):force_original_aspect_ratio=decrease`,
-            `scale=max(8\\,trunc(iw/8)*8):max(8\\,trunc(ih/8)*8)`
+            `scale=max(16\\,trunc(iw/16)*16):max(16\\,trunc(ih/16)*16)`
         ];
         if (fps) filters.push(`fps=${fps}`);
 
