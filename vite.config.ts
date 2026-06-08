@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'http://127.0.0.1:4000',
           changeOrigin: true,
+          timeout: 40 * 60 * 1000,
+          proxyTimeout: 40 * 60 * 1000,
         },
         '/static': {
           target: 'http://127.0.0.1:4000',

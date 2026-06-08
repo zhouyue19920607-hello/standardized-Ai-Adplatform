@@ -1722,7 +1722,16 @@ async function submitAigcTask({
   for (let index = 0; index < pollingMax; index += 1) {
     await sleep(pollingInterval);
     const queryUrl = `${statusUrl}?${new URLSearchParams({ task_id: taskId }).toString()}`;
-    const statusData = await aigcJsonRequest(queryUrl, "GET", null, config);
+    let statusData;
+    try {
+      statusData = await aigcJsonRequest(queryUrl, "GET", null, config);
+    } catch (err) {
+      if (isAigcTimeoutError(err)) {
+        console.warn(`[AIGC] status polling timeout, continuing: task=${taskId}, poll=${index + 1}/${pollingMax}, error=${err.message}`);
+        continue;
+      }
+      throw err;
+    }
     const taskData = statusData?.data || {};
     const mediaInfoList = extractAigcResultMedia(statusData);
     const state = getAigcTaskState(statusData);
@@ -1744,7 +1753,9 @@ async function submitAigcTask({
     }
     if (state === "failed") {
       const resultError = taskData.result?.msg || taskData.result?.data?.ErrorMsg || taskData.result?.mtlab_res?.ErrorMsg || "";
-      throw new Error(resultError || taskData.message || statusData?.message || statusData?.error_msg || `AIGC task failed: ${JSON.stringify(statusData)}`);
+      const error = new Error(resultError || taskData.message || statusData?.message || statusData?.error_msg || `AIGC task failed: ${JSON.stringify(statusData)}`);
+      error.taskId = taskId;
+      throw error;
     }
   }
 
@@ -2096,16 +2107,25 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         : null,
       parameterKeys: Object.keys(params.parameter)
     }));
-    const result = await submitAigcTask({
+    let result;
+    const submitVideoExpand = () => submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params,
       extra: {},
       mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
+      maxPolls: 180,
       publicBaseUrl,
       persistOptions: { maxContentLengthBytes: 500 * 1024 * 1024 }
     });
+    try {
+      result = await submitVideoExpand();
+    } catch (err) {
+      if (!isAigcTimeoutError(err)) throw err;
+      console.warn(`[AIGC Video Expand] upstream timeout, retrying once: ${err.message}`);
+      result = await submitVideoExpand();
+    }
     let finalResult = result;
     let postProcess = null;
     if (needsPreciseCrop) {
@@ -3444,9 +3464,11 @@ setInterval(cleanupStorage, 30 * 60 * 1000);
 
 // ---- 启动 ----
 ensureDataFiles().then(() => {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
     // 启动时先跑一次清理
     cleanupStorage();
   });
+  server.requestTimeout = 40 * 60 * 1000;
+  server.headersTimeout = 40 * 60 * 1000 + 5000;
 });
