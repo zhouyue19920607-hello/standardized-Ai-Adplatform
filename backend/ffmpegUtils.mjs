@@ -105,6 +105,19 @@ export async function compressAndCompositeVideo(
 
 export async function resizeVideoToDimensions(videoPath, targetW, targetH, outputPath, options = {}) {
     const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
+    const outputOptions = [
+        '-c:v libx264',
+        '-crf 18',
+        '-preset medium',
+        '-movflags +faststart',
+        '-pix_fmt yuv420p'
+    ];
+
+    if (options.keepAudio) {
+        outputOptions.push('-c:a aac', '-b:a 128k');
+    } else {
+        outputOptions.push('-an');
+    }
 
     return new Promise((resolve, reject) => {
         let command = ffmpeg(videoPath);
@@ -115,14 +128,7 @@ export async function resizeVideoToDimensions(videoPath, targetW, targetH, outpu
                 `scale=${Math.round(targetW)}:${Math.round(targetH)}:force_original_aspect_ratio=increase`,
                 `crop=${Math.round(targetW)}:${Math.round(targetH)}:(in_w-${Math.round(targetW)})/2:(in_h-${Math.round(targetH)})/2`
             ])
-            .outputOptions([
-                '-c:v libx264',
-                '-crf 18',
-                '-preset medium',
-                '-an',
-                '-movflags +faststart',
-                '-pix_fmt yuv420p'
-            ])
+            .outputOptions(outputOptions)
             .save(outputPath)
             .on('end', () => resolve())
             .on('error', (err) => reject(err));

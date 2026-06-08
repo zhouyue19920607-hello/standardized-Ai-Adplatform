@@ -957,6 +957,19 @@ function toPositiveSeed(value, fallback = 123) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
 }
 
+function ceilToMultiple(value, multiple = 8) {
+  const parsed = toPositiveInt(value);
+  if (!parsed) return null;
+  return Math.ceil(parsed / multiple) * multiple;
+}
+
+function getAigcVideoEncodeDimensions(width, height) {
+  return {
+    width: ceilToMultiple(width, 8) || 1920,
+    height: ceilToMultiple(height, 8) || 1080
+  };
+}
+
 function isAigcFallbackCandidate(err) {
   const message = String(err?.message || "");
   return /60477|timeout|超时|mq|redis|queue|MOKI|GATEWAY|90002/i.test(message);
@@ -1518,7 +1531,8 @@ async function persistAigcResult(resultUrl, mediaType, options = {}) {
   const response = await axios.get(resultUrl, {
     responseType: "arraybuffer",
     timeout: 120000,
-    maxContentLength: 200 * 1024 * 1024
+    maxContentLength: options.maxContentLengthBytes || 200 * 1024 * 1024,
+    maxBodyLength: options.maxContentLengthBytes || 200 * 1024 * 1024
   });
   await ensureDir(STORAGE_DIR);
   const ext = options.transparentWhite ? ".png" : inferAigcFileExt(resultUrl, mediaType, response.headers?.["content-type"]);
@@ -1530,6 +1544,49 @@ async function persistAigcResult(resultUrl, mediaType, options = {}) {
     : rawBuffer;
   await fs.writeFile(filePath, outputBuffer);
   return `/static/${filename}`;
+}
+
+async function localVideoPathFromUrl(videoUrl, options = {}) {
+  const publicStaticPath = publicUrlToStaticUrl(videoUrl, options.publicBaseUrl);
+  const staticUrl = videoUrl?.startsWith("/static/") ? videoUrl : publicStaticPath;
+  if (staticUrl) {
+    const sourcePath = staticUrlToLocalPath(staticUrl);
+    await fs.access(sourcePath);
+    return sourcePath;
+  }
+
+  if (!/^https?:\/\//i.test(videoUrl || "")) {
+    throw new Error("视频精准裁剪仅支持 http(s) URL 或本站 /static 路径");
+  }
+
+  const response = await axios.get(videoUrl, {
+    responseType: "arraybuffer",
+    timeout: 120000,
+    maxContentLength: 500 * 1024 * 1024,
+    maxBodyLength: 500 * 1024 * 1024
+  });
+  await ensureDir(STORAGE_DIR);
+  const inferredExt = inferAigcFileExt(videoUrl, options.mediaType, response.headers?.["content-type"]);
+  const ext = inferredExt === ".dat" ? ".mp4" : inferredExt;
+  const filename = `aigc_video_source_${Date.now()}_${crypto.randomBytes(4).toString("hex")}${ext}`;
+  const filePath = path.join(STORAGE_DIR, filename);
+  await fs.writeFile(filePath, Buffer.from(response.data));
+  return filePath;
+}
+
+async function preciseCropVideoToTarget(videoUrl, targetWidth, targetHeight, options = {}) {
+  const sourcePath = await localVideoPathFromUrl(videoUrl, options);
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `aigc_video_precise_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.mp4`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await resizeVideoToDimensions(sourcePath, targetWidth, targetHeight, outputPath, { keepAudio: true });
+  const outputStats = await fs.stat(outputPath);
+  return {
+    url: `/static/${outputFilename}`,
+    width: targetWidth,
+    height: targetHeight,
+    sizeMB: Number((outputStats.size / 1024 / 1024).toFixed(2))
+  };
 }
 
 async function submitAigcTask({
@@ -1939,6 +1996,8 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     if (validationError) return res.status(400).json({ error: validationError });
     const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
     const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
+    const aigcTarget = getAigcVideoEncodeDimensions(finalTargetWidth, finalTargetHeight);
+    const needsPreciseCrop = aigcTarget.width !== finalTargetWidth || aigcTarget.height !== finalTargetHeight;
     const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
     let videoInputUrl = videoUrl;
     let inputMode = "url";
@@ -1950,8 +2009,8 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     }
     const params = {
       parameter: {
-        target_width: finalTargetWidth,
-        target_height: finalTargetHeight,
+        target_width: aigcTarget.width,
+        target_height: aigcTarget.height,
         r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
         r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
         r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
@@ -1972,9 +2031,35 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req)
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      persistOptions: { maxContentLengthBytes: 500 * 1024 * 1024 }
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.videoExpand, inputMode, fallbackUsed: false, ...result });
+    let finalResult = result;
+    let postProcess = null;
+    if (needsPreciseCrop) {
+      const cropResult = await preciseCropVideoToTarget(result.resultUrl || result.remoteResultUrl, finalTargetWidth, finalTargetHeight, {
+        publicBaseUrl: getRequestPublicBaseUrl(req),
+        mediaType: result.mediaInfo?.media_type || "video/mp4"
+      });
+      postProcess = {
+        type: "ffmpeg-cover-crop",
+        from: aigcTarget,
+        to: { width: finalTargetWidth, height: finalTargetHeight },
+        sizeMB: cropResult.sizeMB
+      };
+      finalResult = { ...result, resultUrl: cropResult.url };
+    }
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      task: AIGC_TASKS.videoExpand,
+      inputMode,
+      fallbackUsed: false,
+      target: { width: finalTargetWidth, height: finalTargetHeight },
+      aigcTarget,
+      postProcess,
+      ...finalResult
+    });
   } catch (err) {
     console.error("[AIGC Video Expand] failed:", err.message);
     res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
