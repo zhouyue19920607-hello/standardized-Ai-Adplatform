@@ -38,6 +38,7 @@ interface SpotlightCardAsset {
     message: string;
 }
 
+type SpotlightAiTarget = 'large' | `small-${0 | 1 | 2}`;
 type PolyAiTarget = 'base' | `card-${0 | 1 | 2 | 3}`;
 
 const emptyUpload: UploadState = {
@@ -621,6 +622,7 @@ const ConfigWorkspace: React.FC = () => {
     const magazineInputRef = useRef<HTMLInputElement>(null);
     const spotlightSmallInputRef = useRef<HTMLInputElement>(null);
     const spotlightLargeInputRef = useRef<HTMLInputElement>(null);
+    const spotlightAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const spotlightSplashInputRef = useRef<HTMLInputElement>(null);
     const breakFrameInputRef = useRef<HTMLInputElement>(null);
     const breakSplashInputRef = useRef<HTMLInputElement>(null);
@@ -647,6 +649,9 @@ const ConfigWorkspace: React.FC = () => {
     const [spotlightLargeCard, setSpotlightLargeCard] = useState<UploadState>(emptyUpload);
     const [spotlightSplash, setSpotlightSplash] = useState<UploadState>(emptyUpload);
     const [spotlightPreviewElapsed, setSpotlightPreviewElapsed] = useState(0);
+    const [spotlightAiPrompt, setSpotlightAiPrompt] = useState('');
+    const [spotlightAiReference, setSpotlightAiReference] = useState<UploadState>(emptyUpload);
+    const [spotlightAiTarget, setSpotlightAiTarget] = useState<SpotlightAiTarget | null>(null);
     const [breakFrameAsset, setBreakFrameAsset] = useState<UploadState>(emptyUpload);
     const [breakSplash, setBreakSplash] = useState<UploadState>(emptyUpload);
     const [breakFocal, setBreakFocal] = useState<UploadState>(emptyUpload);
@@ -659,11 +664,18 @@ const ConfigWorkspace: React.FC = () => {
     const [breakColorSchemes, setBreakColorSchemes] = useState(defaultBreakColorSchemes);
     const [breakFirstStartSecond, setBreakFirstStartSecond] = useState(3);
     const [breakSecondStartSecond, setBreakSecondStartSecond] = useState(7);
+    const [jumpingFrameAsset, setJumpingFrameAsset] = useState<UploadState>(emptyUpload);
+    const [jumpingFocal, setJumpingFocal] = useState<UploadState>(emptyUpload);
+    const [jumpingPrompt, setJumpingPrompt] = useState('');
+    const [jumpingReference, setJumpingReference] = useState<UploadState>(emptyUpload);
+    const [jumpingIconColor, setJumpingIconColor] = useState('#7C5CFF');
+    const [jumpingGradientColor, setJumpingGradientColor] = useState('#7C5CFF');
+    const [jumpingColorSchemes, setJumpingColorSchemes] = useState(defaultBreakColorSchemes);
     const [polyBase, setPolyBase] = useState<UploadState>(emptyUpload);
     const [polyCards, setPolyCards] = useState<SpotlightCardAsset[]>([]);
     const [polyAiPrompt, setPolyAiPrompt] = useState('');
     const [polyAiReference, setPolyAiReference] = useState<UploadState>(emptyUpload);
-    const [polyAiTarget, setPolyAiTarget] = useState<PolyAiTarget>('base');
+    const [polyAiTarget, setPolyAiTarget] = useState<PolyAiTarget | null>(null);
     const [polyFocal, setPolyFocal] = useState<UploadState>(emptyUpload);
     const [polyPreviewElapsed, setPolyPreviewElapsed] = useState(0);
     const [refreshIconSheet, setRefreshIconSheet] = useState<UploadState>(emptyUpload);
@@ -787,7 +799,7 @@ const ConfigWorkspace: React.FC = () => {
         };
         frameId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(frameId);
-    }, [expandedTemplate, generatedVideoUrl, breakFocal.url, breakFirstStartSecond, breakSecondStartSecond]);
+    }, [expandedTemplate, generatedVideoUrl, breakFocal.url, jumpingFocal.url, breakFirstStartSecond, breakSecondStartSecond]);
 
     const selectPlatform = (platform: CreativeTemplateSettings['platforms'][number]) => {
         setSelectedPlatforms([platform]);
@@ -1190,6 +1202,16 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
+    const upsertSpotlightSmallCardAt = (index: number, card: SpotlightCardAsset) => {
+        setSpotlightSmallCards((current) => {
+            const next = [...current];
+            if (next[index]) URL.revokeObjectURL(next[index].url);
+            next[index] = card;
+            return next.filter(Boolean).slice(0, 3);
+        });
+        resetOutput();
+    };
+
     const updateSpotlightLargeCard = async (file: File) => {
         setError('');
         resetOutput();
@@ -1255,13 +1277,123 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const getSpotlightAiTargetLabel = (target: SpotlightAiTarget | null) => (
+        target === null ? '未选择素材' : target === 'large' ? '大卡素材' : `小卡 ${Number(target.replace('small-', '')) + 1}`
+    );
+
+    const updateSpotlightAiReference = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        try {
+            if (!file.type.startsWith('image/')) {
+                URL.revokeObjectURL(url);
+                setSpotlightAiReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
+                return;
+            }
+            setSpotlightAiReference((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: '图生图参考图已上传',
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setSpotlightAiReference({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '参考图读取失败' });
+        }
+    };
+
+    const removeSpotlightAiReference = () => {
+        clearUploadState(spotlightAiReference, setSpotlightAiReference);
+    };
+
+    const generateSelectedSpotlightAsset = async () => {
+        if (!spotlightAiTarget) {
+            setError('请先点击小卡或大卡素材，再使用 AI 生成。');
+            return;
+        }
+
+        const target = spotlightAiTarget;
+        const isLargeTarget = target === 'large';
+        const smallIndex = isLargeTarget ? -1 : Number(target.replace('small-', ''));
+        if (!isLargeTarget && smallIndex > spotlightSmallCards.length) {
+            setError(`请按顺序先上传或生成小卡 ${spotlightSmallCards.length + 1}`);
+            return;
+        }
+
+        const generationKey = `spotlight-${target}`;
+        const text = spotlightAiPrompt.trim() || '聚光开屏素材';
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(generationKey);
+
+        try {
+            const referenceUpload = spotlightAiReference.file
+                ? await uploadRawAsset(spotlightAiReference.file)
+                : null;
+            const promptText = isLargeTarget
+                ? [
+                    text,
+                    '生成一张适合 App 聚光开屏的大卡横向营销图片',
+                    '画面干净，有明确主体，高级商业视觉，不要文字，不要 UI 截图，不要 logo'
+                ].join('，')
+                : [
+                    text,
+                    `第 ${smallIndex + 1} 张聚光小卡`,
+                    '生成一张适合 App 聚光开屏的小卡竖向营销图片',
+                    '主体居中清晰，构图简洁，高级商业视觉，不要文字，不要 UI 截图，不要 logo'
+                ].join('，');
+            const result = referenceUpload
+                ? await editImageWithAigc({
+                    imageUrl: referenceUpload.url,
+                    prompt: promptText,
+                    ratio: isLargeTarget ? '16:9' : '3:4',
+                })
+                : await generateImageWithAigc({
+                    prompt: promptText,
+                    ratio: isLargeTarget ? '16:9' : '3:4',
+                });
+
+            if (isLargeTarget) {
+                const fitted = await imageFileFromUrlAtSize(result.resultUrl, 'spotlight-large-ai.png', SPOTLIGHT_LARGE_W, SPOTLIGHT_LARGE_H);
+                setSpotlightLargeCard((current) => {
+                    if (current.url) URL.revokeObjectURL(current.url);
+                    return {
+                        file: fitted.file,
+                        url: fitted.url,
+                        status: 'valid',
+                        message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成 897 x 370`,
+                    };
+                });
+            } else {
+                const fitted = await imageFileFromUrlAtSize(result.resultUrl, `spotlight-small-${smallIndex + 1}-ai.png`, SPOTLIGHT_SMALL_W, SPOTLIGHT_SMALL_H);
+                upsertSpotlightSmallCardAt(smallIndex, {
+                    id: `spotlight-ai-small-${smallIndex + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    file: fitted.file,
+                    url: fitted.url,
+                    message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成 275 x 370`,
+                });
+            }
+
+            setSpotlightAiTarget(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '聚光开屏 AI 生成失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
+    };
+
     const updateBreakFrameAsset = async (file: File) => {
         setError('');
         resetOutput();
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
         const frameHeight = isJumpingFrame ? JUMPING_FRAME_H : BREAK_FRAME_H;
+        const setFrameAsset = isJumpingFrame ? setJumpingFrameAsset : setBreakFrameAsset;
         if (!isPngOrWebpFile(file)) {
-            setBreakFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材仅支持 PNG / WEBP' });
+            setFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材仅支持 PNG / WEBP' });
             return;
         }
 
@@ -1269,7 +1401,7 @@ const ConfigWorkspace: React.FC = () => {
         try {
             const size = await getImageSize(file);
             const isValid = size.width === BREAK_FRAME_W && size.height === frameHeight;
-            setBreakFrameAsset({
+            setFrameAsset({
                 file,
                 url,
                 status: isValid ? 'valid' : 'adapted',
@@ -1279,7 +1411,7 @@ const ConfigWorkspace: React.FC = () => {
             });
         } catch (err) {
             URL.revokeObjectURL(url);
-            setBreakFrameAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '破框素材读取失败' });
+            setFrameAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '破框素材读取失败' });
         }
     };
 
@@ -1326,35 +1458,48 @@ const ConfigWorkspace: React.FC = () => {
         setError('');
         resetOutput();
         const url = URL.createObjectURL(file);
+        const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
+        const setFocalAsset = isJumpingFrame ? setJumpingFocal : setBreakFocal;
+        const setColorSchemes = isJumpingFrame ? setJumpingColorSchemes : setBreakColorSchemes;
+        const setIconColor = isJumpingFrame ? setJumpingIconColor : setBreakIconColor;
+        const setGradientColor = isJumpingFrame ? setJumpingGradientColor : setBreakGradientColor;
         try {
             if (file.type.startsWith('image/')) {
                 const size = await getImageSize(file);
                 const isValid = size.width === BREAK_FOCAL_W && size.height === BREAK_FOCAL_H;
-                setBreakFocal({
+                setFocalAsset({
                     file,
                     url,
                     status: isValid ? 'valid' : 'adapted',
                     message: isValid ? '焦点视窗 1126 x 900' : `当前 ${size.width} x ${size.height}，生成时 AI 适配至 1126 x 900`,
                 });
-                await updateBreakColorSchemesFromSource(url, 'image');
+                await updateBreakColorSchemesFromSource(url, 'image', {
+                    setColorSchemes,
+                    setIconColor,
+                    setGradientColor,
+                });
                 return;
             }
             if (file.type.startsWith('video/')) {
                 const meta = await getVideoMeta(file);
-                setBreakFocal({
+                setFocalAsset({
                     file,
                     url,
                     status: meta.width === BREAK_FOCAL_W && meta.height === BREAK_FOCAL_H ? 'valid' : 'adapted',
                     message: meta.width === BREAK_FOCAL_W && meta.height === BREAK_FOCAL_H ? `焦点视频 ${meta.duration.toFixed(1)}s` : `视频 ${meta.width} x ${meta.height}，生成时 AI 适配`,
                 });
-                await updateBreakColorSchemesFromSource(url, 'video');
+                await updateBreakColorSchemesFromSource(url, 'video', {
+                    setColorSchemes,
+                    setIconColor,
+                    setGradientColor,
+                });
                 return;
             }
             URL.revokeObjectURL(url);
-            setBreakFocal({ file: null, url: null, status: 'invalid', message: '焦点视窗素材仅支持图片或视频' });
+            setFocalAsset({ file: null, url: null, status: 'invalid', message: '焦点视窗素材仅支持图片或视频' });
         } catch (err) {
             URL.revokeObjectURL(url);
-            setBreakFocal({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '焦点视窗读取失败' });
+            setFocalAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '焦点视窗读取失败' });
         }
     };
 
@@ -1487,8 +1632,8 @@ const ConfigWorkspace: React.FC = () => {
         return index >= 3 ? 'card-3' : (`card-${index + 1}` as PolyAiTarget);
     };
 
-    const getPolyAiTargetLabel = (target: PolyAiTarget) => (
-        target === 'base' ? '底图素材' : `翻卡图片 ${Number(target.replace('card-', '')) + 1}`
+    const getPolyAiTargetLabel = (target: PolyAiTarget | null) => (
+        target === null ? '未选择素材' : target === 'base' ? '底图素材' : `翻卡图片 ${Number(target.replace('card-', '')) + 1}`
     );
 
     const updatePolyAiReference = async (file: File) => {
@@ -1624,11 +1769,19 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const generateSelectedPolyAsset = async () => {
+        if (!polyAiTarget) {
+            setError('请先点击底图素材或某张翻卡图片，再使用 AI 生成。');
+            return;
+        }
         const generationKey = `poly-${polyAiTarget}`;
         const text = polyAiPrompt.trim() || '多态翻卡';
         const target = polyAiTarget;
         const isBaseTarget = target === 'base';
         const cardIndex = isBaseTarget ? -1 : Number(target.replace('card-', ''));
+        if (!isBaseTarget && cardIndex > polyCards.length) {
+            setError(`请按顺序先上传或生成翻卡图片 ${polyCards.length + 1}`);
+            return;
+        }
         setError('');
         resetOutput();
         setAiGeneratingKey(generationKey);
@@ -1683,7 +1836,7 @@ const ConfigWorkspace: React.FC = () => {
                 });
             }
 
-            setPolyAiTarget(getNextPolyAiTarget(target));
+            setPolyAiTarget(null);
         } catch (err) {
             setError(err instanceof Error ? err.message : '多态翻卡 AI 生成失败');
         } finally {
@@ -2115,7 +2268,9 @@ const ConfigWorkspace: React.FC = () => {
     const updateBreakReference = async (phase: 0 | 1, file: File) => {
         setError('');
         resetOutput();
-        const setReference = phase === 0 ? setBreakFirstReference : setBreakSecondReference;
+        const setReference = expandedTemplate === 'jumping-focal-window'
+            ? setJumpingReference
+            : phase === 0 ? setBreakFirstReference : setBreakSecondReference;
         try {
             if (!file.type.startsWith('image/')) {
                 setReference({ file: null, url: null, status: 'invalid', message: '参考图仅支持图片' });
@@ -2134,12 +2289,28 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const removeBreakReference = (phase: 0 | 1) => {
-        const reference = phase === 0 ? breakFirstReference : breakSecondReference;
-        const setReference = phase === 0 ? setBreakFirstReference : setBreakSecondReference;
+        const reference = expandedTemplate === 'jumping-focal-window'
+            ? jumpingReference
+            : phase === 0 ? breakFirstReference : breakSecondReference;
+        const setReference = expandedTemplate === 'jumping-focal-window'
+            ? setJumpingReference
+            : phase === 0 ? setBreakFirstReference : setBreakSecondReference;
         clearUploadState(reference, setReference);
     };
 
-    const updateBreakColorSchemesFromSource = async (sourceUrl: string, type: 'image' | 'video') => {
+    const updateBreakColorSchemesFromSource = async (
+        sourceUrl: string,
+        type: 'image' | 'video',
+        setters: {
+            setColorSchemes: React.Dispatch<React.SetStateAction<typeof defaultBreakColorSchemes>>;
+            setIconColor: React.Dispatch<React.SetStateAction<string>>;
+            setGradientColor: React.Dispatch<React.SetStateAction<string>>;
+        } = {
+            setColorSchemes: setBreakColorSchemes,
+            setIconColor: setBreakIconColor,
+            setGradientColor: setBreakGradientColor,
+        },
+    ) => {
         try {
             let paletteSource = sourceUrl;
             if (type === 'video') {
@@ -2161,27 +2332,34 @@ const ConfigWorkspace: React.FC = () => {
                 label: `智能配色 ${index + 1}`,
             }));
             if (nextSchemes.length) {
-                setBreakColorSchemes(nextSchemes);
-                setBreakIconColor(nextSchemes[0].iconColor);
-                setBreakGradientColor(nextSchemes[0].gradientColor);
+                setters.setColorSchemes(nextSchemes);
+                setters.setIconColor(nextSchemes[0].iconColor);
+                setters.setGradientColor(nextSchemes[0].gradientColor);
             }
         } catch (err) {
             console.warn('破框焦点视窗智能配色失败', err);
-            setBreakColorSchemes(defaultBreakColorSchemes);
-            setBreakIconColor(defaultBreakColorSchemes[0].iconColor);
-            setBreakGradientColor(defaultBreakColorSchemes[0].gradientColor);
+            setters.setColorSchemes(defaultBreakColorSchemes);
+            setters.setIconColor(defaultBreakColorSchemes[0].iconColor);
+            setters.setGradientColor(defaultBreakColorSchemes[0].gradientColor);
         }
     };
 
     const applyBreakColorScheme = (scheme: typeof defaultBreakColorSchemes[number]) => {
-        setBreakIconColor(scheme.iconColor);
-        setBreakGradientColor(scheme.gradientColor);
+        if (expandedTemplate === 'jumping-focal-window') {
+            setJumpingIconColor(scheme.iconColor);
+            setJumpingGradientColor(scheme.gradientColor);
+        } else {
+            setBreakIconColor(scheme.iconColor);
+            setBreakGradientColor(scheme.gradientColor);
+        }
         resetOutput();
     };
 
     const applyRandomBreakPresetColor = () => {
+        const currentIconColor = expandedTemplate === 'jumping-focal-window' ? jumpingIconColor : breakIconColor;
+        const currentGradientColor = expandedTemplate === 'jumping-focal-window' ? jumpingGradientColor : breakGradientColor;
         const currentIndex = defaultBreakColorSchemes.findIndex((scheme) => (
-            scheme.iconColor === breakIconColor && scheme.gradientColor === breakGradientColor
+            scheme.iconColor === currentIconColor && scheme.gradientColor === currentGradientColor
         ));
         const availableSchemes = defaultBreakColorSchemes.filter((_, index) => index !== currentIndex);
         const pool = availableSchemes.length ? availableSchemes : defaultBreakColorSchemes;
@@ -2190,27 +2368,37 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const refreshBreakSmartColors = async () => {
-        if (!breakFocal.url || !breakFocal.file) {
+        const focalAsset = expandedTemplate === 'jumping-focal-window' ? jumpingFocal : breakFocal;
+        const setColorSchemes = expandedTemplate === 'jumping-focal-window' ? setJumpingColorSchemes : setBreakColorSchemes;
+        const setIconColor = expandedTemplate === 'jumping-focal-window' ? setJumpingIconColor : setBreakIconColor;
+        const setGradientColor = expandedTemplate === 'jumping-focal-window' ? setJumpingGradientColor : setBreakGradientColor;
+        if (!focalAsset.url || !focalAsset.file) {
             setError('请先上传焦点视窗素材，再进行智能配色');
             return;
         }
         setError('');
-        await updateBreakColorSchemesFromSource(breakFocal.url, breakFocal.file.type.startsWith('video/') ? 'video' : 'image');
+        await updateBreakColorSchemesFromSource(
+            focalAsset.url,
+            focalAsset.file.type.startsWith('video/') ? 'video' : 'image',
+            { setColorSchemes, setIconColor, setGradientColor },
+        );
         resetOutput();
     };
 
     const generateBreakFrameByPrompt = async (source: 'text' | 'image', phase: 0 | 1) => {
         const generationKey = `break-${phase}-${source}`;
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
+        const activeFrameAsset = isJumpingFrame ? jumpingFrameAsset : breakFrameAsset;
+        const setActiveFrameAsset = isJumpingFrame ? setJumpingFrameAsset : setBreakFrameAsset;
         const frameHeight = isJumpingFrame ? JUMPING_FRAME_H : BREAK_FRAME_H;
-        const firstText = breakFirstPrompt.trim() || '第一次破框创意';
+        const firstText = (isJumpingFrame ? jumpingPrompt : breakFirstPrompt).trim() || '第一次破框创意';
         const secondText = breakSecondPrompt.trim() || '第二次破框创意';
         const phaseText = isJumpingFrame ? firstText : (phase === 0 ? firstText : secondText);
         const phaseReferenceFile = isJumpingFrame
-            ? breakFirstReference.file
+            ? jumpingReference.file
             : (phase === 0 ? breakFirstReference.file : breakSecondReference.file);
-        const imageSourceFile = breakFrameAsset.file?.type.startsWith('image/')
-            ? breakFrameAsset.file
+        const imageSourceFile = activeFrameAsset.file?.type.startsWith('image/')
+            ? activeFrameAsset.file
             : phaseReferenceFile;
         if (source === 'image' && !imageSourceFile) {
             setError(`请先上传/生成破框图片，或上传${isJumpingFrame ? '跃动破框' : (phase === 0 ? '第一次破框' : '第二次破框')}参考图`);
@@ -2223,17 +2411,17 @@ const ConfigWorkspace: React.FC = () => {
                 `跃动破框：${firstText}`,
                 '破框素材从第0秒开始播放',
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
-                source === 'image' ? (imageSourceFile === breakFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
+                source === 'image' ? (imageSourceFile === activeFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n')
             : [
                 `第一次破框：${firstText}`,
                 `第二次破框：${secondText}`,
                 BREAK_AI_DURATION_RULE,
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
-                source === 'image' ? (imageSourceFile === breakFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
+                source === 'image' ? (imageSourceFile === activeFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n');
         try {
-            setBreakFrameAsset((current) => ({
+            setActiveFrameAsset((current) => ({
                 ...current,
                 status: 'idle',
                 message: `美图 AI 正在生成${source === 'text' ? '文生视频' : '图生视频'}...`,
@@ -2257,7 +2445,7 @@ const ConfigWorkspace: React.FC = () => {
                     ratio: videoTarget.ratio,
                 });
             const file = await fileFromGeneratedUrl(result.resultUrl, 'break-frame-ai.mp4', 'video/mp4');
-            setBreakFrameAsset({
+            setActiveFrameAsset({
                 file,
                 url: result.resultUrl,
                 status: 'valid',
@@ -2265,7 +2453,7 @@ const ConfigWorkspace: React.FC = () => {
             });
             return result.resultUrl;
         } catch (err) {
-            setBreakFrameAsset((current) => ({
+            setActiveFrameAsset((current) => ({
                 ...current,
                 status: current.file ? current.status : 'idle',
                 message: current.file ? current.message : emptyUpload.message,
@@ -2669,17 +2857,21 @@ const ConfigWorkspace: React.FC = () => {
         setError('');
         resetOutput();
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
+        const activeFocal = isJumpingFrame ? jumpingFocal : breakFocal;
+        const activeFrameAsset = isJumpingFrame ? jumpingFrameAsset : breakFrameAsset;
+        const activeIconColor = isJumpingFrame ? jumpingIconColor : breakIconColor;
+        const activeGradientColor = isJumpingFrame ? jumpingGradientColor : breakGradientColor;
         const frameHeight = isJumpingFrame ? JUMPING_FRAME_H : BREAK_FRAME_H;
 
-        if (!breakFocal.url || !breakFocal.file || breakFocal.status === 'invalid') {
+        if (!activeFocal.url || !activeFocal.file || activeFocal.status === 'invalid') {
             setError('请上传 1126 x 900px 的焦点视窗素材');
             return;
         }
-            const promptGeneratedUrl = breakFrameAsset.url ? null : await generateBreakFrameByPrompt('text', 0);
+            const promptGeneratedUrl = activeFrameAsset.url ? null : await generateBreakFrameByPrompt('text', 0);
 
             setIsGenerating(true);
             try {
-                const frameUrl = breakFrameAsset.url || promptGeneratedUrl;
+                const frameUrl = activeFrameAsset.url || promptGeneratedUrl;
                 if (!frameUrl) throw new Error('请上传破框素材，或使用提示词生成透明底素材');
 
             const canvas = document.createElement('canvas');
@@ -2688,10 +2880,10 @@ const ConfigWorkspace: React.FC = () => {
             const ctx = canvas.getContext('2d');
             if (!ctx) throw new Error('无法创建视频画布');
 
-            const focalIsVideo = breakFocal.file.type.startsWith('video/');
-            const focalImage = focalIsVideo ? null : await loadImage(breakFocal.url);
-            const focalVideo = focalIsVideo ? await loadVideoElement(breakFocal.url) : null;
-            const frameIsVideo = Boolean(promptGeneratedUrl) || breakFrameAsset.file?.type.startsWith('video/');
+            const focalIsVideo = activeFocal.file.type.startsWith('video/');
+            const focalImage = focalIsVideo ? null : await loadImage(activeFocal.url);
+            const focalVideo = focalIsVideo ? await loadVideoElement(activeFocal.url) : null;
+            const frameIsVideo = Boolean(promptGeneratedUrl) || activeFrameAsset.file?.type.startsWith('video/');
             const frameImage = frameIsVideo ? null : await loadImage(frameUrl);
             const frameVideo = frameIsVideo ? await loadVideoElement(frameUrl) : null;
             if (frameVideo) {
@@ -2759,7 +2951,7 @@ const ConfigWorkspace: React.FC = () => {
                 ctx.drawImage(focalBg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 ctx.save();
                 const grad = ctx.createLinearGradient(0, 750, 0, 1250);
-                const gradientRgb = hexToRgb(breakGradientColor);
+                const gradientRgb = hexToRgb(activeGradientColor);
                 const gradientColor = `rgba(${gradientRgb.r},${gradientRgb.g},${gradientRgb.b}`;
                 grad.addColorStop(0, `${gradientColor},0)`);
                 grad.addColorStop(0.1, `${gradientColor},1)`);
@@ -2773,7 +2965,7 @@ const ConfigWorkspace: React.FC = () => {
                 iconCanvas.height = BREAK_CANVAS_H;
                 const iconCtx = iconCanvas.getContext('2d');
                 if (iconCtx) {
-                    iconCtx.fillStyle = breakIconColor;
+                    iconCtx.fillStyle = activeIconColor;
                     iconCtx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                     iconCtx.globalCompositeOperation = 'destination-in';
                     iconCtx.drawImage(focalIconMask, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
@@ -3335,6 +3527,11 @@ const ConfigWorkspace: React.FC = () => {
     };
     const breakFirstTriggerSecond = Math.max(3, Math.round(breakFirstStartSecond));
     const breakSecondTriggerSecond = Math.max(7, breakFirstTriggerSecond + 4, Number(breakSecondStartSecond) || 7);
+    const activeBreakFocal = isJumpingFocalTemplate ? jumpingFocal : breakFocal;
+    const activeBreakFrameAsset = isJumpingFocalTemplate ? jumpingFrameAsset : breakFrameAsset;
+    const activeBreakReference = isJumpingFocalTemplate ? jumpingReference : breakFirstReference;
+    const activeBreakIconColor = isJumpingFocalTemplate ? jumpingIconColor : breakIconColor;
+    const activeBreakGradientColor = isJumpingFocalTemplate ? jumpingGradientColor : breakGradientColor;
     const breakPreviewPhase = isJumpingFocalTemplate && breakPreviewElapsed <= 1500
         ? 0
         : breakPreviewElapsed >= breakSecondTriggerSecond * 1000 && breakPreviewElapsed <= breakSecondTriggerSecond * 1000 + 1500
@@ -3408,8 +3605,16 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
                                                             {[
-                                                                { label: 'UI', value: breakIconColor, setter: setBreakIconColor },
-                                                                { label: '渐变', value: breakGradientColor, setter: setBreakGradientColor },
+                                                                {
+                                                                    label: 'UI',
+                                                                    value: expandedTemplate === 'jumping-focal-window' ? jumpingIconColor : breakIconColor,
+                                                                    setter: expandedTemplate === 'jumping-focal-window' ? setJumpingIconColor : setBreakIconColor,
+                                                                },
+                                                                {
+                                                                    label: '渐变',
+                                                                    value: expandedTemplate === 'jumping-focal-window' ? jumpingGradientColor : breakGradientColor,
+                                                                    setter: expandedTemplate === 'jumping-focal-window' ? setJumpingGradientColor : setBreakGradientColor,
+                                                                },
                                                             ].map((item) => (
                                                                 <label key={item.label} className="h-8 rounded-xl bg-zinc-950/80 border border-white/5 px-2 flex items-center justify-between gap-2">
                                                                     <span className="text-[9px] font-black text-zinc-600">{item.label}</span>
@@ -3534,11 +3739,11 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">小卡素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传 3 张 PNG / 宽 275 x 高 370px</p>
+                                                    <h2 className="text-white text-sm font-black">小卡与大卡素材</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传 3 张小卡和 1 张大卡；使用 AI 前先点击目标素材</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightSmallCards.length === 3 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>
-                                                    {spotlightSmallCards.length} / 3
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightSmallCards.length === 3 && spotlightLargeCard.status === 'valid' ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>
+                                                    小卡 {spotlightSmallCards.length}/3 · {spotlightLargeCard.status === 'valid' ? '大卡已上传' : '大卡待上传'}
                                                 </span>
                                             </div>
                                             <input
@@ -3553,43 +3758,6 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => spotlightSmallInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'spotlight-small')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-small')}
-                                                onDrop={(event) => handleUploadDrop(event, 'spotlight-small')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-small' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                <div className="text-center">
-                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">dashboard_customize</span>
-                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'spotlight-small' ? '松开上传小卡素材' : '点击或拖入 3 张小卡 PNG'}</p>
-                                                </div>
-                                            </button>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {spotlightSmallCards.map((item, index) => (
-                                                    <div key={item.id} className="relative rounded-[14px] border border-white/5 bg-black/30 p-2">
-                                                        <button
-                                                            onClick={() => removeSpotlightSmallCard(item.id)}
-                                                            className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center"
-                                                            title="移除小卡"
-                                                        >
-                                                            <span className="material-symbols-outlined text-xs">close</span>
-                                                        </button>
-                                                        <img src={item.url} alt={`小卡 ${index + 1}`} className="h-16 w-full object-contain rounded-[10px] bg-zinc-950" />
-                                                        <p className="mt-1 text-[9px] font-bold text-zinc-500">小卡 {index + 1}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <h2 className="text-white text-sm font-black">大卡素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">PNG / 897 x 370px</p>
-                                                </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(spotlightLargeCard.status)}`}>{spotlightLargeCard.message}</span>
-                                            </div>
                                             <input
                                                 ref={spotlightLargeInputRef}
                                                 type="file"
@@ -3601,24 +3769,219 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => spotlightLargeInputRef.current?.click()}
-                                                    onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
-                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
-                                                    onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
-                                                    className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                                >
-                                                    {spotlightLargeCard.url ? (
-                                                        <img src={spotlightLargeCard.url} alt="大卡素材预览" className="h-20 w-full object-contain" />
-                                                    ) : (
-                                                        <div className="text-center">
-                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">featured_play_list</span>
-                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入大卡 PNG</p>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => spotlightSmallInputRef.current?.click()}
+                                                        onDragOver={(event) => handleUploadDragOver(event, 'spotlight-small')}
+                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-small')}
+                                                        onDrop={(event) => handleUploadDrop(event, 'spotlight-small')}
+                                                        className={`min-h-[110px] rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-small' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
+                                                    >
+                                                        <div className="text-center px-4">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">dashboard_customize</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'spotlight-small' ? '松开上传小卡素材' : '上传小卡 PNG'}</p>
+                                                            <p className="text-[8px] text-zinc-700 font-bold mt-1">3 张 / 275 x 370px</p>
                                                         </div>
-                                                    )}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => spotlightLargeInputRef.current?.click()}
+                                                        onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
+                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
+                                                        onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
+                                                        className={`min-h-[110px] rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
+                                                    >
+                                                        <div className="text-center px-4">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">featured_play_list</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'spotlight-large' ? '松开上传大卡素材' : '上传大卡 PNG'}</p>
+                                                            <p className="text-[8px] text-zinc-700 font-bold mt-1">1 张 / 897 x 370px</p>
+                                                        </div>
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightSmallCards.length === 3 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>小卡 {spotlightSmallCards.length} / 3</span>
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(spotlightLargeCard.status)}`}>{spotlightLargeCard.message}</span>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {Array.from({ length: 3 }).map((_, index) => {
+                                                    const item = spotlightSmallCards[index];
+                                                    const target = `small-${index}` as SpotlightAiTarget;
+                                                    const selectSmallTarget = () => {
+                                                        setSpotlightAiTarget(target);
+                                                        setError('');
+                                                    };
+                                                    return (
+                                                        <div
+                                                            key={item?.id || target}
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            onClick={selectSmallTarget}
+                                                            onKeyDown={(event) => {
+                                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                                    event.preventDefault();
+                                                                    selectSmallTarget();
+                                                                }
+                                                            }}
+                                                            className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${spotlightAiTarget === target ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
+                                                        >
+                                                            {spotlightAiTarget === target && <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">AI 目标</span>}
+                                                            {item && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        removeSpotlightSmallCard(item.id);
+                                                                        setSpotlightAiTarget((current) => current === target ? null : current);
+                                                                    }}
+                                                                    className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center"
+                                                                    title="移除小卡"
+                                                                    aria-label="移除小卡"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-xs">close</span>
+                                                                </button>
+                                                            )}
+                                                            {item ? (
+                                                                <img src={item.url} alt={`小卡 ${index + 1}`} className="h-16 w-full object-contain rounded-[10px] bg-zinc-950" />
+                                                            ) : (
+                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                                    <span className="material-symbols-outlined text-[18px] text-zinc-600">add_photo_alternate</span>
+                                                                </div>
+                                                            )}
+                                                            <p className="mt-1 text-[9px] font-bold text-zinc-500">小卡 {index + 1}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div
+                                                role="button"
+                                                tabIndex={0}
+                                                onClick={() => {
+                                                    setSpotlightAiTarget('large');
+                                                    setError('');
+                                                }}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter' || event.key === ' ') {
+                                                        event.preventDefault();
+                                                        setSpotlightAiTarget('large');
+                                                        setError('');
+                                                    }
+                                                }}
+                                                className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${spotlightAiTarget === 'large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
+                                            >
+                                                {spotlightAiTarget === 'large' && <span className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-1 text-[8px] font-black text-white">AI 目标</span>}
+                                                {spotlightLargeCard.url && (
+                                                    <div className="absolute right-2 top-2 z-20 flex gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                void downloadUploadStateAsPng(spotlightLargeCard, { width: SPOTLIGHT_LARGE_W, height: SPOTLIGHT_LARGE_H, filename: `spotlight-large-${SPOTLIGHT_LARGE_W}x${SPOTLIGHT_LARGE_H}.png` });
+                                                            }}
+                                                            className="h-6 w-6 rounded-full bg-black/75 text-white/85 border border-white/10 flex items-center justify-center hover:bg-primary hover:text-white transition-all"
+                                                            title="下载大卡素材"
+                                                            aria-label="下载大卡素材"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[13px]">download</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(event) => {
+                                                                event.stopPropagation();
+                                                                clearUploadState(spotlightLargeCard, setSpotlightLargeCard);
+                                                                setSpotlightAiTarget((current) => current === 'large' ? null : current);
+                                                            }}
+                                                            className="h-6 w-6 rounded-full bg-black/75 text-white/85 border border-white/10 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+                                                            title="删除大卡素材"
+                                                            aria-label="删除大卡素材"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[13px]">close</span>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {spotlightLargeCard.url ? (
+                                                    <img src={spotlightLargeCard.url} alt="大卡素材预览" className="h-20 w-full object-contain rounded-[10px] bg-zinc-950" />
+                                                ) : (
+                                                    <div className="h-20 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                        <span className="material-symbols-outlined text-[20px] text-zinc-600">featured_play_list</span>
+                                                    </div>
+                                                )}
+                                                <div className="mt-2 flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-[9px] font-black text-zinc-300">大卡素材</p>
+                                                        <p className="text-[8px] font-bold text-zinc-600">897 x 370px</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            spotlightLargeInputRef.current?.click();
+                                                        }}
+                                                        className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/15 text-white flex items-center justify-center"
+                                                        title="上传大卡素材"
+                                                        aria-label="上传大卡素材"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[15px]">upload</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
+                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 文生图 / 图生图</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightAiTarget ? 'border-primary/30 bg-primary/10 text-primary' : 'border-amber-400/25 bg-amber-400/10 text-amber-200'}`}>{getSpotlightAiTargetLabel(spotlightAiTarget)}</span>
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(spotlightAiReference.status)}`}>{spotlightAiReference.message}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-[1fr_96px] gap-3">
+                                                    <textarea
+                                                        value={spotlightAiPrompt}
+                                                        onChange={(event) => setSpotlightAiPrompt(event.target.value)}
+                                                        placeholder="填写当前所选小卡或大卡的主题、风格、色彩；有参考图则走图生图..."
+                                                        className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                    />
+                                                    <div className="relative min-h-[86px]">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => spotlightAiReferenceInputRef.current?.click()}
+                                                            className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                        >
+                                                            {spotlightAiReference.url ? (
+                                                                <img src={spotlightAiReference.url} alt="聚光开屏 AI 参考图" className="h-full w-full object-cover" />
+                                                            ) : (
+                                                                <div className="text-center px-2">
+                                                                    <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                        <input
+                                                            ref={spotlightAiReferenceInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={async (event) => {
+                                                                const input = event.currentTarget;
+                                                                if (input.files?.[0]) await updateSpotlightAiReference(input.files[0]);
+                                                                input.value = '';
+                                                            }}
+                                                        />
+                                                        {uploadRemoveButton(spotlightAiReference, removeSpotlightAiReference, '删除聚光开屏参考图')}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={generateSelectedSpotlightAsset}
+                                                    disabled={!!aiGeneratingKey}
+                                                    className="h-10 w-full rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                                                >
+                                                    {renderAiButtonContent(spotlightAiTarget ? `spotlight-${spotlightAiTarget}` : 'spotlight-none', spotlightAiTarget ? `生成${getSpotlightAiTargetLabel(spotlightAiTarget)}` : '先选择素材再生成')}
                                                 </button>
-                                                {uploadRemoveButton(spotlightLargeCard, () => clearUploadState(spotlightLargeCard, setSpotlightLargeCard), '删除大卡素材', { width: SPOTLIGHT_LARGE_W, height: SPOTLIGHT_LARGE_H, filename: `spotlight-large-${SPOTLIGHT_LARGE_W}x${SPOTLIGHT_LARGE_H}.png` })}
                                             </div>
                                         </div>
 
@@ -3671,10 +4034,12 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">底图素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 1126 x 900px</p>
+                                                    <h2 className="text-white text-sm font-black">底图与翻卡素材</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">先上传底图，再依次上传 4 张翻卡；使用 AI 前先点击目标素材</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyBase.status)}`}>{polyBase.message}</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${polyBase.status === 'valid' && polyCards.length === 4 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>
+                                                    {polyBase.status === 'valid' ? `底图已上传 · 翻卡 ${polyCards.length}/4` : `先传底图 · 翻卡 ${polyCards.length}/4`}
+                                                </span>
                                             </div>
                                             <input
                                                 ref={polyBaseInputRef}
@@ -3687,39 +4052,6 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <div className="relative">
-                                                <button
-                                                    onClick={() => {
-                                                        setPolyAiTarget('base');
-                                                        if (!polyBase.url) polyBaseInputRef.current?.click();
-                                                    }}
-                                                    onDragOver={(event) => handleUploadDragOver(event, 'poly-base')}
-                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'poly-base')}
-                                                    onDrop={(event) => handleUploadDrop(event, 'poly-base')}
-                                                    className={`w-full min-h-[132px] border rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${polyAiTarget === 'base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-dashed border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                                >
-                                                    {polyBase.url ? (
-                                                        <img src={polyBase.url} alt="多态翻卡底图预览" className="h-24 w-full object-cover rounded-xl" />
-                                                    ) : (
-                                                        <div className="text-center">
-                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
-                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入 1126 x 900px 底图</p>
-                                                        </div>
-                                                    )}
-                                                </button>
-                                                {polyAiTarget === 'base' && <span className="absolute left-3 top-3 rounded-full bg-primary px-2 py-1 text-[9px] font-black text-white">当前生成</span>}
-                                                {uploadRemoveButton(polyBase, () => clearUploadState(polyBase, setPolyBase), '删除底图素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-base-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <h2 className="text-white text-sm font-black">翻卡图片</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传 4 张图片 / 840 x 360px</p>
-                                                </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${polyCards.length === 4 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>{polyCards.length} / 4</span>
-                                            </div>
                                             <input
                                                 ref={polyCardsInputRef}
                                                 type="file"
@@ -3732,18 +4064,105 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <button
-                                                onClick={() => polyCardsInputRef.current?.click()}
-                                                onDragOver={(event) => handleUploadDragOver(event, 'poly-cards')}
-                                                onDragLeave={(event) => handleUploadDragLeave(event, 'poly-cards')}
-                                                onDrop={(event) => handleUploadDrop(event, 'poly-cards')}
-                                                className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-cards' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                            >
-                                                <div className="text-center">
-                                                    <span className="material-symbols-outlined text-3xl text-zinc-600">view_carousel</span>
-                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'poly-cards' ? '松开上传翻卡图片' : '点击或拖入 4 张翻卡图片'}</p>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={() => {
+                                                            setPolyAiTarget('base');
+                                                            setError('');
+                                                        }}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                                event.preventDefault();
+                                                                setPolyAiTarget('base');
+                                                                setError('');
+                                                            }
+                                                        }}
+                                                        onDoubleClick={() => polyBaseInputRef.current?.click()}
+                                                        onDragOver={(event) => handleUploadDragOver(event, 'poly-base')}
+                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'poly-base')}
+                                                        onDrop={(event) => handleUploadDrop(event, 'poly-base')}
+                                                        className={`relative min-h-[126px] rounded-[16px] border p-2 text-left transition-all overflow-hidden ${polyAiTarget === 'base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : dragTarget === 'poly-base' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
+                                                    >
+                                                        {polyAiTarget === 'base' && <span className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-1 text-[8px] font-black text-white">AI 目标</span>}
+                                                        {polyBase.url ? (
+                                                            <img src={polyBase.url} alt="多态翻卡底图预览" className="h-20 w-full object-cover rounded-[12px] bg-zinc-950" />
+                                                        ) : (
+                                                            <div className="h-20 w-full rounded-[12px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                                <span className="material-symbols-outlined text-[22px] text-zinc-600">crop_16_9</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="mt-2 flex items-center justify-between gap-2">
+                                                            <div>
+                                                                <p className="text-[9px] font-black text-zinc-300">底图素材</p>
+                                                                <p className="text-[8px] font-bold text-zinc-600">1126 x 900px</p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    polyBaseInputRef.current?.click();
+                                                                }}
+                                                                className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/15 text-white flex items-center justify-center"
+                                                                title="上传底图素材"
+                                                                aria-label="上传底图素材"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[15px]">upload</span>
+                                                            </button>
+                                                        </div>
+                                                        {polyBase.url && (
+                                                            <div className="absolute right-2 top-2 z-20 flex gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        void downloadUploadStateAsPng(polyBase, { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-base-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` });
+                                                                    }}
+                                                                    className="h-6 w-6 rounded-full bg-black/75 text-white/85 border border-white/10 flex items-center justify-center hover:bg-primary hover:text-white transition-all"
+                                                                    title="下载底图素材"
+                                                                    aria-label="下载底图素材"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[13px]">download</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        clearUploadState(polyBase, setPolyBase);
+                                                                        setPolyAiTarget((current) => current === 'base' ? null : current);
+                                                                    }}
+                                                                    className="h-6 w-6 rounded-full bg-black/75 text-white/85 border border-white/10 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+                                                                    title="删除底图素材"
+                                                                    aria-label="删除底图素材"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[13px]">close</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => polyCardsInputRef.current?.click()}
+                                                        onDragOver={(event) => handleUploadDragOver(event, 'poly-cards')}
+                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'poly-cards')}
+                                                        onDrop={(event) => handleUploadDrop(event, 'poly-cards')}
+                                                        className={`min-h-[126px] rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'poly-cards' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
+                                                    >
+                                                        <div className="text-center px-4">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">view_carousel</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'poly-cards' ? '松开上传翻卡图片' : '上传翻卡图片'}</p>
+                                                            <p className="text-[8px] text-zinc-700 font-bold mt-1">每张 840 x 360px，按顺序放入空位</p>
+                                                        </div>
+                                                    </button>
                                                 </div>
-                                            </button>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyBase.status)}`}>{polyBase.message}</span>
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${polyCards.length === 4 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>翻卡 {polyCards.length} / 4</span>
+                                                </div>
+                                            </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {Array.from({ length: 4 }).map((_, index) => {
                                                     const item = polyCards[index];
@@ -3752,7 +4171,10 @@ const ConfigWorkspace: React.FC = () => {
                                                         <button
                                                             key={item?.id || target}
                                                             type="button"
-                                                            onClick={() => setPolyAiTarget(target)}
+                                                            onClick={() => {
+                                                                setPolyAiTarget(target);
+                                                                setError('');
+                                                            }}
                                                             className={`relative rounded-[14px] border p-2 text-left transition-all ${polyAiTarget === target ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
                                                         >
                                                             {item && (
@@ -3762,12 +4184,14 @@ const ConfigWorkspace: React.FC = () => {
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         removePolyCard(item.id);
+                                                                        setPolyAiTarget((current) => current === target ? null : current);
                                                                     }}
                                                                     onKeyDown={(event) => {
                                                                         if (event.key === 'Enter' || event.key === ' ') {
                                                                             event.preventDefault();
                                                                             event.stopPropagation();
                                                                             removePolyCard(item.id);
+                                                                            setPolyAiTarget((current) => current === target ? null : current);
                                                                         }
                                                                     }}
                                                                     className="absolute right-1 top-1 z-10 h-5 w-5 rounded-full bg-black/70 text-white/80 flex items-center justify-center"
@@ -3776,7 +4200,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                     <span className="material-symbols-outlined text-xs">close</span>
                                                                 </span>
                                                             )}
-                                                            {polyAiTarget === target && <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">当前</span>}
+                                                            {polyAiTarget === target && <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">AI 目标</span>}
                                                             {item ? (
                                                                 <img src={item.url} alt={`翻卡图片 ${index + 1}`} className="h-16 w-full object-cover rounded-[10px] bg-zinc-950" />
                                                             ) : (
@@ -3796,7 +4220,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成底图 / 翻卡图片</p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-black px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary">{getPolyAiTargetLabel(polyAiTarget)}</span>
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${polyAiTarget ? 'border-primary/30 bg-primary/10 text-primary' : 'border-amber-400/25 bg-amber-400/10 text-amber-200'}`}>{getPolyAiTargetLabel(polyAiTarget)}</span>
                                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(polyAiReference.status)}`}>{polyAiReference.message}</span>
                                                     </div>
                                                 </div>
@@ -3804,7 +4228,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <textarea
                                                         value={polyAiPrompt}
                                                         onChange={(event) => setPolyAiPrompt(event.target.value)}
-                                                        placeholder="填写底图与翻卡图片的主题、风格、色彩；生成完会自动进入下一张..."
+                                                        placeholder="填写当前所选素材的主题、风格、色彩；先点击底图或某张翻卡，再生成..."
                                                         className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
                                                     />
                                                     <div className="relative min-h-[86px]">
@@ -3841,7 +4265,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         disabled={!!aiGeneratingKey}
                                                         className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                                     >
-                                                        {renderAiButtonContent(`poly-${polyAiTarget}`, `生成${getPolyAiTargetLabel(polyAiTarget)}`)}
+                                                        {renderAiButtonContent(polyAiTarget ? `poly-${polyAiTarget}` : 'poly-none', polyAiTarget ? `生成${getPolyAiTargetLabel(polyAiTarget)}` : '先选择素材再生成')}
                                                     </button>
                                                 </div>
                                             </div>
@@ -3899,7 +4323,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <h2 className="text-white text-sm font-black">焦点视窗素材</h2>
                                                     <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 视频不限时长 / 1126 x 900px</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(breakFocal.status)}`}>{breakFocal.message}</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(activeBreakFocal.status)}`}>{activeBreakFocal.message}</span>
                                             </div>
                                             <input
                                                 ref={breakFocalInputRef}
@@ -3920,11 +4344,11 @@ const ConfigWorkspace: React.FC = () => {
                                                     onDrop={(event) => handleUploadDrop(event, 'break-focal')}
                                                     className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
-                                                    {breakFocal.url ? (
-                                                        breakFocal.file?.type.startsWith('video/') ? (
-                                                            <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                    {activeBreakFocal.url ? (
+                                                        activeBreakFocal.file?.type.startsWith('video/') ? (
+                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
                                                         ) : (
-                                                            <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
+                                                            <img src={activeBreakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
                                                         )
                                                     ) : (
                                                         <div className="text-center">
@@ -3933,17 +4357,20 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">上传 icon 底图</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">整体 1 张 / 1228 x 674px / 等比缩小至 1028 x 565px 后裁进 6 个 icon</p>
+                                                    <h2 className="text-white text-sm font-black">icon 底图</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传或 AI 生成 1 张完整底图 / 1228 x 674px</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshIconSheet.status)}`}>{refreshIconSheet.message}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshIconSheet.status)}`}>{refreshIconSheet.message}</span>
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshAiReference.status)}`}>参考图：{refreshAiReference.message}</span>
+                                                </div>
                                             </div>
                                             <input
                                                 ref={refreshIconsInputRef}
@@ -4001,6 +4428,69 @@ const ConfigWorkspace: React.FC = () => {
                                                         </button>
                                                     </div>
                                                 )}
+                                            </div>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
+                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
+                                                </div>
+                                                <div className="grid grid-cols-[1fr_92px] gap-3">
+                                                    <textarea
+                                                        value={refreshAiPrompt}
+                                                        onChange={(event) => setRefreshAiPrompt(event.target.value)}
+                                                        placeholder="描述 icon 底图风格、主题、色彩；上传参考图后自动走图生图..."
+                                                        className="w-full min-h-[84px] resize-none bg-zinc-950/80 border border-white/5 rounded-[16px] p-3 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                    />
+                                                    <div className="relative min-h-[84px]">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => refreshAiReferenceInputRef.current?.click()}
+                                                            className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                        >
+                                                            {refreshAiReference.url ? (
+                                                                <img src={refreshAiReference.url} alt="icon 参考图" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="text-center px-2">
+                                                                    <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                        <input
+                                                            ref={refreshAiReferenceInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={async (event) => {
+                                                                const input = event.currentTarget;
+                                                                if (input.files?.[0]) await updateRefreshAiReference(input.files[0]);
+                                                                input.value = '';
+                                                            }}
+                                                        />
+                                                        {uploadRemoveButton(refreshAiReference, removeRefreshAiReference, '删除 icon 参考图')}
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={generateRefreshIconSheetByPrompt}
+                                                        disabled={!!aiGeneratingKey}
+                                                        className="h-10 rounded-[18px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                                                    >
+                                                        {renderAiButtonContent('refresh-text', '生成图片')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={generateRefreshIconVideoByReference}
+                                                        disabled={!!aiGeneratingKey || !(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url)}
+                                                        className={`h-10 rounded-[18px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                    >
+                                                        {renderAiButtonContent('refresh-i2v', '图生视频')}
+                                                    </button>
+                                                </div>
                                             </div>
                                             {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
                                                 <div className="space-y-2">
@@ -4075,71 +4565,13 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <h2 className="text-white text-sm font-black">AI 生成 icon 底图</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">文生图 / 图生视频 / 输出 1228 x 674px</p>
-                                                </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshAiReference.status)}`}>{refreshAiReference.message}</span>
-                                            </div>
-                                            <div className="grid grid-cols-[1fr_104px] gap-3">
-                                                <textarea
-                                                    value={refreshAiPrompt}
-                                                    onChange={(event) => setRefreshAiPrompt(event.target.value)}
-                                                    placeholder="填写 icon 底图风格、主题、色彩和动态方向..."
-                                                    className="w-full min-h-[96px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
-                                                />
-                                                <div className="relative min-h-[96px]">
-                                                    <button
-                                                        onClick={() => refreshAiReferenceInputRef.current?.click()}
-                                                        className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
-                                                    >
-                                                        {refreshAiReference.url ? (
-                                                            <img src={refreshAiReference.url} alt="icon 参考图" className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="text-center px-2">
-                                                                <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                    <input
-                                                        ref={refreshAiReferenceInputRef}
-                                                        type="file"
-                                                        accept="image/*"
-                                                        className="hidden"
-                                                        onChange={async (event) => {
-                                                            const input = event.currentTarget;
-                                                            if (input.files?.[0]) await updateRefreshAiReference(input.files[0]);
-                                                            input.value = '';
-                                                        }}
-                                                    />
-                                                    {uploadRemoveButton(refreshAiReference, removeRefreshAiReference, '删除 icon 参考图')}
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <button
-                                                    onClick={generateRefreshIconSheetByPrompt}
-                                                    disabled={!!aiGeneratingKey}
-                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
-                                                >
-                                                    {renderAiButtonContent('refresh-text', '生成图片')}
-                                                </button>
-                                                <button
-                                                    onClick={generateRefreshIconVideoByReference}
-                                                    disabled={!!aiGeneratingKey || !(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url)}
-                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshIconSheet.file?.type.startsWith('image/') || refreshAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
-                                                >
-                                                    {renderAiButtonContent('refresh-i2v', '图生视频')}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <div>
                                                     <h2 className="text-white text-sm font-black">底导素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 视频 / 1126 x 252px</p>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传或 AI 生成底部导航素材 / 1126 x 252px</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNav.status)}`}>{refreshBottomNav.message}</span>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNav.status)}`}>{refreshBottomNav.message}</span>
+                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNavAiReference.status)}`}>参考图：{refreshBottomNavAiReference.message}</span>
+                                                </div>
                                             </div>
                                             <input
                                                 ref={refreshBottomNavInputRef}
@@ -4154,6 +4586,7 @@ const ConfigWorkspace: React.FC = () => {
                                             />
                                             <div className="relative">
                                                 <button
+                                                    type="button"
                                                     onClick={() => refreshBottomNavInputRef.current?.click()}
                                                     onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav')}
                                                     onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav')}
@@ -4175,66 +4608,68 @@ const ConfigWorkspace: React.FC = () => {
                                                 </button>
                                                 {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` })}
                                             </div>
-                                        </div>
-
-                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <h2 className="text-white text-sm font-black">AI 生成底导素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">文生图 / 图生图 / 图生视频 / 输出 1126 x 252px</p>
+                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
+                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                    </div>
+                                                    <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNavAiReference.status)}`}>{refreshBottomNavAiReference.message}</span>
-                                            </div>
-                                            <div className="grid grid-cols-[1fr_104px] gap-3">
-                                                <textarea
-                                                    value={refreshBottomNavAiPrompt}
-                                                    onChange={(event) => setRefreshBottomNavAiPrompt(event.target.value)}
-                                                    placeholder="填写底导背景风格、主题、色彩和动态方向..."
-                                                    className="w-full min-h-[96px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
-                                                />
-                                                <div className="relative min-h-[96px]">
-                                                    <button
-                                                        onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
-                                                        className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
-                                                    >
-                                                        {refreshBottomNavAiReference.url ? (
-                                                            <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="text-center px-2">
-                                                                <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
-                                                            </div>
-                                                        )}
-                                                    </button>
-                                                    <input
-                                                        ref={refreshBottomNavAiReferenceInputRef}
-                                                        type="file"
-                                                        accept="image/*"
-                                                        className="hidden"
-                                                        onChange={async (event) => {
-                                                            const input = event.currentTarget;
-                                                            if (input.files?.[0]) await updateRefreshBottomNavAiReference(input.files[0]);
-                                                            input.value = '';
-                                                        }}
+                                                <div className="grid grid-cols-[1fr_92px] gap-3">
+                                                    <textarea
+                                                        value={refreshBottomNavAiPrompt}
+                                                        onChange={(event) => setRefreshBottomNavAiPrompt(event.target.value)}
+                                                        placeholder="描述底导背景风格、主题、色彩；上传参考图后自动走图生图..."
+                                                        className="w-full min-h-[84px] resize-none bg-zinc-950/80 border border-white/5 rounded-[16px] p-3 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
                                                     />
-                                                    {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图')}
+                                                    <div className="relative min-h-[84px]">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
+                                                            className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                        >
+                                                            {refreshBottomNavAiReference.url ? (
+                                                                <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="text-center px-2">
+                                                                    <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                        <input
+                                                            ref={refreshBottomNavAiReferenceInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={async (event) => {
+                                                                const input = event.currentTarget;
+                                                                if (input.files?.[0]) await updateRefreshBottomNavAiReference(input.files[0]);
+                                                                input.value = '';
+                                                            }}
+                                                        />
+                                                        {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图')}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <button
-                                                    onClick={generateRefreshBottomNavByPrompt}
-                                                    disabled={!!aiGeneratingKey}
-                                                    className="h-10 rounded-[20px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
-                                                >
-                                                    {renderAiButtonContent('refresh-bottom-nav-text', '生成图片')}
-                                                </button>
-                                                <button
-                                                    onClick={generateRefreshBottomNavVideoByReference}
-                                                    disabled={!!aiGeneratingKey || !(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url)}
-                                                    className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
-                                                >
-                                                    {renderAiButtonContent('refresh-bottom-nav-i2v', '图生视频')}
-                                                </button>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={generateRefreshBottomNavByPrompt}
+                                                        disabled={!!aiGeneratingKey}
+                                                        className="h-10 rounded-[18px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
+                                                    >
+                                                        {renderAiButtonContent('refresh-bottom-nav-text', '生成图片')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={generateRefreshBottomNavVideoByReference}
+                                                        disabled={!!aiGeneratingKey || !(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url)}
+                                                        className={`h-10 rounded-[18px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                    >
+                                                        {renderAiButtonContent('refresh-bottom-nav-i2v', '图生视频')}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </>
@@ -4246,7 +4681,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <h2 className="text-white text-sm font-black">焦点视窗素材</h2>
                                                     <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 视频不限时长 / 1126 x 900px</p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(breakFocal.status)}`}>{breakFocal.message}</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(activeBreakFocal.status)}`}>{activeBreakFocal.message}</span>
                                             </div>
                                             <input
                                                 ref={breakFocalInputRef}
@@ -4267,11 +4702,11 @@ const ConfigWorkspace: React.FC = () => {
                                                     onDrop={(event) => handleUploadDrop(event, 'break-focal')}
                                                     className={`w-full min-h-[132px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
-                                                    {breakFocal.url ? (
-                                                        breakFocal.file?.type.startsWith('video/') ? (
-                                                            <video src={breakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                    {activeBreakFocal.url ? (
+                                                        activeBreakFocal.file?.type.startsWith('video/') ? (
+                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
                                                         ) : (
-                                                            <img src={breakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
+                                                            <img src={activeBreakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
                                                         )
                                                     ) : (
                                                         <div className="text-center">
@@ -4280,7 +4715,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFocal, () => clearUploadState(breakFocal, setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
                                             </div>
                                         </div>
 
@@ -4292,7 +4727,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         {isJumpingFocalTemplate ? 'PNG / WEBP / 1126 x 906px；第 0 秒开始播放' : 'PNG / WEBP / 1126 x 1890px；AI可协助生成破框素材'}
                                                     </p>
                                                 </div>
-                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(breakFrameAsset.status)}`}>{breakFrameAsset.message}</span>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(activeBreakFrameAsset.status)}`}>{activeBreakFrameAsset.message}</span>
                                             </div>
                                             <input
                                                 ref={breakFrameInputRef}
@@ -4313,11 +4748,11 @@ const ConfigWorkspace: React.FC = () => {
                                                     onDrop={(event) => handleUploadDrop(event, 'break-frame')}
                                                     className={`w-full min-h-[156px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'break-frame' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
-                                                    {breakFrameAsset.url ? (
-                                                        breakFrameAsset.file?.type.startsWith('video/') ? (
-                                                            <video src={breakFrameAsset.url} className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline />
+                                                    {activeBreakFrameAsset.url ? (
+                                                        activeBreakFrameAsset.file?.type.startsWith('video/') ? (
+                                                            <video src={activeBreakFrameAsset.url} className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline />
                                                         ) : (
-                                                            <img src={breakFrameAsset.url} alt="破框素材预览" className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" />
+                                                            <img src={activeBreakFrameAsset.url} alt="破框素材预览" className="h-36 max-w-full object-contain rounded-xl bg-zinc-950" />
                                                         )
                                                     ) : (
                                                         <div className="text-center">
@@ -4327,16 +4762,16 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(breakFrameAsset, () => clearUploadState(breakFrameAsset, setBreakFrameAsset), '删除破框素材', { width: BREAK_FRAME_W, height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H, filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFrameAsset, () => clearUploadState(activeBreakFrameAsset, isJumpingFocalTemplate ? setJumpingFrameAsset : setBreakFrameAsset), '删除破框素材', { width: BREAK_FRAME_W, height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H, filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png` })}
                                             </div>
                                             <div className="grid gap-3">
                                                 {(isJumpingFocalTemplate ? [
                                                     {
                                                         phase: 0 as const,
                                                         title: '跃动破框',
-                                                        value: breakFirstPrompt,
-                                                        setter: setBreakFirstPrompt,
-                                                        reference: breakFirstReference,
+                                                        value: jumpingPrompt,
+                                                        setter: setJumpingPrompt,
+                                                        reference: jumpingReference,
                                                         startSecond: 0,
                                                         setStartSecond: setBreakFirstStartSecond,
                                                         minSecond: 0,
@@ -4481,8 +4916,8 @@ const ConfigWorkspace: React.FC = () => {
                                                             </button>
                                                             <button
                                                                 onClick={() => generateBreakFrameByPrompt('image', item.phase)}
-                                                                disabled={!!aiGeneratingKey || !(breakFrameAsset.file?.type.startsWith('image/') || item.reference.url)}
-                                                                className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(breakFrameAsset.file?.type.startsWith('image/') || item.reference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                                disabled={!!aiGeneratingKey || !(activeBreakFrameAsset.file?.type.startsWith('image/') || item.reference.url)}
+                                                                className={`h-10 rounded-[20px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(activeBreakFrameAsset.file?.type.startsWith('image/') || item.reference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
                                                             >
                                                                 {renderAiButtonContent(`break-${item.phase}-image`, '图生视频')}
                                                             </button>
@@ -4954,11 +5389,11 @@ const ConfigWorkspace: React.FC = () => {
                                                                 height: `${(BREAK_FOCAL_H / BREAK_CANVAS_H) * 100}%`,
                                                             }}
                                                         >
-                                                            {breakFocal.url ? (
-                                                                breakFocal.file?.type.startsWith('video/') ? (
+                                                            {activeBreakFocal.url ? (
+                                                                activeBreakFocal.file?.type.startsWith('video/') ? (
                                                                     <video
                                                                         ref={breakFocalPreviewVideoRef}
-                                                                        src={breakFocal.url}
+                                                                        src={activeBreakFocal.url}
                                                                         className="w-full h-full object-cover"
                                                                         muted
                                                                         loop
@@ -4969,7 +5404,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                         }}
                                                                     />
                                                                 ) : (
-                                                                    <img src={breakFocal.url} alt="焦点视窗预览" className="w-full h-full object-cover" />
+                                                                    <img src={activeBreakFocal.url} alt="焦点视窗预览" className="w-full h-full object-cover" />
                                                                 )
                                                             ) : (
                                                                 <div className="w-full h-full flex items-center justify-center text-zinc-600">
@@ -4984,7 +5419,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                 style={{
                                                                     top: `${(750 / BREAK_CANVAS_H) * 100}%`,
                                                                     height: `${(500 / BREAK_CANVAS_H) * 100}%`,
-                                                                    backgroundColor: breakGradientColor,
+                                                                    backgroundColor: activeBreakGradientColor,
                                                                     maskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)',
                                                                     WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)',
                                                                 }}
@@ -4992,7 +5427,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             <div
                                                                 className="absolute inset-0 z-[30]"
                                                                 style={{
-                                                                    backgroundColor: breakIconColor,
+                                                                    backgroundColor: activeBreakIconColor,
                                                                     maskImage: 'url(/focal-window/icon_bg.png)',
                                                                     WebkitMaskImage: 'url(/focal-window/icon_bg.png)',
                                                                     maskSize: '100% 100%',
@@ -5012,12 +5447,12 @@ const ConfigWorkspace: React.FC = () => {
                                                                 transition: 'opacity 0.35s ease-out, transform 0.35s ease-out',
                                                             }}
                                                         >
-                                                            {breakFrameAsset.url && breakFramePreviewStarted ? (
-                                                                breakFrameAsset.file?.type.startsWith('video/') ? (
+                                                            {activeBreakFrameAsset.url && breakFramePreviewStarted ? (
+                                                                activeBreakFrameAsset.file?.type.startsWith('video/') ? (
                                                                     <video
-                                                                        key={`${breakFrameAsset.url}-${breakPreviewPhase}-${isJumpingFocalTemplate ? 0 : breakFirstTriggerSecond}-${breakSecondTriggerSecond}`}
+                                                                        key={`${activeBreakFrameAsset.url}-${breakPreviewPhase}-${isJumpingFocalTemplate ? 0 : breakFirstTriggerSecond}-${breakSecondTriggerSecond}`}
                                                                         ref={breakFramePreviewVideoRef}
-                                                                        src={breakFrameAsset.url}
+                                                                        src={activeBreakFrameAsset.url}
                                                                         className="w-full h-full object-contain drop-shadow-2xl"
                                                                         muted
                                                                         loop
@@ -5029,9 +5464,9 @@ const ConfigWorkspace: React.FC = () => {
                                                                         }}
                                                                     />
                                                                 ) : (
-                                                                    <img src={breakFrameAsset.url} alt="破框素材预览" className="w-full h-full object-contain drop-shadow-2xl" />
+                                                                    <img src={activeBreakFrameAsset.url} alt="破框素材预览" className="w-full h-full object-contain drop-shadow-2xl" />
                                                                 )
-                                                            ) : !breakFrameAsset.url ? (
+                                                            ) : !activeBreakFrameAsset.url ? (
                                                                 <div className="w-full h-full border border-dashed border-fuchsia-300/60 bg-fuchsia-300/5 flex items-center justify-center">
                                                                     <span className="text-[9px] font-black text-fuchsia-200 tracking-widest">{isJumpingFocalTemplate ? '1126 x 906 / TRANSPARENT' : '1126 x 1890 / TRANSPARENT'}</span>
                                                                 </div>
