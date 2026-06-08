@@ -1337,6 +1337,10 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
   for (const item of mediaInfoList) {
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
+      if (hasAigcStandardVideoExt(mediaData)) {
+        normalized.push(mediaInfoWithUrl(item, publicStaticUrl(mediaData, config.publicBaseUrl)));
+        continue;
+      }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
         const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
         if (/^https?:\/\//i.test(publicUrl)) {
@@ -1356,6 +1360,10 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
       continue;
     }
     if (typeof mediaData === "string" && /^https?:\/\//i.test(mediaData)) {
+      if (hasAigcStandardVideoExt(mediaData)) {
+        normalized.push(mediaInfoWithUrl(item, mediaData));
+        continue;
+      }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
         normalized.push(mediaInfoWithUrl(item, mediaData));
         continue;
@@ -2024,6 +2032,14 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         rsp_media_type: "url"
       }
     };
+    console.log("[AIGC Video Expand] submit", JSON.stringify({
+      inputMode,
+      target: { width: finalTargetWidth, height: finalTargetHeight },
+      aigcTarget,
+      mediaDataType: "url",
+      mediaUrlKind: videoInputUrl.startsWith("/static/") ? "static" : "remote",
+      parameterKeys: Object.keys(params.parameter)
+    }));
     const result = await submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params,
