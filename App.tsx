@@ -657,7 +657,7 @@ const App: React.FC = () => {
             ].join('。'),
             out_fps: 24,
             start_idx: 0,
-            max_num_frames: 249,
+            max_num_frames: 120,
             mixed_precision: 'bf16',
             seed: 123
           });

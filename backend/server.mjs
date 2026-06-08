@@ -802,6 +802,7 @@ const AIGC_TASKS = {
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
 };
+const AIGC_VIDEO_EXPAND_MAX_FRAMES = 120;
 
 function getAigcConfig() {
   return {
@@ -1996,7 +1997,7 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       prompt = "扩展画面背景，保持动态连贯",
       out_fps = 24,
       start_idx = 0,
-      max_num_frames = 249,
+      max_num_frames = AIGC_VIDEO_EXPAND_MAX_FRAMES,
       mixed_precision = "bf16",
       seed = 123,
     } = req.body || {};
@@ -2025,7 +2026,7 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
         out_fps: toPositiveInt(out_fps) || 24,
         start_idx: toNonNegativeInt(start_idx, 0),
-        max_num_frames: toPositiveInt(max_num_frames) || 249,
+        max_num_frames: Math.min(toPositiveInt(max_num_frames) || AIGC_VIDEO_EXPAND_MAX_FRAMES, AIGC_VIDEO_EXPAND_MAX_FRAMES),
         mixed_precision: String(mixed_precision || "bf16"),
         seed: toPositiveSeed(seed, 123),
         prompt: finalPrompt,
