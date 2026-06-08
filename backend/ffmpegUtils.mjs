@@ -134,3 +134,34 @@ export async function resizeVideoToDimensions(videoPath, targetW, targetH, outpu
             .on('error', (err) => reject(err));
     });
 }
+
+export async function resizeVideoToMaxSide(videoPath, maxSide, outputPath, options = {}) {
+    const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
+    const fps = Number(options.fps) > 0 ? Math.round(Number(options.fps)) : null;
+    const side = Math.max(8, Math.round(maxSide || 1024));
+    const outputOptions = [
+        '-c:v libx264',
+        '-crf 18',
+        '-preset medium',
+        '-an',
+        '-movflags +faststart',
+        '-pix_fmt yuv420p'
+    ];
+
+    return new Promise((resolve, reject) => {
+        let command = ffmpeg(videoPath);
+        if (duration) command = command.duration(duration);
+
+        const filters = [
+            `scale=${side}:${side}:force_original_aspect_ratio=decrease:force_divisible_by=8`
+        ];
+        if (fps) filters.push(`fps=${fps}`);
+
+        command
+            .videoFilters(filters)
+            .outputOptions(outputOptions)
+            .save(outputPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err));
+    });
+}

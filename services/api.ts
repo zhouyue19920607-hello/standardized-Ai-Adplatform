@@ -180,6 +180,7 @@ export interface AigcTaskResponse {
     remoteResultUrl?: string;
     target?: { width: number; height: number };
     aigcTarget?: { width: number; height: number };
+    inputPreprocess?: unknown;
     postProcess?: unknown;
     mediaInfo?: unknown;
     raw?: unknown;

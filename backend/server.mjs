@@ -9,7 +9,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
-import { compressAndCompositeVideo, resizeVideoToDimensions } from "./ffmpegUtils.mjs";
+import { compressAndCompositeVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -802,7 +802,8 @@ const AIGC_TASKS = {
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
 };
-const AIGC_VIDEO_EXPAND_MAX_FRAMES = 120;
+const AIGC_VIDEO_EXPAND_MAX_FRAMES = 90;
+const AIGC_VIDEO_EXPAND_MAX_SIDE = 1024;
 
 function getAigcConfig() {
   return {
@@ -965,9 +966,12 @@ function ceilToMultiple(value, multiple = 8) {
 }
 
 function getAigcVideoEncodeDimensions(width, height) {
+  const sourceWidth = toPositiveInt(width) || 1920;
+  const sourceHeight = toPositiveInt(height) || 1080;
+  const scale = Math.min(1, AIGC_VIDEO_EXPAND_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
   return {
-    width: ceilToMultiple(width, 8) || 1920,
-    height: ceilToMultiple(height, 8) || 1080
+    width: ceilToMultiple(sourceWidth * scale, 8) || 1024,
+    height: ceilToMultiple(sourceHeight * scale, 8) || 576
   };
 }
 
@@ -1190,12 +1194,15 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
   return `${config.cdnDomain}/${objectName}`;
 }
 
-async function uploadStaticVideoToObserverUrl(staticUrl) {
-  const sourcePath = staticUrlToLocalPath(staticUrl);
+async function uploadLocalVideoToObserverUrl(sourcePath) {
   await fs.access(sourcePath);
   const buffer = await fs.readFile(sourcePath);
   const objectName = objectKeyForAigcVideo(sourcePath);
   return uploadBufferToObserverOss(buffer, objectName, "video/mp4");
+}
+
+async function uploadStaticVideoToObserverUrl(staticUrl) {
+  return uploadLocalVideoToObserverUrl(staticUrlToLocalPath(staticUrl));
 }
 
 async function writeStandardizedAigcImage(input) {
@@ -1595,6 +1602,60 @@ async function preciseCropVideoToTarget(videoUrl, targetWidth, targetHeight, opt
     width: targetWidth,
     height: targetHeight,
     sizeMB: Number((outputStats.size / 1024 / 1024).toFixed(2))
+  };
+}
+
+async function createAigcExpandInputVideo(sourcePath, maxSide, options = {}) {
+  await ensureDir(AIGC_INPUTS_DIR);
+  const outputFilename = `video_expand_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_max${maxSide}.mp4`;
+  const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
+  await resizeVideoToMaxSide(sourcePath, maxSide, outputPath, {
+    maxDurationSec: options.maxDurationSec,
+    fps: options.fps
+  });
+  const outputStats = await fs.stat(outputPath);
+  return {
+    path: outputPath,
+    staticUrl: `/static/aigc-inputs/${outputFilename}`,
+    maxSide,
+    sizeMB: Number((outputStats.size / 1024 / 1024).toFixed(2))
+  };
+}
+
+async function prepareVideoInputForAigcExpand(videoUrl, aigcTarget, options = {}) {
+  const publicBaseUrl = options.publicBaseUrl || "";
+  const localStaticUrl = videoUrl?.startsWith("/static/")
+    ? videoUrl
+    : publicUrlToStaticUrl(videoUrl, publicBaseUrl);
+  let sourcePath = "";
+
+  if (localStaticUrl && hasAigcStandardVideoExt(localStaticUrl)) {
+    sourcePath = staticUrlToLocalPath(localStaticUrl);
+  } else if (/^https?:\/\//i.test(videoUrl || "") && hasAigcStandardVideoExt(videoUrl)) {
+    sourcePath = await localVideoPathFromUrl(videoUrl, { publicBaseUrl, mediaType: "video/mp4" });
+  }
+
+  if (!sourcePath) {
+    return { url: videoUrl, inputMode: "url", preprocessed: null };
+  }
+
+  const preprocessed = await createAigcExpandInputVideo(sourcePath, AIGC_VIDEO_EXPAND_MAX_SIDE, {
+    maxDurationSec: options.maxDurationSec,
+    fps: options.fps
+  });
+  const observerConfig = getObserverConfig();
+  if (observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
+    return {
+      url: await uploadLocalVideoToObserverUrl(preprocessed.path),
+      inputMode: "observer-url-preprocessed",
+      preprocessed
+    };
+  }
+
+  return {
+    url: publicStaticUrl(preprocessed.staticUrl, publicBaseUrl),
+    inputMode: "public-static-preprocessed",
+    preprocessed
   };
 }
 
@@ -2007,15 +2068,18 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
     const aigcTarget = getAigcVideoEncodeDimensions(finalTargetWidth, finalTargetHeight);
     const needsPreciseCrop = aigcTarget.width !== finalTargetWidth || aigcTarget.height !== finalTargetHeight;
+    const finalOutFps = toPositiveInt(out_fps) || 24;
+    const finalMaxNumFrames = Math.min(toPositiveInt(max_num_frames) || AIGC_VIDEO_EXPAND_MAX_FRAMES, AIGC_VIDEO_EXPAND_MAX_FRAMES);
+    const finalMaxDurationSec = finalMaxNumFrames / finalOutFps;
     const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
-    let videoInputUrl = videoUrl;
-    let inputMode = "url";
-    const observerConfig = getObserverConfig();
-    if (videoUrl.startsWith("/static/") && hasAigcStandardVideoExt(videoUrl) && observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
-      videoInputUrl = await uploadStaticVideoToObserverUrl(videoUrl);
-      inputMode = "observer-url";
-      console.log(`[AIGC Video Expand] uploaded static video to Observer CDN: ${videoInputUrl}`);
-    }
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const preparedInput = await prepareVideoInputForAigcExpand(videoUrl, aigcTarget, {
+      publicBaseUrl,
+      maxDurationSec: finalMaxDurationSec,
+      fps: finalOutFps
+    });
+    const videoInputUrl = preparedInput.url;
+    const inputMode = preparedInput.inputMode;
     const params = {
       parameter: {
         target_width: aigcTarget.width,
@@ -2024,9 +2088,9 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
         r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
         r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
-        out_fps: toPositiveInt(out_fps) || 24,
+        out_fps: finalOutFps,
         start_idx: toNonNegativeInt(start_idx, 0),
-        max_num_frames: Math.min(toPositiveInt(max_num_frames) || AIGC_VIDEO_EXPAND_MAX_FRAMES, AIGC_VIDEO_EXPAND_MAX_FRAMES),
+        max_num_frames: finalMaxNumFrames,
         mixed_precision: String(mixed_precision || "bf16"),
         seed: toPositiveSeed(seed, 123),
         prompt: finalPrompt,
@@ -2039,6 +2103,14 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       aigcTarget,
       mediaDataType: "url",
       mediaUrlKind: videoInputUrl.startsWith("/static/") ? "static" : "remote",
+      preprocessed: preparedInput.preprocessed
+        ? {
+          maxSide: preparedInput.preprocessed.maxSide,
+          sizeMB: preparedInput.preprocessed.sizeMB,
+          maxDurationSec: Number(finalMaxDurationSec.toFixed(2)),
+          fps: finalOutFps
+        }
+        : null,
       parameterKeys: Object.keys(params.parameter)
     }));
     const result = await submitAigcTask({
@@ -2048,14 +2120,14 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req),
+      publicBaseUrl,
       persistOptions: { maxContentLengthBytes: 500 * 1024 * 1024 }
     });
     let finalResult = result;
     let postProcess = null;
     if (needsPreciseCrop) {
       const cropResult = await preciseCropVideoToTarget(result.resultUrl || result.remoteResultUrl, finalTargetWidth, finalTargetHeight, {
-        publicBaseUrl: getRequestPublicBaseUrl(req),
+        publicBaseUrl,
         mediaType: result.mediaInfo?.media_type || "video/mp4"
       });
       postProcess = {
@@ -2074,6 +2146,15 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       fallbackUsed: false,
       target: { width: finalTargetWidth, height: finalTargetHeight },
       aigcTarget,
+      inputPreprocess: preparedInput.preprocessed
+        ? {
+          type: "ffmpeg-downscale",
+          maxSide: preparedInput.preprocessed.maxSide,
+          maxDurationSec: Number(finalMaxDurationSec.toFixed(2)),
+          fps: finalOutFps,
+          sizeMB: preparedInput.preprocessed.sizeMB
+        }
+        : null,
       postProcess,
       ...finalResult
     });
@@ -3363,6 +3444,7 @@ async function cleanupStorage() {
 
       const filePath = path.join(STORAGE_DIR, file);
       const stats = await fs.stat(filePath);
+      if (stats.isDirectory()) continue;
 
       if (now - stats.mtimeMs > expiry) {
         await fs.unlink(filePath);
