@@ -235,7 +235,6 @@ export const generateVideoWithAigc = async (payload: {
     ratio?: string;
     duration?: number;
     seed?: number;
-    preferLtx?: boolean;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/text-to-video', payload);
     return response.data;

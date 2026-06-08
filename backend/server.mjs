@@ -797,7 +797,6 @@ const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactl
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
   textToVideo: "/v1/t2v_magic_async",
-  textToVideoFallback: "/v1/ltx_2_async",
   imageToVideo: "/v1/ltx_2_async",
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
@@ -1952,13 +1951,11 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, ratio = "16:9", duration = 5, seed = -1, preferLtx = false } = req.body || {};
+    const { prompt, text, ratio = "16:9" } = req.body || {};
     const finalText = text || prompt;
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
     }
-    const finalDuration = toPositiveInt(duration) || 5;
-    const finalSeed = Number.isFinite(Number(seed)) ? Number(seed) : -1;
     const mokiVideoParams = {
       media_info_list: [],
       parameter: {
@@ -1967,36 +1964,16 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
       },
       extra: {}
     };
-    const ltxVideoParams = {
-      media_info_list: [],
-      parameter: {
-        task_type: "t2v",
-        prompt: finalText,
-        width: ratio === "9:16" ? 720 : 1280,
-        height: ratio === "9:16" ? 1280 : 720,
-        duration: finalDuration,
-        fps: 24,
-        seed: finalSeed
-      }
-    };
-    const submitTextToVideo = (task) => submitAigcTask({
-      task,
-      params: task === AIGC_TASKS.textToVideoFallback ? ltxVideoParams : mokiVideoParams,
+
+    // /v1/ltx_2_async rejects pure text-to-video task_type=t2v; keep this route on the supported endpoint.
+    const usedTask = AIGC_TASKS.textToVideo;
+    const result = await submitAigcTask({
+      task: usedTask,
+      params: mokiVideoParams,
       initialDelayMs: 10000,
       pollIntervalMs: 5000
     });
-
-    let usedTask = preferLtx ? AIGC_TASKS.textToVideoFallback : AIGC_TASKS.textToVideo;
-    let result;
-    try {
-      result = await submitTextToVideo(usedTask);
-    } catch (primaryErr) {
-      if (preferLtx || !isAigcFallbackCandidate(primaryErr)) throw primaryErr;
-      console.warn(`[AIGC Text To Video] primary ${AIGC_TASKS.textToVideo} failed, falling back to ${AIGC_TASKS.textToVideoFallback}:`, primaryErr.message);
-      usedTask = AIGC_TASKS.textToVideoFallback;
-      result = await submitTextToVideo(usedTask);
-    }
-    res.json({ ok: true, provider: "meitu-open-platform", task: usedTask, fallbackUsed: usedTask !== AIGC_TASKS.textToVideo, ...result });
+    res.json({ ok: true, provider: "meitu-open-platform", task: usedTask, fallbackUsed: false, ...result });
   } catch (err) {
     console.error("[AIGC Text To Video] failed:", err.message);
     res.status(500).json({ error: "AI 文生视频失败", details: err.message });
