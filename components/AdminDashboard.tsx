@@ -7,6 +7,17 @@ interface AdminDashboardProps {
     onClose: () => void;
 }
 
+const implementedCreativeTemplateIds = new Set([
+    'dynamic-splash',
+    'magazine-flip',
+    'slide-splash',
+    'break-frame-focal-3d',
+    'meiyan-break-frame-focal-3d',
+    'polymorphic-flip-card',
+    'jumping-focal-window',
+    'refresh-ui-bottom-nav',
+]);
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'templates' | 'workflows' | 'settings' | 'analytics'>('templates');
@@ -125,7 +136,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         try {
             const [tData, cData, wData, aData] = await Promise.all([getTemplates(), getCreativeTemplates(), getWorkflows(), getAnalyticsSummary()]);
             setTemplates(tData);
-            setCreativeTemplates(cData);
+            setCreativeTemplates(cData.filter((tpl) => implementedCreativeTemplateIds.has(tpl.id)));
             setWorkflows(wData);
             setAnalytics(aData);
         } catch (err) {

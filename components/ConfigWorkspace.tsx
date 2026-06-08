@@ -75,7 +75,6 @@ const defaultCreativeCategories = [
             { id: 'dynamic-splash', label: '炫动开屏' },
             { id: 'magazine-flip', label: '杂志翻页' },
             { id: 'slide-splash', label: '聚光开屏' },
-            { id: 'twist-splash', label: '扭转开屏' },
         ],
     },
     {
@@ -92,6 +91,10 @@ const defaultCreativeCategories = [
     },
 ];
 
+const implementedCreativeTemplateIds = new Set(
+    defaultCreativeCategories.flatMap((group) => group.templates.map((template) => template.id)),
+);
+
 const categoryIcons: Record<string, string> = {
     splash: 'wb_sunny',
     home: 'home_app_logo',
@@ -107,7 +110,7 @@ const isBreakFrameLikeTemplateId = (id?: string | null) => (
 );
 
 const buildCreativeCategories = (templates: CreativeTemplateItem[]) => {
-    const enabledTemplates = templates.filter((item) => item.enabled !== false);
+    const enabledTemplates = templates.filter((item) => item.enabled !== false && implementedCreativeTemplateIds.has(item.id));
     if (!enabledTemplates.length) return defaultCreativeCategories;
 
     const groups = enabledTemplates.reduce((acc, tpl) => {

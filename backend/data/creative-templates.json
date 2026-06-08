@@ -24,14 +24,6 @@
     "enabled": true
   },
   {
-    "id": "twist-splash",
-    "groupId": "splash",
-    "groupName": "开屏创意模版",
-    "name": "扭转开屏",
-    "dimensions": "1440 x 2340 / 5s",
-    "enabled": true
-  },
-  {
     "id": "break-frame-focal-3d",
     "groupId": "home",
     "groupName": "首页创意模版",

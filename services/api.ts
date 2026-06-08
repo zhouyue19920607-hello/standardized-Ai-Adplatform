@@ -261,6 +261,11 @@ export const expandVideoWithAigc = async (payload: {
     r_h_up?: number;
     r_h_down?: number;
     prompt?: string;
+    out_fps?: number;
+    start_idx?: number;
+    max_num_frames?: number;
+    mixed_precision?: string;
+    seed?: number;
 }): Promise<AigcTaskResponse> => {
     const response = await api.post<AigcTaskResponse>('/aigc/video-expand', payload);
     return response.data;

@@ -654,7 +654,12 @@ const App: React.FC = () => {
               '文案和 Logo 必须距离画面边缘至少 15% 安全距离，避免裁切。禁止裁切主体、文字错乱、Logo 变形、比例异常。',
               `广告模板：${template.app}${template.name}`,
               `目标尺寸：${target.width} x ${target.height}`
-            ].join('。')
+            ].join('。'),
+            out_fps: 24,
+            start_idx: 0,
+            max_num_frames: 249,
+            mixed_precision: 'bf16',
+            seed: 123
           });
           return aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
         };

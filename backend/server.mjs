@@ -70,13 +70,13 @@ const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "dynamic-splash", groupId: "splash", groupName: "开屏创意模版", name: "炫动开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
   { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
   { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340", enabled: true },
-  { id: "twist-splash", groupId: "splash", groupName: "开屏创意模版", name: "扭转开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
   { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "秀秀-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "meiyan-break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "美颜-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "polymorphic-flip-card", groupId: "home", groupName: "首页创意模版", name: "多态翻卡", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900", enabled: true },
   { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252", enabled: true }
 ];
+const IMPLEMENTED_CREATIVE_TEMPLATE_IDS = new Set(DEFAULT_CREATIVE_TEMPLATES.map(t => t.id));
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
 const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
@@ -421,15 +421,20 @@ app.get("/api/analytics/summary", async (req, res) => {
 app.get("/api/creative-templates", async (req, res) => {
   const templates = await readJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
   const defaultById = Object.fromEntries(DEFAULT_CREATIVE_TEMPLATES.map(t => [t.id, t]));
-  const merged = templates.map(t => ({
-    ...(defaultById[t.id] || {}),
-    ...t
-  }));
+  const merged = templates
+    .filter(t => IMPLEMENTED_CREATIVE_TEMPLATE_IDS.has(t.id))
+    .map(t => ({
+      ...(defaultById[t.id] || {}),
+      ...t
+    }));
   res.json(merged);
 });
 
 app.put("/api/creative-templates/:id", async (req, res) => {
   const { id } = req.params;
+  if (!IMPLEMENTED_CREATIVE_TEMPLATE_IDS.has(id)) {
+    return res.status(404).json({ error: "Creative template not implemented" });
+  }
   const payload = req.body || {};
   const templates = await readJson(CREATIVE_TEMPLATES_FILE, DEFAULT_CREATIVE_TEMPLATES);
   const index = templates.findIndex(t => t.id === id);
@@ -444,6 +449,9 @@ app.put("/api/creative-templates/:id", async (req, res) => {
 
 app.post("/api/creative-templates/:id/assets/:slot", upload.single("image"), async (req, res) => {
   const { id, slot } = req.params;
+  if (!IMPLEMENTED_CREATIVE_TEMPLATE_IDS.has(id)) {
+    return res.status(404).json({ error: "Creative template not implemented" });
+  }
   const file = req.file;
   const slotToField = {
     interaction: "interaction_asset_path",
@@ -939,6 +947,16 @@ function toPositiveInt(value) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
 }
 
+function toNonNegativeInt(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : fallback;
+}
+
+function toPositiveSeed(value, fallback = 123) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+}
+
 function isAigcFallbackCandidate(err) {
   const message = String(err?.message || "");
   return /60477|timeout|超时|mq|redis|queue|MOKI|GATEWAY|90002/i.test(message);
@@ -1036,6 +1054,7 @@ function extractAigcDirectResultUrl(data) {
 function mediaInfoFromUrl(url) {
   return {
     media_data: url,
+    media_extra: {},
     media_profiles: { media_data_type: "url" }
   };
 }
@@ -1910,6 +1929,11 @@ app.post("/api/aigc/video-expand", async (req, res) => {
       r_h_up = 0,
       r_h_down = 0,
       prompt = "扩展画面背景，保持动态连贯",
+      out_fps = 24,
+      start_idx = 0,
+      max_num_frames = 249,
+      mixed_precision = "bf16",
+      seed = 123,
     } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
     if (validationError) return res.status(400).json({ error: validationError });
@@ -1932,6 +1956,11 @@ app.post("/api/aigc/video-expand", async (req, res) => {
         r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
         r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
         r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
+        out_fps: toPositiveInt(out_fps) || 24,
+        start_idx: toNonNegativeInt(start_idx, 0),
+        max_num_frames: toPositiveInt(max_num_frames) || 249,
+        mixed_precision: String(mixed_precision || "bf16"),
+        seed: toPositiveSeed(seed, 123),
         prompt: finalPrompt,
         rsp_media_type: "url"
       }
@@ -1939,6 +1968,7 @@ app.post("/api/aigc/video-expand", async (req, res) => {
     const result = await submitAigcTask({
       task: AIGC_TASKS.videoExpand,
       params,
+      extra: {},
       mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
       initialDelayMs: 5000,
       pollIntervalMs: 5000,
