@@ -844,31 +844,9 @@ const App: React.FC = () => {
             console.error("Smart extract/crop failed", e);
           }
         }
-        // NEW: Static Focal Window + Video -> Capture 1st Frame as Image
+        // Static/immersive focal windows keep uploaded videos playable in generated previews.
         else if ((isStaticFocal || isImmersive) && raw.file.type.startsWith('video/')) {
-          try {
-            console.log(`[mt-f-2 Debug] Processing video for ${template.id}, file: ${raw.file.name}`);
-            const seekPoint = 'start'; // Using 'start' for all static focal windows
-            const thumb = await captureVideoFrame(raw.file, seekPoint);
-            console.log(`[mt-f-2 Debug] Captured thumb:`, thumb ? `${thumb.substring(0, 50)}...` : 'null');
-            if (thumb) {
-              const resp = await fetch(thumb);
-              const blob = await resp.blob();
-              const forceJpeg = isSplash || template.category === '焦点视窗';
-              const file = new File([blob], forceJpeg ? "first_frame_focal.jpg" : "first_frame_focal.png", { type: forceJpeg ? "image/jpeg" : "image/png" });
-
-              const w = isImmersive ? 1440 : 1126;
-              const h = isImmersive ? 2340 : focalHeight;
-              const smart = await smartCropImage(file, w, h, 250);
-              console.log(`[mt-f-2 Debug] Smart crop result:`, smart);
-              if (smart?.url) finalUrl = `${ASSETS_URL}${smart.url}`;
-              else finalUrl = thumb;
-              console.log(`[mt-f-2 Debug] Final URL:`, finalUrl);
-            }
-          } catch (e) {
-            console.error("[mt-f-2 Debug] Focal Window Video Frame capture failed", e);
-            finalUrl = raw.previewUrl; // Fallback
-          }
+          finalUrl = raw.previewUrl;
         }
         // 5. Hot Recommend (热推第三位) + Image -> Force Smart Crop (720x960)
         else if (isHotRecommend && raw.file.type.startsWith('image/')) {
@@ -1089,7 +1067,6 @@ const App: React.FC = () => {
           isCompressed: true,
           type: (() => {
             if (!raw.file.type.startsWith('video/')) return raw.file.type;
-            if (isStaticFocal || isImmersive) return 'image/png';
             // NOTE: mt-f-1 截取第0帧或最后一帧时，输出为静态图
             if (template.id === 'mt-f-1' && (config.captureFirstFrameMtF1 || config.captureLastFrameMtF1)) return 'image/png';
             // NOTE: my-f-1 截取第一帧时，输出为静态图
@@ -1155,7 +1132,6 @@ const App: React.FC = () => {
             originalFileType: raw.file.type,
             finalType: (() => {
               if (!raw.file.type.startsWith('video/')) return raw.file.type;
-              if (isStaticFocal || isImmersive) return 'image/png';
               if (isSplash && (config.captureFirstFrame || config.captureLastFrameSplash)) return 'image/png';
               if (finalUrl.startsWith('data:') || finalUrl.match(/\.(png|jpg|jpeg|webp)$/i)) return 'image/png';
               return 'video/mp4';
