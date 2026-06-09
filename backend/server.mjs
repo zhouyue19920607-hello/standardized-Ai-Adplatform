@@ -1600,8 +1600,9 @@ async function resizeStaticImageToTarget(staticUrl, targetWidth, targetHeight, o
   const quality = Number(options.quality) || 88;
   const outputFilename = `aigc_image_adapt_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, outputFilename);
-  await sharp(sourcePath)
-    .rotate()
+  const normalized = sharp(sourcePath).rotate().flatten({ background: "#ffffff" }).toColorspace("srgb");
+  const background = await normalized
+    .clone()
     .resize({
       width: targetWidth,
       height: targetHeight,
@@ -1609,7 +1610,23 @@ async function resizeStaticImageToTarget(staticUrl, targetWidth, targetHeight, o
       position: "center",
       kernel: sharp.kernel.lanczos3
     })
-    .flatten({ background: "#ffffff" })
+    .blur(24)
+    .modulate({ brightness: 0.96, saturation: 0.9 })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+  const foreground = await normalized
+    .clone()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "contain",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+  await sharp(background)
+    .composite([{ input: foreground, gravity: "center" }])
     .jpeg({ quality, mozjpeg: true })
     .toFile(outputPath);
   return `/static/${outputFilename}`;
@@ -2069,11 +2086,17 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
     const result = await submitAigcExpandTask({
       imageUrl,
       targetRatio: `${width}:${height}`,
-      prompt: prompt || [
+      prompt: [
+        "最高优先级：完整保留原图主体、产品、人物、文案、按钮、Logo 和品牌识别，不裁切、不遮挡、不拉伸、不变形、不改字、不重绘 Logo。",
+        "如果原图比例与目标比例不一致，例如竖版转横版或横版转竖版，请先扩展背景和环境，再对主体与信息做自然排版调整，让核心内容全部出现在安全区域内。",
+        "补全区域需要与原图光影、材质、色彩、透视一致，画面要像完整广告设计稿，不能出现明显拼接、模糊边框、重复纹理或空白硬边。",
+        "最终视觉需要适配目标广告尺寸，主体突出，信息层级清晰，整体美观、平衡、商业质感强。",
+        prompt || [
         "将上传图片智能扩展并适配到目标广告尺寸。",
         "保持主体、产品、人物、文字和 Logo 完整清晰，不拉伸、不变形、不改字、不重绘 Logo。",
         "根据目标比例补全背景并优化构图排版，确保主体完整出现，画面美观、平衡、有商业广告设计感。",
         "重要信息应避开边缘安全区。"
+        ].join("")
       ].join(""),
       seed: -1
     });
