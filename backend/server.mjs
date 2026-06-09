@@ -817,7 +817,7 @@ const AIGC_SIGN_ALGORITHM = "SDK-HMAC-SHA256";
 const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactly, only extend the background outside the original image";
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
-  textToVideo: "/v1/t2v_magic_async",
+  textToVideo: "/v1/ltx_2_async",
   imageToVideo: "/v1/ltx_2_async",
   videoClip: "/v1/hook_videoclip_async",
   videoExpand: "/v1/video_expand_v3_async"
@@ -2054,25 +2054,26 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, ratio = "16:9" } = req.body || {};
+    const { prompt, text, loraId = "i2v-nolora" } = req.body || {};
     const finalText = text || prompt;
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
     }
-    const mokiVideoParams = {
-      media_info_list: [],
+    const ltxVideoParams = {
       parameter: {
-        text: finalText,
-        ratio
-      },
-      extra: {}
+        lora_id: String(loraId || "i2v-nolora"),
+        prompt: finalText,
+        rsp_media_type: "url",
+        task_type: "i2v-distilled"
+      }
     };
 
-    // /v1/ltx_2_async rejects pure text-to-video task_type=t2v; keep this route on the supported endpoint.
     const usedTask = AIGC_TASKS.textToVideo;
     const result = await submitAigcTask({
       task: usedTask,
-      params: mokiVideoParams,
+      params: ltxVideoParams,
+      mediaInfoList: [],
+      extra: {},
       initialDelayMs: 10000,
       pollIntervalMs: 5000
     });
@@ -2088,13 +2089,8 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
     const {
       imageUrl,
       prompt = "主体轻微运动，背景光影自然流动，保持商业海报质感",
-      width = 1280,
-      height = 720,
-      duration = 5,
-      fps = 24,
-      seed = -1,
       taskType = "i2v-distilled",
-      loraId = ""
+      loraId = "i2v-nolora"
     } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
@@ -2104,12 +2100,8 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
         parameter: {
           task_type: taskType || "i2v-distilled",
           prompt,
-          width: toPositiveInt(width) || 1280,
-          height: toPositiveInt(height) || 720,
-          duration: toPositiveInt(duration) || 5,
-          fps: toPositiveInt(fps) || 24,
-          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
-          lora_id: loraId || ""
+          rsp_media_type: "url",
+          lora_id: loraId || "i2v-nolora"
         }
       },
       mediaInfoList: [mediaInfoFromUrl(imageUrl)],
