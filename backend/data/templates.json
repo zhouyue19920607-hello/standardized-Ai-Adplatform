@@ -22,9 +22,9 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
-    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
-    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
-    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "maskPath": "backend/storage/masks/mt_bubble_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/mt_bubble_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/mt_bubble_nonfullscreen_mask.png",
     "processedCount": 7,
     "splashGroup": "nonfull"
   },
@@ -36,9 +36,9 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
-    "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
-    "mask_path": "/static/masks/1770618519624__________________________.png.png",
-    "maskUrl": "/static/masks/1770618519624__________________________.png.png",
+    "maskPath": "backend/storage/masks/mt_slide_fullscreen_mask.png",
+    "mask_path": "/static/masks/mt_slide_fullscreen_mask.png",
+    "maskUrl": "/static/masks/mt_slide_fullscreen_mask.png",
     "processedCount": 8,
     "splashGroup": "slide"
   },
@@ -254,7 +254,10 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "splashGroup": "nonfull",
-    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/my_bubble_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/my_bubble_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/my_bubble_nonfullscreen_mask.png"
   },
   {
     "id": "my-s-2",
@@ -264,7 +267,10 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "slide",
-    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/my_slide_fullscreen_mask.png",
+    "mask_path": "/static/masks/my_slide_fullscreen_mask.png",
+    "maskUrl": "/static/masks/my_slide_fullscreen_mask.png"
   },
   {
     "id": "my-s-6",
@@ -372,7 +378,10 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "splashGroup": "nonfull",
-    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/wk_bubble_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/wk_bubble_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/wk_bubble_nonfullscreen_mask.png"
   },
   {
     "id": "wk-s-2",
@@ -382,7 +391,10 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "splashGroup": "slide",
-    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/wk_slide_fullscreen_mask.png",
+    "mask_path": "/static/masks/wk_slide_fullscreen_mask.png",
+    "maskUrl": "/static/masks/wk_slide_fullscreen_mask.png"
   },
   {
     "id": "wk-s-6",
