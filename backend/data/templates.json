@@ -7,7 +7,7 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "workflow_id": "wf_1769787041100",
-    "crop_overlay_path": "/static/badges/1772078200648_________________.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
     "maskPath": "backend/storage/masks/1770618508446____________________-.png.png",
     "mask_path": "/static/masks/1770618508446____________________-.png.png",
     "maskUrl": "/static/masks/1770618508446____________________-.png.png",
@@ -35,7 +35,7 @@
     "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/badges/1772078204835_________________.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
     "maskPath": "backend/storage/masks/1770618519624__________________________.png.png",
     "mask_path": "/static/masks/1770618519624__________________________.png.png",
     "maskUrl": "/static/masks/1770618519624__________________________.png.png",
@@ -63,7 +63,7 @@
     "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/badges/1772078210121_________________.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
     "maskUrl": "/static/masks/1770618641086____________________-.png.png",
@@ -91,7 +91,7 @@
     "name": "三合一全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "crop_overlay_path": "/static/badges/1772078210121_________________.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
     "maskPath": "backend/storage/masks/1770618641086____________________-.png.png",
     "mask_path": "/static/masks/1770618641086____________________-.png.png",
     "maskUrl": "/static/masks/1770618641086____________________-.png.png",
@@ -243,7 +243,8 @@
     "splashGroup": "dynamic",
     "maskPath": "backend/storage/masks/1774854887707_______________________-.png",
     "mask_path": "/static/masks/1774854887707_______________________-.png",
-    "maskUrl": "/static/masks/1774854887707_______________________-.png"
+    "maskUrl": "/static/masks/1774854887707_______________________-.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "my-s-5",
@@ -261,7 +262,8 @@
     "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "slide"
+    "splashGroup": "slide",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "my-s-6",
@@ -279,7 +281,8 @@
     "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "twist"
+    "splashGroup": "twist",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "my-s-7",
@@ -297,7 +300,8 @@
     "name": "三合一全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "triple"
+    "splashGroup": "triple",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "my-s-9",
@@ -353,7 +357,8 @@
     "splashGroup": "dynamic",
     "maskPath": "backend/storage/masks/1774854891499_______________________-.png",
     "mask_path": "/static/masks/1774854891499_______________________-.png",
-    "maskUrl": "/static/masks/1774854891499_______________________-.png"
+    "maskUrl": "/static/masks/1774854891499_______________________-.png",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "wk-s-5",
@@ -371,7 +376,8 @@
     "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "slide"
+    "splashGroup": "slide",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "wk-s-6",
@@ -389,7 +395,8 @@
     "name": "扭动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "twist"
+    "splashGroup": "twist",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "wk-s-7",
@@ -407,7 +414,8 @@
     "name": "三合一全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "splashGroup": "triple"
+    "splashGroup": "triple",
+    "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
   {
     "id": "wk-s-9",

@@ -2,6 +2,15 @@ node_modules
 dist
 backend/storage/*
 !backend/storage/.gitkeep
+!backend/storage/badges/
+!backend/storage/badges/**
+!backend/storage/masks/
+!backend/storage/masks/**
+!backend/storage/previews/
+!backend/storage/previews/**
+!backend/storage/workflows/
+!backend/storage/workflows/**
+backend/storage/aigc-inputs/
 backend/data/*.json
 !backend/data/templates.json
 *.log
