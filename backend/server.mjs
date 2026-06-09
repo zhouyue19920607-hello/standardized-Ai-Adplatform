@@ -1593,6 +1593,28 @@ async function persistAigcResult(resultUrl, mediaType, options = {}) {
   return `/static/${filename}`;
 }
 
+async function resizeStaticImageToTarget(staticUrl, targetWidth, targetHeight, options = {}) {
+  const sourcePath = staticUrlToLocalPath(staticUrl);
+  await fs.access(sourcePath);
+  await ensureDir(STORAGE_DIR);
+  const quality = Number(options.quality) || 88;
+  const outputFilename = `aigc_image_adapt_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await sharp(sourcePath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/${outputFilename}`;
+}
+
 async function localVideoPathFromUrl(videoUrl, options = {}) {
   const publicStaticPath = publicUrlToStaticUrl(videoUrl, options.publicBaseUrl);
   const staticUrl = videoUrl?.startsWith("/static/") ? videoUrl : publicStaticPath;
@@ -2036,7 +2058,7 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
 
 app.post("/api/aigc/smart-crop", async (req, res) => {
   try {
-    const { imageUrl, targetWidth, targetHeight, prompt, baseModelName = "miracle_vision_edit" } = req.body || {};
+    const { imageUrl, targetWidth, targetHeight, prompt } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
     const width = toPositiveInt(targetWidth);
@@ -2044,27 +2066,34 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
     if (!width || !height) {
       return res.status(400).json({ error: "targetWidth / targetHeight 必须是正整数" });
     }
-    const result = await submitAigcTask({
-      task: AIGC_TASKS.dispatcher,
-      params: {
-        parameter: {
-          base_model_name: baseModelName,
-          ...(prompt ? { prompt } : {}),
-          rsp_media_type: "url",
-          extra_pipe_inputs: {
-            task_type: "smart_crop",
-            target_width: width,
-            target_height: height
-          }
-        }
-      },
-      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
-      publicBaseUrl: getRequestPublicBaseUrl(req)
+    const result = await submitAigcExpandTask({
+      imageUrl,
+      targetRatio: `${width}:${height}`,
+      prompt: prompt || [
+        "将上传图片智能扩展并适配到目标广告尺寸。",
+        "保持主体、产品、人物、文字和 Logo 完整清晰，不拉伸、不变形、不改字、不重绘 Logo。",
+        "根据目标比例补全背景并优化构图排版，确保主体完整出现，画面美观、平衡、有商业广告设计感。",
+        "重要信息应避开边缘安全区。"
+      ].join(""),
+      seed: -1
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
+    const finalUrl = result.resultUrl?.startsWith("/static/")
+      ? await resizeStaticImageToTarget(result.resultUrl, width, height)
+      : result.resultUrl;
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      task: AIGC_TASKS.dispatcher,
+      resultUrl: finalUrl,
+      remoteResultUrl: result.remoteResultUrl,
+      target: { width, height },
+      postProcess: finalUrl !== result.resultUrl ? { type: "resize-to-target", sourceUrl: result.resultUrl } : undefined,
+      mediaInfo: result.mediaInfo,
+      raw: result.raw
+    });
   } catch (err) {
     console.error("[AIGC Smart Crop] failed:", err.message);
-    res.status(500).json({ error: "AI 智能裁剪失败", details: err.message });
+    res.status(500).json({ error: "AI 扩图适配失败", details: err.message });
   }
 });
 
