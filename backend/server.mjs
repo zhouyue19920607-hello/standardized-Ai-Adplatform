@@ -1891,6 +1891,29 @@ async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, se
   });
 }
 
+async function submitAigcTextToImageTask({
+  prompt,
+  ratio = "16:9",
+  seed = -1,
+  baseModelName = "miracle_vision_edit",
+  persistOptions
+}) {
+  return submitAigcTask({
+    task: AIGC_TASKS.dispatcher,
+    params: {
+      media_info_list: [],
+      parameter: {
+        base_model_name: baseModelName,
+        prompt,
+        rsp_media_type: "url",
+        seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
+        extra_pipe_inputs: { output_image_ratio: ratio }
+      }
+    },
+    persistOptions
+  });
+}
+
 function validateRemoteOrStaticUrl(value, fieldName) {
   if (!value || typeof value !== "string") return `${fieldName} 缺失`;
   if (!/^https?:\/\//i.test(value) && !value.startsWith("/static/")) {
@@ -1936,18 +1959,11 @@ app.post("/api/aigc/text-to-image", async (req, res) => {
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "缺少 prompt" });
     }
-    const result = await submitAigcTask({
-      task: AIGC_TASKS.dispatcher,
-      params: {
-        media_info_list: [],
-        parameter: {
-          base_model_name: baseModelName,
-          prompt,
-          rsp_media_type: "url",
-          seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
-          extra_pipe_inputs: { output_image_ratio: ratio }
-        }
-      },
+    const result = await submitAigcTextToImageTask({
+      prompt,
+      ratio,
+      seed,
+      baseModelName,
       persistOptions: transparentWhite
         ? { transparentWhite: true, resize: { width: 450, height: 450, fit: "contain" } }
         : undefined
@@ -2054,10 +2070,18 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, loraId = "i2v-nolora" } = req.body || {};
+    const { prompt, text, ratio = "16:9", seed = -1, loraId = "i2v-nolora" } = req.body || {};
     const finalText = text || prompt;
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
+    }
+    const firstFrame = await submitAigcTextToImageTask({
+      prompt: finalText,
+      ratio,
+      seed
+    });
+    if (!firstFrame.resultUrl) {
+      throw new Error("文生视频首帧图生成失败，未返回图片 URL");
     }
     const ltxVideoParams = {
       parameter: {
@@ -2072,12 +2096,22 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     const result = await submitAigcTask({
       task: usedTask,
       params: ltxVideoParams,
-      mediaInfoList: [],
+      mediaInfoList: [mediaInfoFromUrl(firstFrame.resultUrl)],
       extra: {},
       initialDelayMs: 10000,
-      pollIntervalMs: 5000
+      pollIntervalMs: 5000,
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true }
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: usedTask, fallbackUsed: false, ...result });
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      task: usedTask,
+      fallbackUsed: false,
+      firstFrameUrl: firstFrame.resultUrl,
+      firstFrameRemoteUrl: firstFrame.remoteResultUrl,
+      ...result
+    });
   } catch (err) {
     console.error("[AIGC Text To Video] failed:", err.message);
     res.status(500).json({ error: "AI 文生视频失败", details: err.message });
