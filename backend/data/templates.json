@@ -78,9 +78,9 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
-    "maskPath": "backend/storage/masks/1770618676230_______________________-.png.png",
-    "mask_path": "/static/masks/1770618676230_______________________-.png.png",
-    "maskUrl": "/static/masks/1770618676230_______________________-.png.png",
+    "maskPath": "backend/storage/masks/mt_twist_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/mt_twist_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/mt_twist_nonfullscreen_mask.png",
     "processedCount": 0,
     "splashGroup": "twist-nonfull"
   },
@@ -119,8 +119,11 @@
     "name": "焦点视窗",
     "checked": true,
     "dimensions": "1126 x 900",
-    "badge_overlay_path": "/static/badges/mt-f-1_badge.png",
-    "processedCount": 17
+    "badge_overlay_path": "/static/badges/mt_focal_window_badge.png",
+    "processedCount": 17,
+    "maskPath": "backend/storage/masks/mt_focal_window_mask.png",
+    "mask_path": "/static/masks/mt_focal_window_mask.png",
+    "maskUrl": "/static/masks/mt_focal_window_mask.png"
   },
   {
     "id": "mt-f-3",
@@ -129,8 +132,11 @@
     "name": "沉浸式焦点视窗",
     "checked": false,
     "dimensions": "1440 x 2340",
-    "badge_overlay_path": "/static/badges/mt-f-3_badge.png",
-    "processedCount": 1
+    "badge_overlay_path": "/static/badges/mt_immersive_focal_badge.png",
+    "processedCount": 1,
+    "maskPath": "backend/storage/masks/mt_immersive_focal_mask.png",
+    "mask_path": "/static/masks/mt_immersive_focal_mask.png",
+    "maskUrl": "/static/masks/mt_immersive_focal_mask.png"
   },
   {
     "id": "mt-fe-1",
@@ -306,7 +312,10 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "splashGroup": "twist-nonfull",
-    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/my_twist_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/my_twist_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/my_twist_nonfullscreen_mask.png"
   },
   {
     "id": "my-s-8",
@@ -436,7 +445,10 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "splashGroup": "twist-nonfull",
-    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png"
+    "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "maskPath": "backend/storage/masks/wk_twist_nonfullscreen_mask.png",
+    "mask_path": "/static/masks/wk_twist_nonfullscreen_mask.png",
+    "maskUrl": "/static/masks/wk_twist_nonfullscreen_mask.png"
   },
   {
     "id": "wk-s-8",
