@@ -1351,7 +1351,11 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
     const mediaData = item?.media_data;
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
       if (hasAigcStandardVideoExt(mediaData)) {
-        normalized.push(mediaInfoWithUrl(item, publicStaticUrl(mediaData, config.publicBaseUrl)));
+        const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
+        if (!/^https?:\/\//i.test(publicUrl)) {
+          throw new Error("AI 视频扩展需要美图可访问的公网视频 URL。请配置 OBSERVER_* 上传中转，或配置 AIGC_PUBLIC_BASE_URL 为公网域名。");
+        }
+        normalized.push(mediaInfoWithUrl(item, publicUrl));
         continue;
       }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
@@ -1657,6 +1661,10 @@ async function prepareVideoInputForAigcExpand(videoUrl, aigcTarget, options = {}
     };
   }
 
+  if (!publicBaseUrl) {
+    throw new Error("AI 视频扩展需要公网视频 URL。当前本地未配置 OBSERVER_* 上传中转，也未配置 AIGC_PUBLIC_BASE_URL，任务无法投递到美图后台。");
+  }
+
   return {
     url: publicStaticUrl(preprocessed.staticUrl, publicBaseUrl),
     inputMode: "public-static-preprocessed",
@@ -1704,6 +1712,12 @@ async function submitAigcTask({
   const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
   if (initImages.length > 0) payload.init_images = initImages;
 
+  console.log("[AIGC] push start", JSON.stringify({
+    task,
+    taskType,
+    mediaCount: normalizedMediaInfoList.length,
+    mediaTypes: normalizedMediaInfoList.map(item => item?.media_profiles?.media_data_type || "unknown")
+  }));
   const pushed = await aigcJsonRequest(pushUrl, "POST", payload, config);
   if (pushed?.code !== 0) {
     throw new Error(pushed?.message || pushed?.error_msg || `AIGC 任务投递失败: ${JSON.stringify(pushed)}`);
@@ -1712,6 +1726,7 @@ async function submitAigcTask({
   if (!taskId) {
     throw new Error("AIGC 投递成功但未返回 task_id");
   }
+  console.log("[AIGC] push success", JSON.stringify({ task, taskId }));
 
   if (initialDelayMs > 0) {
     await sleep(initialDelayMs);

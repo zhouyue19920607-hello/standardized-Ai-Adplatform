@@ -127,7 +127,15 @@ OBSERVER_HOST=https://observer.starii-int.com
 OBSERVER_CDN_DOMAIN=https://桶对应的 CDN 域名
 ```
 
-配置后，后端会把本站 `/static` 视频上传到 Observer 公共桶，再把 CDN URL 传给美图，避免美图无法下载本站临时 URL。未配置 Observer 时，后端会继续使用 `AIGC_PUBLIC_BASE_URL` 拼接公网地址。
+配置后，后端会把本站 `/static` 视频上传到 Observer 公共桶，再把 CDN URL 传给美图，避免美图无法下载本站临时 URL。
+
+如果没有配置 Observer，必须保证：
+
+```bash
+AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
+```
+
+并且这个域名下的 `/static/...` 视频 URL 能被美图算法服务访问。否则视频扩展任务不会进入算法后台，页面会直接提示需要配置公网视频 URL。
 
 文生视频默认先调用 MOKI 接口：
 
@@ -137,13 +145,7 @@ OBSERVER_CDN_DOMAIN=https://桶对应的 CDN 域名
 
 请求参数使用 MOKI 标准格式：`parameter.text` 和 `parameter.ratio`。
 
-如果该接口因为队列、模型节点或算法层错误失败，后端会自动降级到 LTX 备用接口：
-
-```txt
-/v1/ltx_2_async
-```
-
-LTX 文生视频会在 `parameter` 中传入 `task_type: "t2v"`。接口返回里 `fallbackUsed: true` 表示本次实际使用了 LTX。
+纯文生视频只走该接口，不再降级到 LTX。`/v1/ltx_2_async` 当前不支持 `task_type: "t2v"`，否则会返回 `Unknown task type: t2v`。
 
 图生视频直接调用 LTX 接口：
 
