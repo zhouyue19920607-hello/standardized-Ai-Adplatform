@@ -14,6 +14,8 @@ AIGC_SK=
 AIGC_BIZ=ai-saap
 AIGC_API_HOST=https://openapi-ali.meitu.com
 AIGC_AUTH_MODE=query
+AIGC_PROVIDER_API_STYLE=openapi
+AIGC_POLL_ENDPOINT_TEMPLATE=/v2/task/{taskId}
 AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
@@ -49,16 +51,74 @@ AIGC_SK=在这里填写你的 SK
 AIGC_BIZ=ai-saap
 AIGC_API_HOST=https://openapi-ali.meitu.com
 AIGC_AUTH_MODE=query
+AIGC_PROVIDER_API_STYLE=openapi
+AIGC_POLL_ENDPOINT_TEMPLATE=/v2/task/{taskId}
 AIGC_PUBLIC_BASE_URL=https://ai-saap.cloud.meitu-int.com
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
 ```
 
+### API 口径选择
+
+如果谷仓对接人确认你开通的是当前项目已有的 OpenAPI / MTLAB query 口径，使用：
+
+```bash
+AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_AUTH_MODE=query
+AIGC_PROVIDER_API_STYLE=openapi
+```
+
+如果确认开通的是 AI Platform Header 口径，使用：
+
+```bash
+AIGC_API_HOST=https://ai-platform-api.meitu.com
+AIGC_AUTH_MODE=platform_header
+AIGC_PROVIDER_API_STYLE=ai-platform
+AIGC_POLL_ENDPOINT_TEMPLATE=/v2/task/{taskId}
+```
+
+两种口径只选一种。`AIGC_AK` / `AIGC_SK` 仍然使用谷仓后端环境变量，不要写进代码仓库。
+
 ## 配完后必须做
 
 1. 保存谷仓环境变量。
 2. 重新部署或重启后端服务。
-3. 打开线上站点测试标准化素材看板 AI 适配。
+3. 先调用 `/api/aigc/adapt-image` 跑一次新接口。
+4. 打开线上站点测试标准化素材看板 AI 适配。
+
+### 新接口测试请求
+
+把 `https://ai-saap.cloud.meitu-int.com` 替换成你的谷仓线上域名，把 `imageUrl` 替换成美图算法能访问到的图片 URL。
+
+```bash
+curl -X POST "https://ai-saap.cloud.meitu-int.com/api/aigc/adapt-image" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "imageUrl": "https://your-cdn.example.com/ad.jpg",
+    "targetWidth": 1440,
+    "targetHeight": 2340,
+    "templateId": "mt-s-1",
+    "templateName": "开屏测试",
+    "app": "meitu",
+    "allowRelayout": true,
+    "prompt": "保持主体、文案、Logo 完整，背景自然延展，最终画面像完整广告设计稿。"
+  }'
+```
+
+成功响应应包含：
+
+```json
+{
+  "ok": true,
+  "resultUrl": "/static/...",
+  "strategy": "crop/outpaint/relayout",
+  "qa": {
+    "dimensionPassed": true
+  }
+}
+```
+
+如果 `qa.warnings` 有内容，说明接口能跑通，但仍有检测、权限、字段或重排限制需要继续校准。
 
 ## 后台上传内容持久化
 

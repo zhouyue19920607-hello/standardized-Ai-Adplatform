@@ -234,6 +234,60 @@ export const smartCropImageWithAigc = async (payload: {
     return response.data;
 };
 
+export interface AdaptImageWithAigcResponse extends AigcTaskResponse {
+    strategy?: 'direct' | 'crop' | 'outpaint' | 'relayout' | 'fallback';
+    analysis?: {
+        source?: { width?: number; height?: number };
+        subject?: { exists?: boolean; kind?: string; box?: unknown; maskUrl?: string };
+        logo?: { hasTarget?: boolean; boxes?: unknown[]; maskUrl?: string };
+        text?: { hasText?: boolean; boxes?: unknown[]; maskUrl?: string; texts?: string[] };
+        warnings?: string[];
+    };
+    masks?: {
+        protectedMaskUrl?: string;
+        editableMaskUrl?: string;
+        sourceCount?: number;
+        removableMaskUrl?: string;
+        removableEditableMaskUrl?: string;
+        removableSourceCount?: number;
+    };
+    plan?: {
+        strategy?: 'direct' | 'crop' | 'outpaint' | 'relayout';
+        ratioDelta?: number;
+        sourceRatio?: number;
+        targetRatio?: number;
+        steps?: string[];
+        reasons?: string[];
+    };
+    qa?: {
+        passed: boolean;
+        dimensionPassed: boolean;
+        subjectPreserved: boolean;
+        subjectIou?: number | null;
+        textPreserved: boolean;
+        logoPreserved: boolean;
+        safeAreaPassed: boolean;
+        textRecall?: number;
+        logoSimilarity?: number | null;
+        warnings: string[];
+    };
+    limitations?: string[];
+}
+
+export const adaptImageWithAigc = async (payload: {
+    imageUrl: string;
+    targetWidth: number;
+    targetHeight: number;
+    templateId?: string;
+    templateName?: string;
+    app?: string;
+    prompt?: string;
+    allowRelayout?: boolean;
+}): Promise<AdaptImageWithAigcResponse> => {
+    const response = await api.post<AdaptImageWithAigcResponse>('/aigc/adapt-image', payload);
+    return response.data;
+};
+
 export const generateVideoWithAigc = async (payload: {
     prompt: string;
     ratio?: string;

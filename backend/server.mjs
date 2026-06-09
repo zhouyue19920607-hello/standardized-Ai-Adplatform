@@ -833,6 +833,8 @@ function getAigcConfig() {
     biz: process.env.AIGC_BIZ || "ai-saap",
     apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
     authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
+    apiStyle: (process.env.AIGC_PROVIDER_API_STYLE || "").toLowerCase(),
+    pollEndpointTemplate: process.env.AIGC_POLL_ENDPOINT_TEMPLATE || "/v2/task/{taskId}",
     publicBaseUrl: (process.env.AIGC_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
     maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
@@ -915,21 +917,54 @@ function signAigcRequest(url, method, headers, body, config) {
   };
 }
 
-function withAigcQueryAuth(url, config) {
+function withAigcQueryAuth(url, config, options = {}) {
   const parsed = new URL(url);
   parsed.searchParams.set("api_key", config.ak);
   parsed.searchParams.set("api_secret", config.sk);
+  if (options.withMsgId) {
+    parsed.searchParams.set("msg_id", crypto.randomBytes(8).toString("hex"));
+  }
   return parsed.toString();
 }
 
 async function aigcJsonRequest(url, method, payload, config) {
   const body = payload ? JSON.stringify(payload) : "";
+  if (config.authMode === "none") {
+    const response = await axios.request({
+      url,
+      method,
+      data: payload ? body : undefined,
+      headers: payload ? { "Content-Type": "application/json" } : undefined,
+      transformRequest: data => data,
+      timeout: 90000,
+      validateStatus: () => true
+    });
+    return response.data;
+  }
+
   if (config.authMode === "query") {
     const response = await axios.request({
       url: withAigcQueryAuth(url, config),
       method,
       data: payload ? body : undefined,
       headers: payload ? { "Content-Type": "application/json" } : undefined,
+      transformRequest: data => data,
+      timeout: 90000,
+      validateStatus: () => true
+    });
+    return response.data;
+  }
+
+  if (config.authMode === "platform_header" || config.authMode === "header") {
+    const response = await axios.request({
+      url,
+      method,
+      data: payload ? body : undefined,
+      headers: {
+        ...(payload ? { "Content-Type": "application/json" } : {}),
+        "X-Api-Key": config.ak,
+        "X-Api-Secret": config.sk
+      },
       transformRequest: data => data,
       timeout: 90000,
       validateStatus: () => true
@@ -1930,6 +1965,1025 @@ async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, se
   });
 }
 
+async function ensureStaticImageUrlForResize(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string") return imageUrl;
+  if (imageUrl.startsWith("/static/")) return imageUrl;
+  if (!/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  const stored = await persistAigcResult(imageUrl);
+  return stored || imageUrl;
+}
+
+async function persistBase64Image(base64Value, prefix = "aigc_mask") {
+  if (!base64Value || typeof base64Value !== "string") return "";
+  const cleaned = base64Value.replace(/^data:image\/\w+;base64,/, "");
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(cleaned.trim())) return "";
+  const buffer = Buffer.from(cleaned, "base64");
+  if (!buffer.length) return "";
+  await ensureDir(STORAGE_DIR);
+  const filename = `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputPath = path.join(STORAGE_DIR, filename);
+  await sharp(buffer).png().toFile(outputPath);
+  return `/static/${filename}`;
+}
+
+function isLikelyBase64Image(value = "") {
+  return typeof value === "string" && !/^https?:\/\//i.test(value) && !value.startsWith("/static/") && value.length > 80;
+}
+
+async function persistProviderImageValue(value, prefix = "aigc_provider") {
+  if (!value || typeof value !== "string") return "";
+  if (value.startsWith("/static/")) return value;
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      return await persistAigcResult(value);
+    } catch (err) {
+      console.warn(`[AdaptImage] failed to persist ${prefix} URL:`, err.message);
+      return value;
+    }
+  }
+  if (isLikelyBase64Image(value)) {
+    try {
+      return await persistBase64Image(value, prefix);
+    } catch (err) {
+      console.warn(`[AdaptImage] failed to persist ${prefix} base64:`, err.message);
+    }
+  }
+  return "";
+}
+
+async function maskUrlToGrayRaw(maskUrl, width, height) {
+  if (!maskUrl) return null;
+  const localPath = maskUrl.startsWith("/static/") ? staticUrlToLocalPath(maskUrl) : null;
+  if (!localPath) return null;
+  const { data, info } = await sharp(localPath)
+    .resize(width, height, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
+
+async function mergeProtectedMasks(maskUrls = [], width, height) {
+  const validUrls = maskUrls.filter(Boolean);
+  if (!validUrls.length || !width || !height) return null;
+  const merged = Buffer.alloc(width * height, 0);
+  let used = 0;
+  for (const maskUrl of validUrls) {
+    try {
+      const raw = await maskUrlToGrayRaw(maskUrl, width, height);
+      if (!raw) continue;
+      for (let index = 0; index < merged.length; index += 1) {
+        if (raw.data[index] > merged[index]) merged[index] = raw.data[index];
+      }
+      used += 1;
+    } catch (err) {
+      console.warn("[AdaptImage] mask merge skipped:", err.message);
+    }
+  }
+  if (!used) return null;
+  await ensureDir(STORAGE_DIR);
+  const protectedFilename = `protected_mask_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const protectedPath = path.join(STORAGE_DIR, protectedFilename);
+  await sharp(merged, { raw: { width, height, channels: 1 } }).png().toFile(protectedPath);
+
+  const editable = Buffer.alloc(merged.length);
+  for (let index = 0; index < merged.length; index += 1) {
+    editable[index] = 255 - merged[index];
+  }
+  const editableFilename = `editable_mask_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const editablePath = path.join(STORAGE_DIR, editableFilename);
+  await sharp(editable, { raw: { width, height, channels: 1 } }).png().toFile(editablePath);
+
+  return {
+    protectedMaskUrl: `/static/${protectedFilename}`,
+    editableMaskUrl: `/static/${editableFilename}`,
+    sourceCount: used
+  };
+}
+
+const ADAPT_API_STYLES = {
+  openapi: "openapi",
+  aiPlatform: "ai-platform"
+};
+
+const ADAPT_ENDPOINTS = {
+  openapi: {
+    saliency: "sod",
+    logo: "logo_seg_async",
+    text: "textdetect_img_async",
+    expand: "mtimage_expand_v4_async",
+    inpaint: "image_manipulation_fl_async",
+    crop: "image_cropping_async"
+  },
+  "ai-platform": {
+    saliency: "/v1/vision/saliency/saliency_segmentation",
+    logo: "/v1/vision/logo/logo_segmentation",
+    text: "/v1/vision/ocr/text_detection",
+    expand: "/v2/ai_ext/outpainting",
+    inpaint: "/v2/ai_ext/inpainting",
+    crop: "/v2/ai_ext/image_cropping_async"
+  }
+};
+
+function getAdaptApiStyle(config = getAigcConfig()) {
+  if (config.apiStyle === ADAPT_API_STYLES.aiPlatform || config.authMode === "platform_header" || config.authMode === "header") {
+    return ADAPT_API_STYLES.aiPlatform;
+  }
+  return ADAPT_API_STYLES.openapi;
+}
+
+function normalizeProviderCode(raw) {
+  return raw?.code ?? raw?.error_code ?? raw?.status_code ?? 0;
+}
+
+function normalizeProviderMessage(raw) {
+  return raw?.message || raw?.error_msg || raw?.msg || raw?.data?.message || "";
+}
+
+function isProviderPermissionError(raw) {
+  const text = JSON.stringify(raw || {}).toLowerCase();
+  return text.includes("permission") || text.includes("unauthorized") || text.includes("forbidden") || text.includes("no auth") || text.includes("no_permission");
+}
+
+function isProviderSuccess(raw) {
+  const code = normalizeProviderCode(raw);
+  return [undefined, null, 0, "0"].includes(code) || raw?.data?.status === "completed";
+}
+
+function createProviderError(stage, endpoint, raw) {
+  const error = new Error(normalizeProviderMessage(raw) || `${stage} 调用失败`);
+  error.stage = stage;
+  error.endpoint = endpoint;
+  error.providerRaw = raw;
+  error.permission = isProviderPermissionError(raw);
+  return error;
+}
+
+function openapiPayloadBody(payload = {}) {
+  const mediaList = payload.media_info_list || [];
+  const parameter = payload.parameter || {};
+  const data = mediaList.map(item => ({
+    image: item?.media_data,
+    media_data: item?.media_data,
+    media_profiles: item?.media_profiles || { media_data_type: "url" }
+  })).filter(item => item.image);
+  return {
+    ...(payload.body || {}),
+    ...(mediaList[0]?.media_data ? { image: mediaList[0].media_data } : {}),
+    ...(data.length ? { data } : {}),
+    ...(mediaList.length ? { media_info_list: mediaList } : {}),
+    ...(Object.keys(parameter).length ? { parameter } : {})
+  };
+}
+
+async function callOpenapiV3Sync(apiName, payload, options = {}) {
+  const config = options.config || getAigcConfig();
+  if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  const url = `${config.apiHost}/v1/${apiName}`;
+  const requestPayload = {
+    api_name: apiName,
+    body: openapiPayloadBody(payload)
+  };
+  const raw = await aigcJsonRequest(withAigcQueryAuth(url, config, { withMsgId: true }), "POST", requestPayload, { ...config, authMode: "none" });
+  if (!isProviderSuccess(raw)) throw createProviderError("openapi-sync", apiName, raw);
+  return raw?.data || raw;
+}
+
+async function submitOpenapiV3Async(apiName, payload, options = {}) {
+  const config = options.config || getAigcConfig();
+  if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  const url = `${config.apiHost}/v1/algorithm/submit`;
+  const requestPayload = {
+    api_name: apiName,
+    body: openapiPayloadBody(payload),
+    extra_params: payload.extra_params || {}
+  };
+  const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+  if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
+  const msgId = raw?.data?.msg_id || raw?.msg_id;
+  if (!msgId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No msg_id in response" });
+  return { msgId, raw };
+}
+
+function getOpenapiPollState(raw) {
+  const code = raw?.code;
+  const status = String(raw?.data?.status || raw?.status || "").toLowerCase();
+  if (code === 0 || status === "finished" || status === "completed" || status === "success") return "finished";
+  if (code === 1 || status === "processing" || status === "pending" || status === "queued") return "processing";
+  if (code === 2 || status === "failed" || status === "error") return "failed";
+  return "unknown";
+}
+
+async function pollOpenapiV3Async(msgId, options = {}) {
+  const config = options.config || getAigcConfig();
+  const url = `${config.apiHost}/v1/algorithm/poll`;
+  const requestPayload = { body: { msg_id: msgId } };
+  const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
+  const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
+  const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+  await sleep(initialDelay);
+  for (let index = 0; index < maxPolls; index += 1) {
+    const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+    const state = getOpenapiPollState(raw);
+    if (state === "finished") return raw?.data || raw;
+    if (state === "failed") throw createProviderError("openapi-poll", "algorithm/poll", raw);
+    await sleep(pollInterval);
+  }
+  throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
+}
+
+async function callOpenapiV3Async(apiName, payload, options = {}) {
+  const { msgId } = await submitOpenapiV3Async(apiName, payload, options);
+  return pollOpenapiV3Async(msgId, options);
+}
+
+function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
+  const baseUrl = publicBaseUrl || config.publicBaseUrl;
+  if (typeof imageUrl === "string" && imageUrl.startsWith("/static/")) {
+    return publicStaticUrl(imageUrl, baseUrl);
+  }
+  return imageUrl;
+}
+
+function boxFromProvider(value, width, height) {
+  if (!value || typeof value !== "object") return null;
+  const x = Number(value.x ?? value.left ?? value.top_x ?? value.xmin);
+  const y = Number(value.y ?? value.top ?? value.top_y ?? value.ymin);
+  const w = Number(value.width ?? value.w);
+  const h = Number(value.height ?? value.h);
+  if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) {
+    return { x, y, width: w, height: h };
+  }
+  const right = Number(value.right ?? value.bottom_x ?? value.xmax);
+  const bottom = Number(value.bottom ?? value.bottom_y ?? value.ymax);
+  if ([x, y, right, bottom].every(Number.isFinite) && right > x && bottom > y) {
+    return { x, y, width: right - x, height: bottom - y };
+  }
+  const polygon = value.polygon || value.points;
+  if (Array.isArray(polygon) && polygon.length > 0) {
+    return boxFromPolygon(polygon);
+  }
+  if (width && height) return { x: 0, y: 0, width, height };
+  return null;
+}
+
+function boxFromPolygon(points = []) {
+  const flat = points
+    .map(point => Array.isArray(point) ? point : [point?.x, point?.y])
+    .filter(point => Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
+    .map(point => ({ x: Number(point[0]), y: Number(point[1]) }));
+  if (!flat.length) return null;
+  const minX = Math.min(...flat.map(point => point.x));
+  const minY = Math.min(...flat.map(point => point.y));
+  const maxX = Math.max(...flat.map(point => point.x));
+  const maxY = Math.max(...flat.map(point => point.y));
+  if (maxX <= minX || maxY <= minY) return null;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  if (!box || !sourceWidth || !sourceHeight || !targetWidth || !targetHeight) return box || null;
+  return {
+    x: (box.x / sourceWidth) * targetWidth,
+    y: (box.y / sourceHeight) * targetHeight,
+    width: (box.width / sourceWidth) * targetWidth,
+    height: (box.height / sourceHeight) * targetHeight
+  };
+}
+
+function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
+  if (!box || !width || !height) return true;
+  const marginX = width * marginRatio;
+  const marginY = height * marginRatio;
+  return (
+    box.x >= marginX &&
+    box.y >= marginY &&
+    box.x + box.width <= width - marginX &&
+    box.y + box.height <= height - marginY
+  );
+}
+
+function textRecall(beforeTexts = [], afterTexts = []) {
+  const before = beforeTexts.join("").replace(/\s/g, "");
+  const after = afterTexts.join("").replace(/\s/g, "");
+  if (!before) return 1;
+  let matched = 0;
+  const remaining = after.split("");
+  for (const char of before) {
+    const index = remaining.indexOf(char);
+    if (index >= 0) {
+      matched += 1;
+      remaining.splice(index, 1);
+    }
+  }
+  return matched / before.length;
+}
+
+async function maskedAverageHash(imageUrl, maskUrl, width = 16, height = 16) {
+  if (!imageUrl?.startsWith("/static/") || !maskUrl?.startsWith("/static/")) return null;
+  const imagePath = staticUrlToLocalPath(imageUrl);
+  const maskPath = staticUrlToLocalPath(maskUrl);
+  const image = await sharp(imagePath)
+    .resize(width, height, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+  const mask = await sharp(maskPath)
+    .resize(width, height, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+  const values = [];
+  for (let index = 0; index < image.length; index += 1) {
+    if (mask[index] > 24) values.push(image[index]);
+  }
+  if (!values.length) return null;
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.map(value => value >= avg ? 1 : 0);
+}
+
+function hashSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length || !a.length) return null;
+  let same = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] === b[index]) same += 1;
+  }
+  return same / a.length;
+}
+
+function targetRatioLabel(width, height) {
+  const w = toPositiveInt(width);
+  const h = toPositiveInt(height);
+  if (!w || !h) return "1:1";
+  return `${w}:${h}`;
+}
+
+function computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  if (!Number.isFinite(sourceRatio) || !Number.isFinite(targetRatio) || sourceRatio <= 0 || targetRatio <= 0) {
+    return 0;
+  }
+  return Math.abs(Math.log2(sourceRatio / targetRatio));
+}
+
+function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const ratioDelta = computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight);
+  const exactSize = sourceWidth === targetWidth && sourceHeight === targetHeight;
+  let strategy = "crop";
+  if (exactSize) strategy = "direct";
+  else if (ratioDelta < 0.05) strategy = "crop";
+  else if (ratioDelta < 0.35) strategy = "outpaint";
+  else strategy = "relayout";
+  return {
+    strategy,
+    ratioDelta,
+    sourceRatio: sourceWidth / sourceHeight,
+    targetRatio: targetWidth / targetHeight,
+    steps: strategy === "direct"
+      ? ["resize"]
+      : strategy === "crop"
+        ? ["detect", "merge_masks", "ai_crop", "qa"]
+        : ["detect", "merge_masks", "inpaint_copy", "expand", "ai_crop", "qa"],
+    reasons: [
+      exactSize ? "源图尺寸与目标尺寸一致" : `比例差异 ${(ratioDelta * 100).toFixed(1)}%`,
+      strategy === "relayout" ? "比例跨度较大，MVP 使用增强扩图降级处理，尚未做完整分层重排" : ""
+    ].filter(Boolean)
+  };
+}
+
+async function runPlatformTask(endpoint, payload, options = {}) {
+  const config = options.config || getAigcConfig();
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+  const url = `${config.apiHost}${endpoint}`;
+  const raw = await aigcJsonRequest(url, "POST", payload, config);
+  if (!isProviderSuccess(raw)) throw createProviderError("platform-submit", endpoint, raw);
+  const taskId = raw?.data?.task_id || raw?.task_id || raw?.data?.msg_id || raw?.msg_id;
+  if (!taskId) return raw;
+
+  const template = config.pollEndpointTemplate || "/v2/task/{taskId}";
+  const pollPath = template.replace("{taskId}", encodeURIComponent(taskId));
+  const pollUrl = `${config.apiHost}${pollPath}`;
+  const initialDelay = Math.max(500, Number(options.initialDelayMs || 2000));
+  const pollInterval = Math.max(500, Number(options.pollIntervalMs || 3000));
+  const maxPolls = Math.max(1, Number(options.maxPolls || 60));
+  await sleep(initialDelay);
+  for (let index = 0; index < maxPolls; index += 1) {
+    const statusRaw = await aigcJsonRequest(pollUrl, "GET", null, config);
+    const status = String(statusRaw?.data?.status || statusRaw?.status || "").toLowerCase();
+    if (status === "completed" || status === "success" || status === "succeeded") return statusRaw;
+    if (status === "failed" || status === "error") throw createProviderError("platform-poll", endpoint, statusRaw);
+    await sleep(pollInterval);
+  }
+  throw new Error(`AI Platform 任务超时未完成: ${taskId}`);
+}
+
+async function runAdaptProvider(endpointName, payload, options = {}) {
+  const config = options.config || getAigcConfig();
+  const apiStyle = getAdaptApiStyle(config);
+  const endpoint = ADAPT_ENDPOINTS[apiStyle]?.[endpointName];
+  if (!endpoint) throw new Error(`未知算法 endpoint: ${apiStyle}/${endpointName}`);
+  if (apiStyle === ADAPT_API_STYLES.aiPlatform) {
+    return runPlatformTask(endpoint, payload, { ...options, config });
+  }
+
+  const isAsync = endpoint.endsWith("_async");
+  return isAsync
+    ? callOpenapiV3Async(endpoint, payload, { ...options, config })
+    : callOpenapiV3Sync(endpoint, payload, { ...options, config });
+}
+
+function extractResultUrls(raw) {
+  const mediaList = extractAigcResultMedia(raw?.raw || raw);
+  const urls = mediaList
+    .map(item => item?.media_data || item?.media_url)
+    .filter(url => typeof url === "string" && url);
+  const data = raw?.data || raw?.raw?.data || {};
+  const resultUrls = [
+    raw?.resultUrl,
+    raw?.remoteResultUrl,
+    data.image_url,
+    data.result_url,
+    data.mask_url,
+    data.crop_url,
+    data.inpaint_url,
+    ...(Array.isArray(data.results) ? data.results.map(item => item?.image_url || item?.url || item?.result_url) : [])
+  ].filter(url => typeof url === "string" && url);
+  return Array.from(new Set([...urls, ...resultUrls]));
+}
+
+function extractProviderMediaValues(raw) {
+  const source = raw?.raw || raw;
+  const mediaList = extractAigcResultMedia(source);
+  const values = mediaList
+    .map(item => item?.media_data || item?.media_url)
+    .filter(value => typeof value === "string" && value);
+  const data = source?.data || raw?.data || {};
+  [
+    data.image_url,
+    data.result_url,
+    data.mask_url,
+    data.crop_url,
+    data.inpaint_url,
+    data.media_data,
+    ...(Array.isArray(data.results) ? data.results.map(item => item?.image_url || item?.url || item?.result_url || item?.media_data) : [])
+  ].forEach(value => {
+    if (typeof value === "string" && value) values.push(value);
+  });
+  return Array.from(new Set(values));
+}
+
+async function persistFirstProviderImage(raw, prefix = "aigc_provider") {
+  const values = extractProviderMediaValues(raw);
+  for (const value of values) {
+    const persisted = await persistProviderImageValue(value, prefix);
+    if (persisted) return persisted;
+  }
+  return "";
+}
+
+async function persistFirstProviderUrl(raw, options = {}) {
+  const urls = extractResultUrls(raw);
+  const remoteResultUrl = urls.find(url => /^https?:\/\//i.test(url)) || "";
+  if (!remoteResultUrl) return { resultUrl: urls[0] || "", remoteResultUrl: "" };
+  let resultUrl = remoteResultUrl;
+  try {
+    resultUrl = await persistAigcResult(remoteResultUrl, undefined, options);
+  } catch (err) {
+    console.warn("[AdaptImage] provider result persistence failed:", err.message);
+  }
+  return { resultUrl, remoteResultUrl };
+}
+
+async function detectSaliencyForAdapt(imageUrl, context) {
+  const config = context.config;
+  const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? { image_url: publicUrl, return_mask: true, return_crop: true, return_binary: false }
+    : {
+        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        parameter: { rsp_media_type: "url", nMask: true, nbox: true, model_type: 1 }
+      };
+  const raw = await runAdaptProvider("saliency", payload, context);
+  const data = raw?.data || raw?.raw?.data || {};
+  const parameter = raw?.parameter || raw?.raw?.parameter || data?.parameter || {};
+  const width = data.width || context.sourceWidth;
+  const height = data.height || context.sourceHeight;
+  const box = boxFromProvider({
+    top_x: parameter.top_x,
+    top_y: parameter.top_y,
+    bottom_x: parameter.bottom_x,
+    bottom_y: parameter.bottom_y
+  }, width, height);
+  const maskUrl = data.mask_url
+    ? await persistProviderImageValue(data.mask_url, "subject_mask")
+    : await persistFirstProviderImage(raw, "subject_mask");
+  return {
+    ok: true,
+    exists: data.exists ?? parameter.exist_salient ?? Boolean(box || maskUrl),
+    kind: parameter.Kind,
+    box,
+    maskUrl,
+    cropUrl: data.crop_url || "",
+    raw
+  };
+}
+
+async function detectLogoForAdapt(imageUrl, context) {
+  const config = context.config;
+  const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? { image_url: publicUrl, task: "logo_seg", inpaint: false, return_mask: true }
+    : {
+        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        parameter: { inpaint: false, requester: "design_studio", task: "logo_seg", userboxes: [] }
+      };
+  const raw = await runAdaptProvider("logo", payload, context);
+  const data = raw?.data || raw?.raw?.data || {};
+  const parameter = raw?.parameter || raw?.raw?.parameter || data?.parameter || {};
+  const regions = Array.isArray(data.logo_regions) ? data.logo_regions : [];
+  const boxes = regions.map(region => boxFromProvider(region)).filter(Boolean);
+  const maskUrl = data.mask_url
+    ? await persistProviderImageValue(data.mask_url, "logo_mask")
+    : await persistFirstProviderImage(raw, "logo_mask");
+  return {
+    ok: true,
+    hasTarget: (data.has_target ?? parameter.has_target ?? boxes.length > 0) || Boolean(maskUrl),
+    boxes,
+    maskUrl,
+    raw
+  };
+}
+
+async function detectTextForAdapt(imageUrl, context) {
+  const config = context.config;
+  const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? { image_url: publicUrl, return_polygon: true, return_text: true }
+    : {
+        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        parameter: { rsp_media_type: "url" }
+      };
+  const raw = await runAdaptProvider("text", payload, context);
+  const data = raw?.data || raw?.raw?.data || {};
+  const textRegions = Array.isArray(data.text_regions) ? data.text_regions : [];
+  const boxes = textRegions.map(region => boxFromPolygon(region.polygon)).filter(Boolean);
+  const maskUrl = data.mask_url
+    ? await persistProviderImageValue(data.mask_url, "text_mask")
+    : await persistFirstProviderImage(raw, "text_mask");
+  return {
+    ok: true,
+    hasText: boxes.length > 0 || Boolean(maskUrl),
+    boxes,
+    maskUrl,
+    texts: textRegions.map(region => region.text).filter(Boolean),
+    raw
+  };
+}
+
+async function analyzeAdImageForAdapt(imageUrl, context) {
+  const stages = [
+    ["subject", detectSaliencyForAdapt],
+    ["logo", detectLogoForAdapt],
+    ["text", detectTextForAdapt]
+  ];
+  const settled = await Promise.allSettled(stages.map(([, fn]) => fn(imageUrl, context)));
+  const analysis = {
+    subject: null,
+    logo: null,
+    text: null,
+    warnings: []
+  };
+  settled.forEach((item, index) => {
+    const key = stages[index][0];
+    if (item.status === "fulfilled") {
+      analysis[key] = item.value;
+    } else {
+      const err = item.reason;
+      analysis.warnings.push(`${key} 检测不可用：${err?.message || String(err)}`);
+    }
+  });
+  return analysis;
+}
+
+async function buildProtectedMaskForAdapt(analysis, width, height) {
+  const protectedMaskUrls = [
+    analysis.subject?.maskUrl,
+    analysis.logo?.maskUrl,
+    analysis.text?.maskUrl
+  ].filter(Boolean);
+  const removableMaskUrls = [
+    analysis.logo?.maskUrl,
+    analysis.text?.maskUrl
+  ].filter(Boolean);
+  const mergedProtected = await mergeProtectedMasks(protectedMaskUrls, width, height);
+  const mergedRemovable = await mergeProtectedMasks(removableMaskUrls, width, height);
+  return {
+    protectedMaskUrl: mergedProtected?.protectedMaskUrl || "",
+    editableMaskUrl: mergedProtected?.editableMaskUrl || "",
+    sourceCount: mergedProtected?.sourceCount || 0,
+    removableMaskUrl: mergedRemovable?.protectedMaskUrl || "",
+    removableEditableMaskUrl: mergedRemovable?.editableMaskUrl || "",
+    removableSourceCount: mergedRemovable?.sourceCount || 0
+  };
+}
+
+async function maskIouFromUrls(beforeMaskUrl, afterMaskUrl, width, height, threshold = 24) {
+  if (!beforeMaskUrl || !afterMaskUrl || !width || !height) return null;
+  const beforeRaw = await maskUrlToGrayRaw(beforeMaskUrl, width, height);
+  const afterRaw = await maskUrlToGrayRaw(afterMaskUrl, width, height);
+  if (!beforeRaw?.data || !afterRaw?.data || beforeRaw.data.length !== afterRaw.data.length) return null;
+  let intersection = 0;
+  let union = 0;
+  for (let index = 0; index < beforeRaw.data.length; index += 1) {
+    const beforeOn = beforeRaw.data[index] > threshold;
+    const afterOn = afterRaw.data[index] > threshold;
+    if (beforeOn && afterOn) intersection += 1;
+    if (beforeOn || afterOn) union += 1;
+  }
+  return union ? (intersection / union) : null;
+}
+
+async function cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context) {
+  try {
+    const cropped = await suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, context);
+    if (cropped.resultUrl) return cropped.resultUrl;
+  } catch (err) {
+    console.warn("[AdaptImage] AI cropping skipped:", err.message);
+  }
+  return cropImageToTargetForAdapt(imageUrl, targetWidth, targetHeight, { quality: 88 });
+}
+
+async function ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight) {
+  if (!resultUrl?.startsWith("/static/")) return resultUrl;
+  return resizeStaticImageToTarget(resultUrl, targetWidth, targetHeight, { quality: 88 });
+}
+
+async function inpaintForBackgroundPrep(imageUrl, masks, context) {
+  if (!masks?.removableMaskUrl) return imageUrl;
+  const inpainted = await inpaintImageForAdapt(
+    imageUrl,
+    masks.removableMaskUrl,
+    context,
+    "remove logo and text layers, rebuild a clean natural background only"
+  );
+  return inpainted || imageUrl;
+}
+
+async function buildProtectedMaskFallback() {
+  return {
+    protectedMaskUrl: "",
+    editableMaskUrl: "",
+    sourceCount: 0,
+    removableMaskUrl: "",
+    removableEditableMaskUrl: "",
+    removableSourceCount: 0
+  };
+}
+
+async function cropImageToTargetForAdapt(imageUrl, targetWidth, targetHeight, options = {}) {
+  const sourcePath = imageUrl.startsWith("/static/") ? staticUrlToLocalPath(imageUrl) : null;
+  if (!sourcePath) return resizeStaticImageToTarget(imageUrl, targetWidth, targetHeight, options);
+  await fs.access(sourcePath);
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `aigc_adapt_crop_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await sharp(sourcePath)
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .jpeg({ quality: Number(options.quality) || 88, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/${outputFilename}`;
+}
+
+async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
+  if (!maskUrl) return "";
+  const config = context.config;
+  const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const publicMaskUrl = publicAigcImageUrl(maskUrl, config, context.publicBaseUrl);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? {
+        image_url: publicImageUrl,
+        mask_url: publicMaskUrl,
+        prompt: prompt || "clean natural background, seamless fill",
+        negative_prompt: "distorted text, changed logo, artifacts",
+        strength: 0.72,
+        num_images: 1,
+        quality: "high"
+      }
+    : {
+        media_info_list: [
+          mediaInfoFromUrl(publicImageUrl),
+          mediaInfoFromUrl(publicMaskUrl)
+        ],
+        parameter: {
+          task: "inpaint",
+          inpaint: true,
+          rsp_media_type: "url",
+          prompt_pos: prompt || "clean natural background, seamless fill",
+          num_samples: 1,
+          seed: -1
+        },
+        body: {
+          image: publicImageUrl,
+          mask: publicMaskUrl,
+          mask_url: publicMaskUrl,
+          task: "inpaint",
+          inpaint: true,
+          rsp_media_type: "url",
+          prompt_pos: prompt || "clean natural background, seamless fill",
+          num_samples: 1,
+          seed: -1
+        }
+      };
+  const raw = await runAdaptProvider("inpaint", payload, context);
+  return persistFirstProviderImage(raw, "adapt_inpaint");
+}
+
+async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, context, prompt = "") {
+  const config = context.config;
+  const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const ratio = targetRatioLabel(targetWidth, targetHeight);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? {
+        image_url: publicImageUrl,
+        mode: 1,
+        ratio,
+        position: "center",
+        quality: "high"
+      }
+    : {
+        media_info_list: [mediaInfoFromUrl(publicImageUrl)],
+        parameter: {
+          rsp_media_type: "url",
+          mode: 1,
+          ratio,
+          seed: -1,
+          generate_num: 1,
+          high_quality_encode: true,
+          extra_prompt: prompt || "Extend background naturally, keep original subject, text and logo unchanged"
+        },
+        body: {
+          image: publicImageUrl,
+          mode: 1,
+          ratio,
+          seed: -1,
+          generate_num: 1,
+          high_quality_encode: true,
+          extra_prompt: prompt || "Extend background naturally, keep original subject, text and logo unchanged"
+        }
+      };
+  const raw = await runAdaptProvider("expand", payload, context);
+  let resultUrl = await persistFirstProviderImage(raw, "adapt_expand");
+  if (!resultUrl && getAdaptApiStyle(config) === ADAPT_API_STYLES.openapi) {
+    const fallback = await submitAigcExpandTask({
+      imageUrl: publicImageUrl,
+      targetRatio: ratio,
+      prompt,
+      seed: -1
+    });
+    resultUrl = fallback.resultUrl || "";
+  }
+  return resultUrl;
+}
+
+async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, context) {
+  const config = context.config;
+  const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
+  const ratio = targetRatioLabel(targetWidth, targetHeight);
+  const apiStyle = getAdaptApiStyle(config);
+  const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
+    ? {
+        image_url: publicImageUrl,
+        mode: 1,
+        ratio,
+        min_scale: 0.5,
+        keep_subject: true
+      }
+    : {
+        media_info_list: [mediaInfoFromUrl(publicImageUrl)],
+        parameter: {
+          rsp_media_type: "url",
+          mode: 1,
+          ratio,
+          keep_subject: true
+        },
+        body: {
+          image: publicImageUrl,
+          rsp_media_type: "url",
+          mode: 1,
+          ratio,
+          keep_subject: true
+        }
+      };
+  const raw = await runAdaptProvider("crop", payload, context);
+  return {
+    resultUrl: await persistFirstProviderImage(raw, "adapt_crop"),
+    raw
+  };
+}
+
+async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, context, prompt, analysis, masks) {
+  if (plan.strategy === "direct") {
+    return ensureFinalAdaptSize(imageUrl, targetWidth, targetHeight);
+  }
+  if (plan.strategy === "crop") {
+    const croppedUrl = await cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context);
+    return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight);
+  }
+
+  const enhancedPrompt = [
+    "最高优先级：完整保留原图主体、产品、人物、文案、按钮、Logo 和品牌识别，不裁切、不遮挡、不拉伸、不变形、不改字、不重绘 Logo。",
+    "只扩展或修补背景环境，补全区域需要与原图光影、材质、色彩、透视一致。",
+    plan.strategy === "relayout"
+      ? "目标比例跨度很大，请优先保持所有关键元素完整并处于安全区，允许背景大范围延展，但不要改变文字和 Logo。"
+      : "根据目标比例补全背景并优化构图，让核心内容全部出现在安全区域内。",
+    prompt || ""
+  ].filter(Boolean).join("");
+  let workingUrl = imageUrl;
+
+  workingUrl = await inpaintForBackgroundPrep(workingUrl, masks, context);
+
+  const expandedUrl = await expandImageV4ForAdapt(workingUrl, targetWidth, targetHeight, context, enhancedPrompt);
+  workingUrl = expandedUrl || workingUrl;
+
+  workingUrl = await cropWithFallbackForAdapt(workingUrl, targetWidth, targetHeight, context);
+  return ensureFinalAdaptSize(workingUrl, targetWidth, targetHeight);
+}
+
+let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidth, targetHeight, sourceWidth, sourceHeight, context, originalImageUrl, masks) {
+  const warnings = [];
+  let actualWidth = null;
+  let actualHeight = null;
+  try {
+    if (resultUrl?.startsWith("/static/")) {
+      const meta = await sharp(staticUrlToLocalPath(resultUrl)).metadata();
+      actualWidth = meta.width || null;
+      actualHeight = meta.height || null;
+    }
+  } catch (err) {
+    warnings.push(`无法读取结果尺寸：${err.message}`);
+  }
+  const dimensionPassed = actualWidth === targetWidth && actualHeight === targetHeight;
+  if (!dimensionPassed) warnings.push(`结果尺寸 ${actualWidth || "?"}x${actualHeight || "?"} 与目标 ${targetWidth}x${targetHeight} 不一致`);
+
+  const protectedBoxes = [
+    analysis.subject?.box,
+    ...(analysis.logo?.boxes || []),
+    ...(analysis.text?.boxes || [])
+  ].filter(Boolean);
+  const normalizedBoxes = protectedBoxes
+    .map(box => normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight))
+    .filter(Boolean);
+  const safeAreaPassed = normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
+  if (!safeAreaPassed) warnings.push("部分受保护区域按比例映射后接近或超出安全区，MVP 无法保证模型输出中完全安全");
+  if (analysis.warnings?.length) warnings.push(...analysis.warnings);
+  if (plan.strategy === "relayout") warnings.push("智能重排当前为降级实现，尚未执行主体/文字/Logo 分层重新排版");
+
+  let textRecallScore = 1;
+  if ((analysis.text?.texts || []).length > 0) {
+    try {
+      const afterText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+      textRecallScore = textRecall(analysis.text.texts, afterText.texts || []);
+      if (textRecallScore < 0.8) warnings.push(`OCR 文案字符召回率 ${(textRecallScore * 100).toFixed(1)}%，低于 80%`);
+    } catch (err) {
+      textRecallScore = 0;
+      warnings.push(`结果 OCR 复检不可用：${err.message}`);
+    }
+  }
+
+  let logoSimilarity = null;
+  if (analysis.logo?.maskUrl && masks?.protectedMaskUrl) {
+    try {
+      const originalStaticUrl = await ensureStaticImageUrlForResize(originalImageUrl);
+      const resizedOriginal = originalStaticUrl?.startsWith("/static/")
+        ? await resizeStaticImageToTarget(originalStaticUrl, targetWidth, targetHeight, { quality: 92 })
+        : "";
+      const beforeHash = await maskedAverageHash(resizedOriginal, analysis.logo.maskUrl);
+      const afterHash = await maskedAverageHash(resultUrl, analysis.logo.maskUrl);
+      logoSimilarity = hashSimilarity(beforeHash, afterHash);
+      if (logoSimilarity !== null && logoSimilarity < 0.72) warnings.push(`Logo 感知哈希相似度 ${(logoSimilarity * 100).toFixed(1)}%，低于 72%`);
+    } catch (err) {
+      warnings.push(`Logo 相似度复检不可用：${err.message}`);
+    }
+  }
+
+  return {
+    passed: dimensionPassed && safeAreaPassed && warnings.length === 0,
+    dimensionPassed,
+    subjectPreserved: Boolean(analysis.subject?.exists ?? true),
+    textPreserved: textRecallScore >= 0.8,
+    logoPreserved: logoSimilarity === null ? Boolean(analysis.logo?.hasTarget ?? true) : logoSimilarity >= 0.72,
+    safeAreaPassed,
+    textRecall: textRecallScore,
+    logoSimilarity,
+    warnings
+  };
+};
+
+runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth, targetHeight, sourceWidth, sourceHeight, context, originalImageUrl, masks) {
+  const warnings = [];
+  let actualWidth = null;
+  let actualHeight = null;
+  try {
+    if (resultUrl?.startsWith("/static/")) {
+      const meta = await sharp(staticUrlToLocalPath(resultUrl)).metadata();
+      actualWidth = meta.width || null;
+      actualHeight = meta.height || null;
+    }
+  } catch (err) {
+    warnings.push(`result size check unavailable: ${err.message}`);
+  }
+
+  const dimensionPassed = actualWidth === targetWidth && actualHeight === targetHeight;
+  if (!dimensionPassed) {
+    warnings.push(`result size ${actualWidth || "?"}x${actualHeight || "?"} does not match ${targetWidth}x${targetHeight}`);
+  }
+
+  const protectedBoxes = [
+    analysis.subject?.box,
+    ...(analysis.logo?.boxes || []),
+    ...(analysis.text?.boxes || [])
+  ].filter(Boolean);
+  const normalizedBoxes = protectedBoxes
+    .map(box => normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight))
+    .filter(Boolean);
+  const safeAreaPassed = normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
+  if (!safeAreaPassed) warnings.push("some protected regions are too close to the output safe-area edge");
+  if (analysis.warnings?.length) warnings.push(...analysis.warnings);
+  if (plan.strategy === "relayout") warnings.push("true layered relayout is unavailable; current MVP only uses inpaint + expand + crop fallback");
+
+  let subjectIou = null;
+  if (analysis.subject?.maskUrl) {
+    try {
+      const afterSubject = await detectSaliencyForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+      subjectIou = await maskIouFromUrls(analysis.subject.maskUrl, afterSubject.maskUrl, targetWidth, targetHeight);
+      if (subjectIou !== null && subjectIou < 0.7) warnings.push(`subject mask IoU ${(subjectIou * 100).toFixed(1)}% below 70%`);
+    } catch (err) {
+      warnings.push(`subject QA unavailable: ${err.message}`);
+    }
+  }
+
+  let textRecallScore = 1;
+  if ((analysis.text?.texts || []).length > 0) {
+    try {
+      const afterText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+      textRecallScore = textRecall(analysis.text.texts, afterText.texts || []);
+      if (textRecallScore < 0.8) warnings.push(`OCR text recall ${(textRecallScore * 100).toFixed(1)}% below 80%`);
+    } catch (err) {
+      textRecallScore = 0;
+      warnings.push(`result OCR check unavailable: ${err.message}`);
+    }
+  }
+
+  let logoSimilarity = null;
+  if (analysis.logo?.maskUrl) {
+    try {
+      const originalStaticUrl = await ensureStaticImageUrlForResize(originalImageUrl);
+      const resizedOriginal = originalStaticUrl?.startsWith("/static/")
+        ? await resizeStaticImageToTarget(originalStaticUrl, targetWidth, targetHeight, { quality: 92 })
+        : "";
+      const beforeHash = await maskedAverageHash(resizedOriginal, analysis.logo.maskUrl);
+      const afterHash = await maskedAverageHash(resultUrl, analysis.logo.maskUrl);
+      logoSimilarity = hashSimilarity(beforeHash, afterHash);
+      if (logoSimilarity !== null && logoSimilarity < 0.72) warnings.push(`logo hash similarity ${(logoSimilarity * 100).toFixed(1)}% below 72%`);
+    } catch (err) {
+      warnings.push(`logo similarity check unavailable: ${err.message}`);
+    }
+  }
+
+  const subjectPreserved = subjectIou === null ? Boolean(analysis.subject?.exists ?? true) : subjectIou >= 0.7;
+  const textPreserved = textRecallScore >= 0.8;
+  const logoPreserved = logoSimilarity === null ? Boolean(analysis.logo?.hasTarget ?? true) : logoSimilarity >= 0.72;
+
+  return {
+    passed: dimensionPassed && safeAreaPassed && subjectPreserved && textPreserved && logoPreserved,
+    dimensionPassed,
+    subjectPreserved,
+    subjectIou,
+    textPreserved,
+    logoPreserved,
+    safeAreaPassed,
+    textRecall: textRecallScore,
+    logoSimilarity,
+    warnings
+  };
+};
+
 async function submitAigcTextToImageTask({
   prompt,
   ratio = "16:9",
@@ -2070,6 +3124,101 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
   } catch (err) {
     console.error("[AIGC Image To Image] failed:", err.message);
     res.status(500).json({ error: "AI 图生图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/adapt-image", async (req, res) => {
+  try {
+    const {
+      imageUrl,
+      targetWidth,
+      targetHeight,
+      templateId,
+      templateName,
+      app: appName,
+      prompt,
+      allowRelayout = true
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ ok: false, error: validationError });
+    const width = toPositiveInt(targetWidth);
+    const height = toPositiveInt(targetHeight);
+    if (!width || !height) {
+      return res.status(400).json({ ok: false, error: "targetWidth / targetHeight 必须是正整数" });
+    }
+
+    const config = getAigcConfig();
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const sourceMeta = await getImageMetadataForUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
+    const sourceWidth = sourceMeta.width || width;
+    const sourceHeight = sourceMeta.height || height;
+    const context = { config, publicBaseUrl, sourceWidth, sourceHeight };
+    const analysis = await analyzeAdImageForAdapt(imageUrl, context);
+    const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
+    const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
+    if (plan.strategy === "relayout" && !allowRelayout) {
+      plan.strategy = "outpaint";
+      plan.reasons.push("调用方禁用 relayout，回退到 outpaint");
+    }
+
+    const resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
+    const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
+    const finalUrl = resizableUrl?.startsWith("/static/")
+      ? await resizeStaticImageToTarget(resizableUrl, width, height, { quality: 88 })
+      : resizableUrl;
+    const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
+
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      endpoint: "/api/aigc/adapt-image",
+      resultUrl: finalUrl,
+      strategy: plan.strategy,
+      target: { width, height },
+      template: { id: templateId, name: templateName, app: appName },
+      analysis: {
+        source: { width: sourceWidth, height: sourceHeight },
+        subject: analysis.subject ? {
+          exists: analysis.subject.exists,
+          kind: analysis.subject.kind,
+          box: analysis.subject.box,
+          maskUrl: analysis.subject.maskUrl
+        } : null,
+        logo: analysis.logo ? {
+          hasTarget: analysis.logo.hasTarget,
+          boxes: analysis.logo.boxes,
+          maskUrl: analysis.logo.maskUrl
+        } : null,
+        text: analysis.text ? {
+          hasText: analysis.text.hasText,
+          boxes: analysis.text.boxes,
+          maskUrl: analysis.text.maskUrl,
+          texts: analysis.text.texts
+        } : null,
+        warnings: analysis.warnings
+      },
+      masks,
+      plan,
+      qa,
+      limitations: [
+        "MVP 尚未做主体/文案/Logo 的真实分层重排。",
+        "QA 已包含 OCR 字符召回和 Logo 感知哈希相似度，但仍不是专用品牌识别模型。",
+        "如果 6 个算法接口权限或响应字段与文档不一致，会降级到扩图/裁剪。"
+      ]
+    });
+  } catch (err) {
+    console.error("[AIGC Adapt Image] failed:", err.message);
+    res.status(500).json({
+      ok: false,
+      error: "AI 广告图适配管线失败",
+      details: err.message,
+      stage: err.stage,
+      provider: err.endpoint ? {
+        endpoint: err.endpoint,
+        permission: Boolean(err.permission),
+        message: normalizeProviderMessage(err.providerRaw)
+      } : undefined
+    });
   }
 });
 

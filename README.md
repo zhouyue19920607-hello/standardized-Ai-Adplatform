@@ -44,12 +44,20 @@ AIGC_AK=你的开放平台AK
 AIGC_SK=你的开放平台SK
 AIGC_BIZ=ai-saap
 AIGC_API_HOST=https://openapi-ali.meitu.com
+AIGC_AUTH_MODE=query
+AIGC_PROVIDER_API_STYLE=openapi
 AIGC_PUBLIC_BASE_URL=https://你的线上站点域名
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
 ```
 
-当前 AI 图像扩展后端入口会走 `/v1/dispatcher` 的 `outpainting` 参数：
+当前标准化素材看板的图片适配优先走广告图适配管线：
+
+```http
+POST /api/aigc/adapt-image
+```
+
+旧的 AI 图像扩展后端入口仍然保留，会走 `/v1/dispatcher` 的 `outpainting` 参数：
 
 ```http
 POST /api/aigc/image-expand

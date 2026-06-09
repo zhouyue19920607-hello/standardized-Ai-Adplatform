@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, smartCropImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -693,16 +693,23 @@ const App: React.FC = () => {
           try {
             console.log(`[AIGC Adapt] ${raw.file.name} -> ${template.app}${template.name} ${aigcTarget.width}x${aigcTarget.height}`);
             const uploaded = await uploadRawAsset(raw.file);
-            const aigcResult = await smartCropImageWithAigc({
+            const aigcResult = await adaptImageWithAigc({
               imageUrl: uploaded.url,
               targetWidth: aigcTarget.width,
               targetHeight: aigcTarget.height,
+              templateId: template.id,
+              templateName: template.name,
+              app: template.app,
               prompt: [
                 '将上传图片智能适配为目标尺寸。保持主体、产品、文案和 Logo 完整不变，不拉伸、不变形、不改字、不重绘 Logo。根据目标尺寸比例自动扩展背景并优化排版，使画面美观、平衡、有广告设计感。文案和 Logo 必须距离画面边缘至少 15% 安全距离，避免裁切。禁止裁切主体、文字错乱、Logo 变形、比例异常。',
                 `广告模板：${template.app}${template.name}`,
                 `目标尺寸：${aigcTarget.width} x ${aigcTarget.height}`
-              ].join('。')
+              ].join('。'),
+              allowRelayout: true
             });
+            if (aigcResult.qa && !aigcResult.qa.passed) {
+              console.warn('[AIGC Adapt] QA warnings', aigcResult.qa.warnings);
+            }
             finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
           } catch (e) {
             console.error('[AIGC Adapt] failed', e);
