@@ -173,6 +173,7 @@ export const expandImageWithAigc = async (payload: AigcImageExpandRequest): Prom
 
 export interface AigcTaskResponse {
     ok: boolean;
+    status?: 'processing' | 'success' | 'failed';
     provider: string;
     task: string;
     taskId: string;
@@ -184,7 +185,10 @@ export interface AigcTaskResponse {
     postProcess?: unknown;
     mediaInfo?: unknown;
     raw?: unknown;
+    job?: unknown;
 }
+
+const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
 
 export const generateImageWithAigc = async (payload: {
     prompt: string;
@@ -270,8 +274,26 @@ export const expandVideoWithAigc = async (payload: {
     mixed_precision?: string;
     seed?: number;
 }): Promise<AigcTaskResponse> => {
-    const response = await api.post<AigcTaskResponse>('/aigc/video-expand', payload);
-    return response.data;
+    const submitted = await api.post<AigcTaskResponse>('/aigc/video-expand/submit', payload);
+    const taskId = submitted.data.taskId;
+    if (!taskId) {
+        throw new Error('AI 视频扩展投递成功但未返回 taskId');
+    }
+    const job = submitted.data.job;
+
+    const maxPolls = 240;
+    for (let index = 0; index < maxPolls; index += 1) {
+        await sleep(5000);
+        const response = await api.post<AigcTaskResponse>('/aigc/video-expand/status', { taskId, job });
+        if (response.data.status === 'success' || response.data.resultUrl) {
+            return response.data;
+        }
+        if (response.data.status === 'failed') {
+            throw new Error('AI 视频扩展失败');
+        }
+    }
+
+    throw new Error(`AI 视频扩展任务仍在后台生成，请稍后刷新查看结果：${taskId}`);
 };
 
 export const clipVideoWithAigc = async (payload: {

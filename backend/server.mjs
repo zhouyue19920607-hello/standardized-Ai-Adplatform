@@ -824,6 +824,7 @@ const AIGC_TASKS = {
 };
 const AIGC_VIDEO_EXPAND_MAX_FRAMES = 81;
 const AIGC_VIDEO_EXPAND_MAX_SIDE = 1024;
+const videoExpandJobs = new Map();
 
 function getAigcConfig() {
   return {
@@ -1693,17 +1694,13 @@ async function prepareVideoInputForAigcExpand(videoUrl, aigcTarget, options = {}
   };
 }
 
-async function submitAigcTask({
+async function pushAigcTask({
   task,
   params,
   mediaInfoList = [],
   extra,
   taskType = "mtlab",
   rspMediaType = "url",
-  initialDelayMs = 0,
-  pollIntervalMs,
-  maxPolls,
-  persistOptions,
   publicBaseUrl,
   mediaOptions
 }) {
@@ -1716,7 +1713,6 @@ async function submitAigcTask({
   }
 
   const pushUrl = `${config.apiHost}/api/v1/push`;
-  const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
   const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(mediaInfoList, config, mediaOptions);
   const taskPayload = {
     ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {}),
@@ -1749,6 +1745,84 @@ async function submitAigcTask({
   }
   console.log("[AIGC] push success", JSON.stringify({ task, taskId }));
 
+  return {
+    taskId,
+    config,
+    raw: pushed,
+    payload,
+    taskPayload,
+    normalizedMediaInfoList
+  };
+}
+
+function createAigcTaskFailureError(statusData, taskId) {
+  const taskData = statusData?.data || {};
+  const resultError = taskData.result?.msg || taskData.result?.data?.ErrorMsg || taskData.result?.mtlab_res?.ErrorMsg || "";
+  const error = new Error(resultError || taskData.message || statusData?.message || statusData?.error_msg || `AIGC task failed: ${JSON.stringify(statusData)}`);
+  error.taskId = taskId;
+  return error;
+}
+
+async function getAigcTaskResultOnce(taskId, options = {}) {
+  const config = options.config || getAigcConfig();
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+
+  const statusUrl = `${config.apiHost}/api/v1/sdk/status`;
+  const queryUrl = `${statusUrl}?${new URLSearchParams({ task_id: taskId }).toString()}`;
+  const statusData = await aigcJsonRequest(queryUrl, "GET", null, config);
+  const mediaInfoList = extractAigcResultMedia(statusData);
+  const state = getAigcTaskState(statusData);
+  if (state === "success" && mediaInfoList.length > 0) {
+    const resultUrl = mediaInfoList[0].media_data || mediaInfoList[0].media_url || "";
+    let storedUrl = "";
+    try {
+      storedUrl = await persistAigcResult(resultUrl, mediaInfoList[0].media_type, options.persistOptions);
+    } catch (err) {
+      console.warn("[AIGC] result persistence failed, using remote URL:", err.message);
+    }
+    return {
+      status: "success",
+      taskId,
+      resultUrl: storedUrl || resultUrl,
+      remoteResultUrl: resultUrl,
+      mediaInfo: mediaInfoList[0],
+      raw: statusData
+    };
+  }
+  return {
+    status: state === "success" ? "processing" : state,
+    taskId,
+    raw: statusData
+  };
+}
+
+async function submitAigcTask({
+  task,
+  params,
+  mediaInfoList = [],
+  extra,
+  taskType = "mtlab",
+  rspMediaType = "url",
+  initialDelayMs = 0,
+  pollIntervalMs,
+  maxPolls,
+  persistOptions,
+  publicBaseUrl,
+  mediaOptions
+}) {
+  const { taskId, config } = await pushAigcTask({
+    task,
+    taskType,
+    params,
+    mediaInfoList,
+    extra,
+    rspMediaType,
+    publicBaseUrl,
+    mediaOptions
+  });
+
   if (initialDelayMs > 0) {
     await sleep(initialDelayMs);
   }
@@ -1757,10 +1831,9 @@ async function submitAigcTask({
   const pollingMax = Math.max(1, Number(maxPolls || config.maxPolls));
   for (let index = 0; index < pollingMax; index += 1) {
     await sleep(pollingInterval);
-    const queryUrl = `${statusUrl}?${new URLSearchParams({ task_id: taskId }).toString()}`;
-    let statusData;
+    let result;
     try {
-      statusData = await aigcJsonRequest(queryUrl, "GET", null, config);
+      result = await getAigcTaskResultOnce(taskId, { config, persistOptions });
     } catch (err) {
       if (isAigcTimeoutError(err)) {
         console.warn(`[AIGC] status polling timeout, continuing: task=${taskId}, poll=${index + 1}/${pollingMax}, error=${err.message}`);
@@ -1768,31 +1841,8 @@ async function submitAigcTask({
       }
       throw err;
     }
-    const taskData = statusData?.data || {};
-    const mediaInfoList = extractAigcResultMedia(statusData);
-    const state = getAigcTaskState(statusData);
-    if (state === "success" && mediaInfoList.length > 0) {
-      const resultUrl = mediaInfoList[0].media_data || mediaInfoList[0].media_url || "";
-      let storedUrl = "";
-      try {
-        storedUrl = await persistAigcResult(resultUrl, mediaInfoList[0].media_type, persistOptions);
-      } catch (err) {
-        console.warn("[AIGC] result persistence failed, using remote URL:", err.message);
-      }
-      return {
-        taskId,
-        resultUrl: storedUrl || resultUrl,
-        remoteResultUrl: resultUrl,
-        mediaInfo: mediaInfoList[0],
-        raw: statusData
-      };
-    }
-    if (state === "failed") {
-      const resultError = taskData.result?.msg || taskData.result?.data?.ErrorMsg || taskData.result?.mtlab_res?.ErrorMsg || "";
-      const error = new Error(resultError || taskData.message || statusData?.message || statusData?.error_msg || `AIGC task failed: ${JSON.stringify(statusData)}`);
-      error.taskId = taskId;
-      throw error;
-    }
+    if (result.status === "success") return result;
+    if (result.status === "failed") throw createAigcTaskFailureError(result.raw, taskId);
   }
 
   throw new Error(`AIGC 任务超时未完成: ${taskId}`);
@@ -2075,131 +2125,279 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
   }
 });
 
-app.post("/api/aigc/video-expand", async (req, res) => {
-  try {
-    const {
-      videoUrl,
-      targetWidth = 1920,
-      targetHeight = 1080,
-      r_w_left = 0.25,
-      r_w_right = 0.25,
-      r_h_up = 0,
-      r_h_down = 0,
-      prompt = "扩展画面背景，保持动态连贯",
-      out_fps = 24,
-      start_idx = 0,
-      max_num_frames = AIGC_VIDEO_EXPAND_MAX_FRAMES,
-      mixed_precision = "bf16",
-      seed = 123,
-    } = req.body || {};
-    const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
-    if (validationError) return res.status(400).json({ error: validationError });
-    const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
-    const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
-    const aigcTarget = getAigcVideoEncodeDimensions(finalTargetWidth, finalTargetHeight);
-    const needsPreciseCrop = aigcTarget.width !== finalTargetWidth || aigcTarget.height !== finalTargetHeight;
-    const finalOutFps = toPositiveInt(out_fps) || 24;
-    const finalMaxNumFrames = Math.min(toPositiveInt(max_num_frames) || AIGC_VIDEO_EXPAND_MAX_FRAMES, AIGC_VIDEO_EXPAND_MAX_FRAMES);
-    const finalMaxDurationSec = finalMaxNumFrames / finalOutFps;
-    const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
-    const publicBaseUrl = getRequestPublicBaseUrl(req);
-    const preparedInput = await prepareVideoInputForAigcExpand(videoUrl, aigcTarget, {
-      publicBaseUrl,
-      maxDurationSec: finalMaxDurationSec,
-      fps: finalOutFps
-    });
-    const videoInputUrl = preparedInput.url;
-    const inputMode = preparedInput.inputMode;
-    const params = {
-      parameter: {
-        target_width: aigcTarget.width,
-        target_height: aigcTarget.height,
-        r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
-        r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
-        r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
-        r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
-        out_fps: finalOutFps,
-        start_idx: toNonNegativeInt(start_idx, 0),
-        max_num_frames: finalMaxNumFrames,
-        mixed_precision: String(mixed_precision || "bf16"),
-        seed: toPositiveSeed(seed, 123),
-        prompt: finalPrompt,
-        rsp_media_type: "url"
-      }
-    };
-    console.log("[AIGC Video Expand] submit", JSON.stringify({
-      inputMode,
-      target: { width: finalTargetWidth, height: finalTargetHeight },
-      aigcTarget,
-      mediaDataType: "url",
-      mediaUrlKind: videoInputUrl.startsWith("/static/") ? "static" : "remote",
-      preprocessed: preparedInput.preprocessed
-        ? {
-          maxSide: preparedInput.preprocessed.maxSide,
-          sizeMB: preparedInput.preprocessed.sizeMB,
-          maxDurationSec: Number(finalMaxDurationSec.toFixed(2)),
-          fps: finalOutFps
+function videoExpandInputPreprocessPayload(job) {
+  return job.preparedInput?.preprocessed
+    ? {
+      type: "ffmpeg-downscale",
+      maxSide: job.preparedInput.preprocessed.maxSide,
+      maxDurationSec: Number(job.finalMaxDurationSec.toFixed(2)),
+      fps: job.finalOutFps,
+      sizeMB: job.preparedInput.preprocessed.sizeMB
+    }
+    : null;
+}
+
+function videoExpandJobProcessingPayload(job) {
+  return {
+    ok: true,
+    status: "processing",
+    provider: "meitu-open-platform",
+    task: AIGC_TASKS.videoExpand,
+    taskId: job.taskId,
+    inputMode: job.inputMode,
+    fallbackUsed: false,
+    target: { width: job.finalTargetWidth, height: job.finalTargetHeight },
+    aigcTarget: job.aigcTarget,
+    inputPreprocess: videoExpandInputPreprocessPayload(job),
+    job: {
+      taskId: job.taskId,
+      inputMode: job.inputMode,
+      finalTargetWidth: job.finalTargetWidth,
+      finalTargetHeight: job.finalTargetHeight,
+      aigcTarget: job.aigcTarget,
+      needsPreciseCrop: job.needsPreciseCrop,
+      finalOutFps: job.finalOutFps,
+      finalMaxDurationSec: job.finalMaxDurationSec,
+      inputPreprocess: videoExpandInputPreprocessPayload(job)
+    }
+  };
+}
+
+function normalizeVideoExpandClientJob(value) {
+  if (!value || typeof value !== "object") return null;
+  const taskId = String(value.taskId || "").trim();
+  const finalTargetWidth = toPositiveInt(value.finalTargetWidth);
+  const finalTargetHeight = toPositiveInt(value.finalTargetHeight);
+  const aigcTargetWidth = toPositiveInt(value.aigcTarget?.width);
+  const aigcTargetHeight = toPositiveInt(value.aigcTarget?.height);
+  if (!taskId || !finalTargetWidth || !finalTargetHeight || !aigcTargetWidth || !aigcTargetHeight) return null;
+  return {
+    taskId,
+    inputMode: String(value.inputMode || "url"),
+    publicBaseUrl: "",
+    finalTargetWidth,
+    finalTargetHeight,
+    aigcTarget: { width: aigcTargetWidth, height: aigcTargetHeight },
+    needsPreciseCrop: Boolean(value.needsPreciseCrop),
+    finalOutFps: toPositiveInt(value.finalOutFps) || 24,
+    finalMaxDurationSec: Number(value.finalMaxDurationSec) || (AIGC_VIDEO_EXPAND_MAX_FRAMES / 24),
+    preparedInput: value.inputPreprocess
+      ? {
+        preprocessed: {
+          maxSide: value.inputPreprocess.maxSide,
+          sizeMB: value.inputPreprocess.sizeMB
         }
-        : null,
-      parameterKeys: Object.keys(params.parameter)
-    }));
-    let result;
-    const submitVideoExpand = () => submitAigcTask({
-      task: AIGC_TASKS.videoExpand,
-      params,
-      extra: {},
-      mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
-      initialDelayMs: 5000,
-      pollIntervalMs: 5000,
-      maxPolls: 180,
-      publicBaseUrl,
+      }
+      : null,
+    createdAt: Date.now(),
+    completedResponse: null
+  };
+}
+
+async function createVideoExpandJob(req, body = {}) {
+  const {
+    videoUrl,
+    targetWidth = 1920,
+    targetHeight = 1080,
+    r_w_left = 0.25,
+    r_w_right = 0.25,
+    r_h_up = 0,
+    r_h_down = 0,
+    prompt = "扩展画面背景，保持动态连贯",
+    out_fps = 24,
+    start_idx = 0,
+    max_num_frames = AIGC_VIDEO_EXPAND_MAX_FRAMES,
+    mixed_precision = "bf16",
+    seed = 123,
+  } = body;
+  const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
+  if (validationError) {
+    const error = new Error(validationError);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const finalTargetWidth = toPositiveInt(targetWidth) || 1920;
+  const finalTargetHeight = toPositiveInt(targetHeight) || 1080;
+  const aigcTarget = getAigcVideoEncodeDimensions(finalTargetWidth, finalTargetHeight);
+  const finalOutFps = toPositiveInt(out_fps) || 24;
+  const finalMaxNumFrames = Math.min(toPositiveInt(max_num_frames) || AIGC_VIDEO_EXPAND_MAX_FRAMES, AIGC_VIDEO_EXPAND_MAX_FRAMES);
+  const finalMaxDurationSec = finalMaxNumFrames / finalOutFps;
+  const finalPrompt = String(prompt || "").trim() || "seamlessly extend the background, high quality";
+  const publicBaseUrl = getRequestPublicBaseUrl(req);
+  const preparedInput = await prepareVideoInputForAigcExpand(videoUrl, aigcTarget, {
+    publicBaseUrl,
+    maxDurationSec: finalMaxDurationSec,
+    fps: finalOutFps
+  });
+  const videoInputUrl = preparedInput.url;
+  const inputMode = preparedInput.inputMode;
+  const params = {
+    parameter: {
+      target_width: aigcTarget.width,
+      target_height: aigcTarget.height,
+      r_w_left: Number.isFinite(Number(r_w_left)) ? Number(r_w_left) : 0,
+      r_w_right: Number.isFinite(Number(r_w_right)) ? Number(r_w_right) : 0,
+      r_h_up: Number.isFinite(Number(r_h_up)) ? Number(r_h_up) : 0,
+      r_h_down: Number.isFinite(Number(r_h_down)) ? Number(r_h_down) : 0,
+      out_fps: finalOutFps,
+      start_idx: toNonNegativeInt(start_idx, 0),
+      max_num_frames: finalMaxNumFrames,
+      mixed_precision: String(mixed_precision || "bf16"),
+      seed: toPositiveSeed(seed, 123),
+      prompt: finalPrompt,
+      rsp_media_type: "url"
+    }
+  };
+  console.log("[AIGC Video Expand] submit", JSON.stringify({
+    inputMode,
+    target: { width: finalTargetWidth, height: finalTargetHeight },
+    aigcTarget,
+    mediaDataType: "url",
+    mediaUrlKind: videoInputUrl.startsWith("/static/") ? "static" : "remote",
+    preprocessed: preparedInput.preprocessed
+      ? {
+        maxSide: preparedInput.preprocessed.maxSide,
+        sizeMB: preparedInput.preprocessed.sizeMB,
+        maxDurationSec: Number(finalMaxDurationSec.toFixed(2)),
+        fps: finalOutFps
+      }
+      : null,
+    parameterKeys: Object.keys(params.parameter)
+  }));
+
+  const pushed = await pushAigcTask({
+    task: AIGC_TASKS.videoExpand,
+    params,
+    extra: {},
+    mediaInfoList: [mediaInfoFromUrl(videoInputUrl)],
+    publicBaseUrl
+  });
+  const job = {
+    taskId: pushed.taskId,
+    inputMode,
+    publicBaseUrl,
+    finalTargetWidth,
+    finalTargetHeight,
+    aigcTarget,
+    needsPreciseCrop: aigcTarget.width !== finalTargetWidth || aigcTarget.height !== finalTargetHeight,
+    finalOutFps,
+    finalMaxDurationSec,
+    preparedInput,
+    createdAt: Date.now(),
+    completedResponse: null
+  };
+  videoExpandJobs.set(pushed.taskId, job);
+  return job;
+}
+
+async function resolveVideoExpandJobStatus(taskId, clientJob = null) {
+  const fallbackJob = normalizeVideoExpandClientJob(clientJob);
+  const job = videoExpandJobs.get(taskId) || fallbackJob;
+  if (!job) {
+    throw new Error(`AI 视频扩展任务缓存已失效，请重新生成: ${taskId}`);
+  }
+  if (job.completedResponse) return job.completedResponse;
+
+  let result;
+  try {
+    result = await getAigcTaskResultOnce(taskId, {
       persistOptions: { maxContentLengthBytes: 500 * 1024 * 1024 }
     });
-    try {
-      result = await submitVideoExpand();
-    } catch (err) {
-      if (!isAigcTimeoutError(err)) throw err;
-      console.warn(`[AIGC Video Expand] upstream timeout, retrying once: ${err.message}`);
-      result = await submitVideoExpand();
-    }
-    let finalResult = result;
-    let postProcess = null;
-    if (needsPreciseCrop) {
-      const cropResult = await preciseCropVideoToTarget(result.resultUrl || result.remoteResultUrl, finalTargetWidth, finalTargetHeight, {
-        publicBaseUrl,
-        mediaType: result.mediaInfo?.media_type || "video/mp4"
-      });
-      postProcess = {
-        type: "ffmpeg-cover-crop",
-        from: aigcTarget,
-        to: { width: finalTargetWidth, height: finalTargetHeight },
-        sizeMB: cropResult.sizeMB
+  } catch (err) {
+    if (isAigcTimeoutError(err)) {
+      console.warn(`[AIGC Video Expand] status timeout, keep polling: ${taskId}, ${err.message}`);
+      return {
+        ...videoExpandJobProcessingPayload(job),
+        details: err.message
       };
-      finalResult = { ...result, resultUrl: cropResult.url };
     }
-    res.json({
-      ok: true,
-      provider: "meitu-open-platform",
-      task: AIGC_TASKS.videoExpand,
-      inputMode,
-      fallbackUsed: false,
-      target: { width: finalTargetWidth, height: finalTargetHeight },
-      aigcTarget,
-      inputPreprocess: preparedInput.preprocessed
-        ? {
-          type: "ffmpeg-downscale",
-          maxSide: preparedInput.preprocessed.maxSide,
-          maxDurationSec: Number(finalMaxDurationSec.toFixed(2)),
-          fps: finalOutFps,
-          sizeMB: preparedInput.preprocessed.sizeMB
-        }
-        : null,
-      postProcess,
-      ...finalResult
+    throw err;
+  }
+
+  if (result.status === "failed") {
+    return {
+      ...videoExpandJobProcessingPayload(job),
+      status: "failed",
+      raw: result.raw
+    };
+  }
+  if (result.status !== "success") {
+    return videoExpandJobProcessingPayload(job);
+  }
+
+  let finalResult = result;
+  let postProcess = null;
+  if (job.needsPreciseCrop) {
+    const cropResult = await preciseCropVideoToTarget(result.resultUrl || result.remoteResultUrl, job.finalTargetWidth, job.finalTargetHeight, {
+      publicBaseUrl: job.publicBaseUrl,
+      mediaType: result.mediaInfo?.media_type || "video/mp4"
     });
+    postProcess = {
+      type: "ffmpeg-cover-crop",
+      from: job.aigcTarget,
+      to: { width: job.finalTargetWidth, height: job.finalTargetHeight },
+      sizeMB: cropResult.sizeMB
+    };
+    finalResult = { ...result, resultUrl: cropResult.url };
+  }
+
+  const response = {
+    ok: true,
+    status: "success",
+    provider: "meitu-open-platform",
+    task: AIGC_TASKS.videoExpand,
+    inputMode: job.inputMode,
+    fallbackUsed: false,
+    target: { width: job.finalTargetWidth, height: job.finalTargetHeight },
+    aigcTarget: job.aigcTarget,
+    inputPreprocess: videoExpandInputPreprocessPayload(job),
+    postProcess,
+    ...finalResult
+  };
+  job.completedResponse = response;
+  videoExpandJobs.set(taskId, job);
+  console.log("[AIGC Video Expand] success", JSON.stringify({ taskId, postProcess: Boolean(postProcess) }));
+  return response;
+}
+
+app.post("/api/aigc/video-expand", async (req, res) => {
+  try {
+    const job = await createVideoExpandJob(req, req.body || {});
+    let lastStatus = null;
+    for (let index = 0; index < 180; index += 1) {
+      await sleep(5000);
+      lastStatus = await resolveVideoExpandJobStatus(job.taskId);
+      if (lastStatus.status === "success") return res.json(lastStatus);
+      if (lastStatus.status === "failed") throw createAigcTaskFailureError(lastStatus.raw, job.taskId);
+    }
+    res.status(202).json(lastStatus || videoExpandJobProcessingPayload(job));
   } catch (err) {
     console.error("[AIGC Video Expand] failed:", err.message);
     res.status(500).json({ error: "AI 视频扩展失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/video-expand/submit", async (req, res) => {
+  try {
+    const job = await createVideoExpandJob(req, req.body || {});
+    res.json(videoExpandJobProcessingPayload(job));
+  } catch (err) {
+    console.error("[AIGC Video Expand] submit failed:", err.message);
+    res.status(500).json({ error: "AI 视频扩展投递失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/video-expand/status", async (req, res) => {
+  try {
+    const taskId = String(req.body?.taskId || req.query?.taskId || "").trim();
+    if (!taskId) return res.status(400).json({ error: "缺少 taskId" });
+    const status = await resolveVideoExpandJobStatus(taskId, req.body?.job);
+    if (status.status === "failed") throw createAigcTaskFailureError(status.raw, taskId);
+    res.json(status);
+  } catch (err) {
+    console.error("[AIGC Video Expand] status failed:", err.message);
+    res.status(500).json({ error: "AI 视频扩展状态查询失败", details: err.message, taskId: err.taskId });
   }
 });
 
