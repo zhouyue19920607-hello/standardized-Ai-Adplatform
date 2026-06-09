@@ -21,6 +21,8 @@ OBSERVER_ACCESS_ID=
 OBSERVER_BIZ=your-bucket/default
 OBSERVER_HOST=https://observer.starii-int.com
 OBSERVER_CDN_DOMAIN=https://your-cdn.example.com
+DATA_DIR=/data/ai-saap
+STORAGE_DIR=/data/ai-saap/storage
 ```
 
 ## 你需要自己补的内容
@@ -57,6 +59,29 @@ AIGC_POLL_INTERVAL_MS=2000
 1. 保存谷仓环境变量。
 2. 重新部署或重启后端服务。
 3. 打开线上站点测试标准化素材看板 AI 适配。
+
+## 后台上传内容持久化
+
+后台看板上传的蒙版、裁剪层、角标、模板展示视频会写入：
+
+```bash
+STORAGE_DIR
+```
+
+模板配置、上传路径覆盖记录会写入：
+
+```bash
+DATA_DIR
+```
+
+为了代码更新、重新部署、容器重建后不需要重新上传，谷仓必须把这两个目录配置到持久化挂载卷，例如：
+
+```bash
+DATA_DIR=/data/ai-saap
+STORAGE_DIR=/data/ai-saap/storage
+```
+
+如果没有挂载持久卷，容器重建会生成新的本地目录，后台上传内容就可能丢失。代码里已将上传路径同步写入 `asset-overrides.json`，但这个文件本身也必须放在持久化的 `DATA_DIR` 下。
 
 ## 当前报错对应原因
 

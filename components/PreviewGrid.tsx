@@ -652,6 +652,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   }
 
   if (templatePreviewAsset && !isGenerating) {
+    const previewAspectRatio = parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340');
     return (
       <div className="w-full">
         <div className="px-6 pt-2 pb-6 flex items-start justify-center">
@@ -662,11 +663,11 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             </div>
             <div
               className="relative overflow-hidden rounded-[24px] bg-black shadow-2xl ring-1 ring-black/10"
-              style={{ aspectRatio: '1440 / 2340', height: 'min(52vh, 520px)' }}
+              style={{ aspectRatio: previewAspectRatio, height: 'min(52vh, 520px)', maxWidth: 'min(92vw, 720px)' }}
             >
               <video
                 src={templatePreviewAsset.url}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-contain bg-black"
                 controls={false}
                 autoPlay
                 playsInline

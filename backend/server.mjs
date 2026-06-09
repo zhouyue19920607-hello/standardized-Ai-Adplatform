@@ -83,6 +83,7 @@ const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 // NOTE: 遇罩/裁剪层/角标路径单独存储，不随代码更新被覆盖
 // 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path, preview_video_path } }
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
+const ASSET_OVERRIDE_FIELDS = ["maskPath", "mask_path", "maskUrl", "crop_overlay_path", "badge_overlay_path", "preview_video_path"];
 
 const getShanghaiDateKey = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -172,6 +173,23 @@ async function readJson(filePath, defaultValue) {
 async function writeJson(filePath, data) {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+}
+
+async function persistTemplateAssetOverrides(templates = []) {
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  let changed = false;
+  templates.forEach(template => {
+    if (!template?.id) return;
+    const next = { ...(assetOverrides[template.id] || {}) };
+    ASSET_OVERRIDE_FIELDS.forEach(field => {
+      if (template[field]) {
+        next[field] = template[field];
+        changed = true;
+      }
+    });
+    if (Object.keys(next).length > 0) assetOverrides[template.id] = next;
+  });
+  if (changed) await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
 }
 
 // 初始化：保证数据文件存在
@@ -330,6 +348,7 @@ app.put("/api/templates/:id", async (req, res) => {
 
   templates[index] = { ...templates[index], ...payload };
   await writeJson(TEMPLATES_FILE, templates);
+  await persistTemplateAssetOverrides([templates[index]]);
   res.json(templates[index]);
 });
 
@@ -352,6 +371,7 @@ app.post("/api/templates", async (req, res) => {
   };
   templates.push(template);
   await writeJson(TEMPLATES_FILE, templates);
+  await persistTemplateAssetOverrides([template]);
   res.status(201).json(template);
 });
 
@@ -364,6 +384,7 @@ app.post("/api/templates/reorder", async (req, res) => {
 
   // 简易实现：直接全量覆盖。为了安全起见，这里可以校验 ID 集合是否一致，但信任前端全量传回也没问题。
   await writeJson(TEMPLATES_FILE, newOrderTemplates);
+  await persistTemplateAssetOverrides(newOrderTemplates);
   res.json({ success: true, count: newOrderTemplates.length });
 });
 
