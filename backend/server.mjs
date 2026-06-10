@@ -2122,14 +2122,11 @@ function createProviderError(stage, endpoint, raw) {
 function buildOpenapiDirectBody(payload = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
-  const firstMedia = mediaList[0];
-  const firstMediaType = firstMedia?.media_profiles?.media_data_type || "url";
-  const imageField = firstMediaType === "url" ? "image_url" : "image";
 
   return {
     ...(payload.body || {}),
-    ...parameter,
-    ...(firstMedia?.media_data ? { [imageField]: firstMedia.media_data } : {})
+    ...(Object.keys(parameter).length ? { parameter } : {}),
+    ...(mediaList.length ? { media_info_list: mediaList } : {})
   };
 }
 
