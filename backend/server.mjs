@@ -2213,6 +2213,10 @@ async function mediaInfoForOpenapiAdaptImage(imageUrl, context = {}) {
     : publicUrlToStaticUrl(imageUrl || "", publicBaseUrl);
 
   if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
+    const publicUrl = publicStaticUrl(localStaticUrl, publicBaseUrl);
+    if (/^https?:\/\//i.test(publicUrl)) {
+      return mediaInfoFromUrl(publicUrl);
+    }
     const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
     return mediaInfoWithBase64(mediaInfoFromUrl(localStaticUrl), imageBase64);
   }
