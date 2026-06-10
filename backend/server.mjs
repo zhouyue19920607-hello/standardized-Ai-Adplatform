@@ -2133,29 +2133,11 @@ function buildOpenapiDirectBody(payload = {}) {
 function buildOpenapiAsyncBody(payload = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
-  const firstMedia = mediaList[0];
-  const firstMediaType = firstMedia?.media_profiles?.media_data_type || "url";
-  const imageField = firstMediaType === "url" ? "image_url" : "image";
-  const initImages = mediaList
-    .map(item => {
-      const mediaData = item?.media_data;
-      if (!mediaData) return null;
-      return {
-        url: mediaData,
-        profile: {
-          media_profiles: item?.media_profiles || { media_data_type: "url" },
-          version: "v1"
-        }
-      };
-    })
-    .filter(Boolean);
 
   return {
     ...(payload.body || {}),
-    ...(firstMedia?.media_data ? { [imageField]: firstMedia.media_data } : {}),
-    ...(initImages.length ? { init_images: initImages } : {}),
-    ...(mediaList.length ? { media_info_list: mediaList } : {}),
-    ...(Object.keys(parameter).length ? { parameter } : {})
+    ...(Object.keys(parameter).length ? { parameter } : {}),
+    ...(mediaList.length ? { media_info_list: mediaList } : {})
   };
 }
 
@@ -2750,17 +2732,6 @@ async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
           prompt_pos: prompt || "clean natural background, seamless fill",
           num_samples: 1,
           seed: -1
-        },
-        body: {
-          image: publicImageUrl,
-          mask: publicMaskUrl,
-          mask_url: publicMaskUrl,
-          task: "inpaint",
-          inpaint: true,
-          rsp_media_type: "url",
-          prompt_pos: prompt || "clean natural background, seamless fill",
-          num_samples: 1,
-          seed: -1
         }
       };
   const raw = await runAdaptProvider("inpaint", payload, context);
@@ -2787,15 +2758,6 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
         media_info_list: [mediaInfo],
         parameter: {
           rsp_media_type: "url",
-          mode: 1,
-          ratio,
-          seed: -1,
-          generate_num: 1,
-          high_quality_encode: true,
-          extra_prompt: prompt || "Extend background naturally, keep original subject, text and logo unchanged"
-        },
-        body: {
-          image: publicImageUrl,
           mode: 1,
           ratio,
           seed: -1,
@@ -2837,13 +2799,6 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
     : {
         media_info_list: [mediaInfo],
         parameter: {
-          rsp_media_type: "url",
-          mode: 1,
-          ratio,
-          keep_subject: true
-        },
-        body: {
-          image: publicImageUrl,
           rsp_media_type: "url",
           mode: 1,
           ratio,
