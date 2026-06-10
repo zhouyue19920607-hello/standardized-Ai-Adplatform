@@ -2122,15 +2122,27 @@ function createProviderError(stage, endpoint, raw) {
 function openapiPayloadBody(payload = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
-  const data = mediaList.map(item => ({
-    image: item?.media_data,
-    media_data: item?.media_data,
-    media_profiles: item?.media_profiles || { media_data_type: "url" }
-  })).filter(item => item.image);
+  const firstMedia = mediaList[0];
+  const firstMediaType = firstMedia?.media_profiles?.media_data_type || "url";
+  const imageField = firstMediaType === "url" ? "image_url" : "image";
+  const initImages = mediaList
+    .map(item => {
+      const mediaData = item?.media_data;
+      if (!mediaData) return null;
+      return {
+        url: mediaData,
+        profile: {
+          media_profiles: item?.media_profiles || { media_data_type: "url" },
+          version: "v1"
+        }
+      };
+    })
+    .filter(Boolean);
+
   return {
     ...(payload.body || {}),
-    ...(mediaList[0]?.media_data ? { image: mediaList[0].media_data } : {}),
-    ...(data.length ? { data } : {}),
+    ...(firstMedia?.media_data ? { [imageField]: firstMedia.media_data } : {}),
+    ...(initImages.length ? { init_images: initImages } : {}),
     ...(mediaList.length ? { media_info_list: mediaList } : {}),
     ...(Object.keys(parameter).length ? { parameter } : {})
   };
