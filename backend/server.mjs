@@ -2205,6 +2205,21 @@ function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
   return imageUrl;
 }
 
+async function mediaInfoForOpenapiAdaptImage(imageUrl, context = {}) {
+  const config = context.config || getAigcConfig();
+  const publicBaseUrl = context.publicBaseUrl || config.publicBaseUrl || "";
+  const localStaticUrl = imageUrl?.startsWith("/static/")
+    ? imageUrl
+    : publicUrlToStaticUrl(imageUrl || "", publicBaseUrl);
+
+  if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
+    const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
+    return mediaInfoWithBase64(mediaInfoFromUrl(localStaticUrl), imageBase64);
+  }
+
+  return mediaInfoFromUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
+}
+
 function boxFromProvider(value, width, height) {
   if (!value || typeof value !== "object") return null;
   const x = Number(value.x ?? value.left ?? value.top_x ?? value.xmin);
@@ -2461,10 +2476,13 @@ async function detectSaliencyForAdapt(imageUrl, context) {
   const config = context.config;
   const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? { image_url: publicUrl, return_mask: true, return_crop: true, return_binary: false }
     : {
-        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        media_info_list: [mediaInfo],
         parameter: { rsp_media_type: "url", nMask: true, nbox: true, model_type: 1 }
       };
   const raw = await runAdaptProvider("saliency", payload, context);
@@ -2496,10 +2514,13 @@ async function detectLogoForAdapt(imageUrl, context) {
   const config = context.config;
   const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? { image_url: publicUrl, task: "logo_seg", inpaint: false, return_mask: true }
     : {
-        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        media_info_list: [mediaInfo],
         parameter: { inpaint: false, requester: "design_studio", task: "logo_seg", userboxes: [] }
       };
   const raw = await runAdaptProvider("logo", payload, context);
@@ -2523,10 +2544,13 @@ async function detectTextForAdapt(imageUrl, context) {
   const config = context.config;
   const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? { image_url: publicUrl, return_polygon: true, return_text: true }
     : {
-        media_info_list: [mediaInfoFromUrl(publicUrl)],
+        media_info_list: [mediaInfo],
         parameter: { rsp_media_type: "url" }
       };
   const raw = await runAdaptProvider("text", payload, context);
@@ -2674,6 +2698,12 @@ async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
   const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const publicMaskUrl = publicAigcImageUrl(maskUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const sourceMediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
+  const maskMediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(maskUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? {
         image_url: publicImageUrl,
@@ -2686,8 +2716,8 @@ async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
       }
     : {
         media_info_list: [
-          mediaInfoFromUrl(publicImageUrl),
-          mediaInfoFromUrl(publicMaskUrl)
+          sourceMediaInfo,
+          maskMediaInfo
         ],
         parameter: {
           task: "inpaint",
@@ -2718,6 +2748,9 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
   const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const ratio = targetRatioLabel(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
+  const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? {
         image_url: publicImageUrl,
@@ -2727,7 +2760,7 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
         quality: "high"
       }
     : {
-        media_info_list: [mediaInfoFromUrl(publicImageUrl)],
+        media_info_list: [mediaInfo],
         parameter: {
           rsp_media_type: "url",
           mode: 1,
@@ -2766,6 +2799,9 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
   const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const ratio = targetRatioLabel(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
+  const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
+    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? {
         image_url: publicImageUrl,
@@ -2775,7 +2811,7 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
         keep_subject: true
       }
     : {
-        media_info_list: [mediaInfoFromUrl(publicImageUrl)],
+        media_info_list: [mediaInfo],
         parameter: {
           rsp_media_type: "url",
           mode: 1,
