@@ -2119,7 +2119,21 @@ function createProviderError(stage, endpoint, raw) {
   return error;
 }
 
-function openapiPayloadBody(payload = {}) {
+function buildOpenapiDirectBody(payload = {}) {
+  const mediaList = payload.media_info_list || [];
+  const parameter = payload.parameter || {};
+  const firstMedia = mediaList[0];
+  const firstMediaType = firstMedia?.media_profiles?.media_data_type || "url";
+  const imageField = firstMediaType === "url" ? "image_url" : "image";
+
+  return {
+    ...(payload.body || {}),
+    ...parameter,
+    ...(firstMedia?.media_data ? { [imageField]: firstMedia.media_data } : {})
+  };
+}
+
+function buildOpenapiAsyncBody(payload = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
   const firstMedia = mediaList[0];
@@ -2152,10 +2166,7 @@ async function callOpenapiV3Sync(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
   const url = `${config.apiHost}/v1/${apiName}`;
-  const requestPayload = {
-    api_name: apiName,
-    body: openapiPayloadBody(payload)
-  };
+  const requestPayload = buildOpenapiDirectBody(payload);
   const raw = await aigcJsonRequest(withAigcQueryAuth(url, config, { withMsgId: true }), "POST", requestPayload, { ...config, authMode: "none" });
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-sync", apiName, raw);
   return raw?.data || raw;
@@ -2167,7 +2178,7 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   const url = `${config.apiHost}/v1/algorithm/submit`;
   const requestPayload = {
     api_name: apiName,
-    body: openapiPayloadBody(payload),
+    body: buildOpenapiAsyncBody(payload),
     extra_params: payload.extra_params || {}
   };
   const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
