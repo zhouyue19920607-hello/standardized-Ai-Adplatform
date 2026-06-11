@@ -827,11 +827,14 @@ const AIGC_VIDEO_EXPAND_MAX_SIDE = 1024;
 const videoExpandJobs = new Map();
 
 function getAigcConfig() {
+  const defaultInnerOpenapiHost = "http://openapi-ai.meitu.com";
   return {
     ak: process.env.AIGC_AK || "",
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
     apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
+    mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || defaultInnerOpenapiHost).replace(/\/+$/, ""),
+    aiApiHost: (process.env.AIGC_AI_API_HOST || defaultInnerOpenapiHost).replace(/\/+$/, ""),
     authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
     apiStyle: (process.env.AIGC_PROVIDER_API_STYLE || "").toLowerCase(),
     pollEndpointTemplate: process.env.AIGC_POLL_ENDPOINT_TEMPLATE || "/v2/task/{taskId}",
@@ -2083,8 +2086,8 @@ const ADAPT_API_STYLES = {
 const ADAPT_ENDPOINTS = {
   openapi: {
     saliency: "sod",
-    logo: "logo_seg_async",
-    text: "textdetect_img_async",
+    logo: "logo_seg",
+    text: "textdetect_img",
     expand: "mtimage_expand_v4_async",
     inpaint: "image_manipulation_fl_async",
     crop: "image_cropping_async"
@@ -2104,6 +2107,30 @@ const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "image_manipulation_fl_async",
   "image_cropping_async"
 ]);
+
+function resolveOpenapiEndpointUrl(apiName, config) {
+  if (/^https?:\/\//i.test(apiName)) return apiName;
+  if (apiName === "mtimage_expand_v4_async") {
+    return `${config.mtlabApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "logo_seg" || apiName === "textdetect_img") {
+    return `${config.aiApiHost}/v1/${apiName}`;
+  }
+  return `${config.apiHost}/v1/${apiName}`;
+}
+
+function isProviderNoRouteError(raw) {
+  const message = normalizeProviderMessage(raw).toLowerCase();
+  return message.includes("no route found") || message.includes("404");
+}
+
+function shouldUseOpenapiMessageEnvelope(apiName) {
+  return [
+    "mtimage_expand_v4_async",
+    "logo_seg",
+    "textdetect_img"
+  ].includes(apiName);
+}
 
 function getAdaptApiStyle(config = getAigcConfig()) {
   if (config.apiStyle === ADAPT_API_STYLES.aiPlatform || config.authMode === "platform_header" || config.authMode === "header") {
@@ -2186,20 +2213,29 @@ function summarizeProviderRaw(raw) {
   };
 }
 
-function buildOpenapiDirectBody(payload = {}) {
+function buildOpenapiDirectBody(payload = {}, options = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
-
-  return {
+  const message = {
     ...(payload.body || {}),
     ...(Object.keys(parameter).length ? { parameter } : {}),
     ...(mediaList.length ? { media_info_list: mediaList } : {})
   };
+  return options.wrapMessage ? { message } : message;
 }
 
-function buildOpenapiAsyncBody(payload = {}) {
+function buildOpenapiAsyncBody(payload = {}, options = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter && typeof payload.parameter === "object" ? payload.parameter : {};
+  if (options.wrapMessage) {
+    return {
+      message: {
+        ...(payload.body || {}),
+        ...(Object.keys(parameter).length ? { parameter } : {}),
+        ...(mediaList.length ? { media_info_list: mediaList } : {})
+      }
+    };
+  }
   const flattenedParameter = { ...parameter };
   if (flattenedParameter.parameter && typeof flattenedParameter.parameter === "object") {
     Object.assign(flattenedParameter, flattenedParameter.parameter);
@@ -2216,8 +2252,8 @@ function buildOpenapiAsyncBody(payload = {}) {
 async function callOpenapiV3Sync(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
-  const url = `${config.apiHost}/v1/${apiName}`;
-  const requestPayload = buildOpenapiDirectBody(payload);
+  const url = resolveOpenapiEndpointUrl(apiName, config);
+  const requestPayload = buildOpenapiDirectBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
   const raw = await aigcJsonRequest(withAigcQueryAuth(url, config, { withMsgId: true }), "POST", requestPayload, { ...config, authMode: "none" });
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-sync", apiName, raw);
   return raw?.data || raw;
@@ -2227,16 +2263,21 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
   if (OPENAPI_DIRECT_ASYNC_ENDPOINTS.has(apiName)) {
-    const url = `${config.apiHost}/v1/${apiName}`;
-    const requestPayload = buildOpenapiAsyncBody(payload);
+    const url = resolveOpenapiEndpointUrl(apiName, config);
+    const requestPayload = buildOpenapiAsyncBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
     if (payload.extra_params && Object.keys(payload.extra_params).length) {
       requestPayload.extra_params = payload.extra_params;
     }
     const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
     if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
-    const msgId = raw?.data?.msg_id || raw?.msg_id || raw?.data?.task_id || raw?.task_id;
-    if (!msgId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No msg_id in response" });
-    return { msgId, raw, pollMode: "query_result" };
+    const taskId = raw?.data?.task_id || raw?.task_id || raw?.data?.msg_id || raw?.msg_id;
+    if (!taskId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No task_id in response" });
+    return {
+      taskId,
+      raw,
+      pollMode: "task_query_result",
+      pollHost: new URL(url).origin
+    };
   }
 
   const url = `${config.apiHost}/v1/algorithm/submit`;
@@ -2267,6 +2308,66 @@ function getOpenapiPollState(raw) {
 
 async function pollOpenapiV3Async(msgId, options = {}) {
   const config = options.config || getAigcConfig();
+  if (options.pollMode === "task_query_result") {
+    const pollHost = options.pollHost || config.mtlabApiHost || config.apiHost;
+    const queryAuth = { ...config, authMode: "none" };
+    const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
+    const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
+    const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+    const candidatePollers = [
+      {
+        key: "openapi-poll/query_result",
+        run: async () => {
+          const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+          return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+        }
+      },
+      {
+        key: "v1/algorithm/poll",
+        run: async () => {
+          const pollUrl = withAigcQueryAuth(`${pollHost}/v1/algorithm/poll`, config);
+          return aigcJsonRequest(pollUrl, "POST", { body: { task_id: msgId } }, queryAuth);
+        }
+      },
+      {
+        key: "v1/mtimage_expand_v4/result",
+        run: async () => {
+          const baseUrl = withAigcQueryAuth(`${pollHost}/v1/mtimage_expand_v4/result`, config);
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+          return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+        }
+      }
+    ];
+    let activePoller = candidatePollers[0];
+    await sleep(initialDelay);
+    for (let index = 0; index < maxPolls; index += 1) {
+      let raw = await activePoller.run();
+      if (isProviderNoRouteError(raw)) {
+        const nextPoller = candidatePollers.find(candidate => candidate.key !== activePoller.key);
+        const remainingPollers = candidatePollers.filter(candidate => candidate.key !== activePoller.key);
+        let switched = false;
+        for (const candidate of remainingPollers) {
+          const probe = await candidate.run();
+          if (!isProviderNoRouteError(probe)) {
+            activePoller = candidate;
+            raw = probe;
+            switched = true;
+            console.log("[OpenAPI Poll] switched poll endpoint", JSON.stringify({ endpoint: candidate.key, taskId: msgId }));
+            break;
+          }
+        }
+        if (!switched && nextPoller) {
+          throw createProviderError("openapi-poll", activePoller.key, raw);
+        }
+      }
+      const state = getOpenapiPollState(raw);
+      if (state === "finished") return raw?.data || raw;
+      if (state === "failed") throw createProviderError("openapi-poll", activePoller.key, raw);
+      await sleep(pollInterval);
+    }
+    throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
+  }
   if (options.pollMode === "algorithm_poll") {
     const url = withAigcQueryAuth(`${config.apiHost}/openapi-poll/query_result`, config);
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
@@ -2304,8 +2405,13 @@ async function pollOpenapiV3Async(msgId, options = {}) {
 }
 
 async function callOpenapiV3Async(apiName, payload, options = {}) {
-  const { msgId, pollMode } = await submitOpenapiV3Async(apiName, payload, options);
-  return pollOpenapiV3Async(msgId, { ...options, pollMode });
+  const submitted = await submitOpenapiV3Async(apiName, payload, options);
+  const jobId = submitted.taskId || submitted.msgId;
+  return pollOpenapiV3Async(jobId, {
+    ...options,
+    pollMode: submitted.pollMode,
+    pollHost: submitted.pollHost
+  });
 }
 
 function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
