@@ -929,6 +929,20 @@ function withAigcQueryAuth(url, config, options = {}) {
 
 async function aigcJsonRequest(url, method, payload, config) {
   const body = payload ? JSON.stringify(payload) : "";
+  const normalizeHttpResponse = response => {
+    if (response.status >= 400) {
+      const message = typeof response.data === "string"
+        ? response.data
+        : response.data?.message || response.data?.msg || response.data?.error_msg || response.statusText;
+      return {
+        code: response.status,
+        message,
+        data: response.data,
+        httpStatus: response.status
+      };
+    }
+    return response.data;
+  };
   if (config.authMode === "none") {
     const response = await axios.request({
       url,
@@ -939,7 +953,7 @@ async function aigcJsonRequest(url, method, payload, config) {
       timeout: 90000,
       validateStatus: () => true
     });
-    return response.data;
+    return normalizeHttpResponse(response);
   }
 
   if (config.authMode === "query") {
@@ -952,7 +966,7 @@ async function aigcJsonRequest(url, method, payload, config) {
       timeout: 90000,
       validateStatus: () => true
     });
-    return response.data;
+    return normalizeHttpResponse(response);
   }
 
   if (config.authMode === "platform_header" || config.authMode === "header") {
@@ -969,7 +983,7 @@ async function aigcJsonRequest(url, method, payload, config) {
       timeout: 90000,
       validateStatus: () => true
     });
-    return response.data;
+    return normalizeHttpResponse(response);
   }
 
   const parsed = new URL(url);
@@ -993,7 +1007,7 @@ async function aigcJsonRequest(url, method, payload, config) {
     timeout: 90000,
     validateStatus: () => true
   });
-  return response.data;
+  return normalizeHttpResponse(response);
 }
 
 function sleep(ms) {
@@ -2085,6 +2099,12 @@ const ADAPT_ENDPOINTS = {
   }
 };
 
+const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
+  "mtimage_expand_v4_async",
+  "image_manipulation_fl_async",
+  "image_cropping_async"
+]);
+
 function getAdaptApiStyle(config = getAigcConfig()) {
   if (config.apiStyle === ADAPT_API_STYLES.aiPlatform || config.authMode === "platform_header" || config.authMode === "header") {
     return ADAPT_API_STYLES.aiPlatform;
@@ -2093,11 +2113,13 @@ function getAdaptApiStyle(config = getAigcConfig()) {
 }
 
 function normalizeProviderCode(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
   return raw?.code ?? raw?.error_code ?? raw?.status_code ?? 0;
 }
 
 function normalizeProviderMessage(raw) {
-  return raw?.message || raw?.error_msg || raw?.msg || raw?.data?.message || "";
+  if (typeof raw === "string") return raw;
+  return raw?.message || raw?.error_msg || raw?.msg || raw?.data?.message || raw?.data?.error_msg || raw?.data?.msg || "";
 }
 
 function isProviderPermissionError(raw) {
@@ -2106,17 +2128,62 @@ function isProviderPermissionError(raw) {
 }
 
 function isProviderSuccess(raw) {
+  if (!raw || typeof raw !== "object") return false;
   const code = normalizeProviderCode(raw);
-  return [undefined, null, 0, "0"].includes(code) || raw?.data?.status === "completed";
+  return [null, 0, "0"].includes(code) || raw?.data?.status === "completed";
 }
 
 function createProviderError(stage, endpoint, raw) {
-  const error = new Error(normalizeProviderMessage(raw) || `${stage} 调用失败`);
+  const message = normalizeProviderMessage(raw) || `${stage} 调用失败`;
+  const error = new Error(`${stage}/${endpoint}: ${message}`);
   error.stage = stage;
   error.endpoint = endpoint;
   error.providerRaw = raw;
   error.permission = isProviderPermissionError(raw);
   return error;
+}
+
+function summarizeMediaInfoList(mediaInfoList = []) {
+  return (Array.isArray(mediaInfoList) ? mediaInfoList : []).map((item, index) => {
+    const mediaData = item?.media_data;
+    const mediaType = item?.media_profiles?.media_data_type || "unknown";
+    const isHttp = typeof mediaData === "string" && /^https?:\/\//i.test(mediaData);
+    const isStatic = typeof mediaData === "string" && mediaData.startsWith("/static/");
+    return {
+      index,
+      mediaType,
+      source: isHttp ? "http" : isStatic ? "static" : "inline",
+      size: typeof mediaData === "string" ? mediaData.length : 0,
+      preview: typeof mediaData === "string"
+        ? isHttp || isStatic
+          ? mediaData.slice(0, 120)
+          : `${mediaData.slice(0, 24)}...`
+        : ""
+    };
+  });
+}
+
+function summarizeAdaptPayload(payload = {}) {
+  return {
+    parameterKeys: Object.keys(payload?.parameter || {}),
+    bodyKeys: Object.keys(payload?.body || {}),
+    mediaCount: Array.isArray(payload?.media_info_list) ? payload.media_info_list.length : 0,
+    mediaList: summarizeMediaInfoList(payload?.media_info_list || [])
+  };
+}
+
+function summarizeProviderRaw(raw) {
+  const data = raw?.data || {};
+  const mediaList = extractAigcResultMedia(raw);
+  return {
+    code: normalizeProviderCode(raw),
+    message: normalizeProviderMessage(raw),
+    dataKeys: Object.keys(data || {}),
+    mediaListCount: Array.isArray(mediaList) ? mediaList.length : 0,
+    hasMsgId: Boolean(raw?.msg_id || data?.msg_id),
+    hasTaskId: Boolean(raw?.task_id || data?.task_id),
+    status: data?.status || raw?.status || ""
+  };
 }
 
 function buildOpenapiDirectBody(payload = {}) {
@@ -2154,6 +2221,19 @@ async function callOpenapiV3Sync(apiName, payload, options = {}) {
 async function submitOpenapiV3Async(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  if (OPENAPI_DIRECT_ASYNC_ENDPOINTS.has(apiName)) {
+    const url = `${config.apiHost}/v1/${apiName}`;
+    const requestPayload = buildOpenapiAsyncBody(payload);
+    if (payload.extra_params && Object.keys(payload.extra_params).length) {
+      requestPayload.extra_params = payload.extra_params;
+    }
+    const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+    if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
+    const msgId = raw?.data?.msg_id || raw?.msg_id || raw?.data?.task_id || raw?.task_id;
+    if (!msgId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No msg_id in response" });
+    return { msgId, raw, pollMode: "query_result" };
+  }
+
   const url = `${config.apiHost}/v1/algorithm/submit`;
   const requestPayload = {
     api_name: apiName,
@@ -2162,41 +2242,65 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   };
   const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
-  const msgId = raw?.data?.msg_id || raw?.msg_id;
+  const msgId = raw?.data?.msg_id || raw?.msg_id || raw?.data?.task_id || raw?.task_id;
   if (!msgId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No msg_id in response" });
-  return { msgId, raw };
+  return { msgId, raw, pollMode: "algorithm_poll" };
 }
 
 function getOpenapiPollState(raw) {
-  const code = raw?.code;
+  const code = raw?.error_code ?? raw?.code;
   const status = String(raw?.data?.status || raw?.status || "").toLowerCase();
-  if (code === 0 || status === "finished" || status === "completed" || status === "success") return "finished";
+  const mediaList = extractAigcResultMedia(raw);
+  if ((code === 0 || code === "0") && mediaList.length > 0) return "finished";
+  if (status === "finished" || status === "completed" || status === "success") return "finished";
+  if ((code === 0 || code === "0") && mediaList.length === 0) return "processing";
   if (code === 1 || status === "processing" || status === "pending" || status === "queued") return "processing";
   if (code === 2 || status === "failed" || status === "error") return "failed";
+  if (![undefined, null, "", 0, "0"].includes(code)) return "failed";
   return "unknown";
 }
 
 async function pollOpenapiV3Async(msgId, options = {}) {
   const config = options.config || getAigcConfig();
-  const url = `${config.apiHost}/v1/algorithm/poll`;
-  const requestPayload = { body: { msg_id: msgId } };
+  if (options.pollMode === "algorithm_poll") {
+    const url = `${config.apiHost}/v1/algorithm/poll`;
+    const requestPayload = { body: { msg_id: msgId } };
+    const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
+    const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
+    const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+    await sleep(initialDelay);
+    for (let index = 0; index < maxPolls; index += 1) {
+      const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+      const state = getOpenapiPollState(raw);
+      if (state === "finished") return raw?.data || raw;
+      if (state === "failed") throw createProviderError("openapi-poll", "algorithm/poll", raw);
+      await sleep(pollInterval);
+    }
+    throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
+  }
+
+  const url = `${config.apiHost}/v1/query_result?${new URLSearchParams({
+    msg_id: msgId,
+    api_key: config.ak,
+    api_secret: config.sk
+  }).toString()}`;
   const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
   const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
   const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
   await sleep(initialDelay);
   for (let index = 0; index < maxPolls; index += 1) {
-    const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+    const raw = await aigcJsonRequest(url, "GET", null, { ...config, authMode: "none" });
     const state = getOpenapiPollState(raw);
     if (state === "finished") return raw?.data || raw;
-    if (state === "failed") throw createProviderError("openapi-poll", "algorithm/poll", raw);
+    if (state === "failed") throw createProviderError("openapi-poll", "query_result", raw);
     await sleep(pollInterval);
   }
   throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
 }
 
 async function callOpenapiV3Async(apiName, payload, options = {}) {
-  const { msgId } = await submitOpenapiV3Async(apiName, payload, options);
-  return pollOpenapiV3Async(msgId, options);
+  const { msgId, pollMode } = await submitOpenapiV3Async(apiName, payload, options);
+  return pollOpenapiV3Async(msgId, { ...options, pollMode });
 }
 
 function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
@@ -2406,14 +2510,39 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
   const apiStyle = getAdaptApiStyle(config);
   const endpoint = ADAPT_ENDPOINTS[apiStyle]?.[endpointName];
   if (!endpoint) throw new Error(`未知算法 endpoint: ${apiStyle}/${endpointName}`);
-  if (apiStyle === ADAPT_API_STYLES.aiPlatform) {
-    return runPlatformTask(endpoint, payload, { ...options, config });
+  const isAsync = apiStyle === ADAPT_API_STYLES.aiPlatform ? true : endpoint.endsWith("_async");
+  console.log("[AdaptImage] request", JSON.stringify({
+    endpointName,
+    apiStyle,
+    endpoint,
+    isAsync,
+    payload: summarizeAdaptPayload(payload)
+  }));
+  try {
+    const raw = apiStyle === ADAPT_API_STYLES.aiPlatform
+      ? await runPlatformTask(endpoint, payload, { ...options, config })
+      : isAsync
+        ? await callOpenapiV3Async(endpoint, payload, { ...options, config })
+        : await callOpenapiV3Sync(endpoint, payload, { ...options, config });
+    console.log("[AdaptImage] response", JSON.stringify({
+      endpointName,
+      apiStyle,
+      endpoint,
+      ...summarizeProviderRaw(raw)
+    }));
+    return raw;
+  } catch (err) {
+    console.warn("[AdaptImage] failed", JSON.stringify({
+      endpointName,
+      apiStyle,
+      endpoint,
+      isAsync,
+      message: err?.message || String(err),
+      stage: err?.stage || "",
+      provider: err?.providerRaw ? summarizeProviderRaw(err.providerRaw) : null
+    }));
+    throw err;
   }
-
-  const isAsync = endpoint.endsWith("_async");
-  return isAsync
-    ? callOpenapiV3Async(endpoint, payload, { ...options, config })
-    : callOpenapiV3Sync(endpoint, payload, { ...options, config });
 }
 
 function extractResultUrls(raw) {
@@ -2582,6 +2711,12 @@ async function analyzeAdImageForAdapt(imageUrl, context) {
     ["logo", detectLogoForAdapt],
     ["text", detectTextForAdapt]
   ];
+  console.log("[AdaptImage] Step1 start", JSON.stringify({
+    stages: stages.map(([key]) => key),
+    imageUrl,
+    sourceWidth: context.sourceWidth,
+    sourceHeight: context.sourceHeight
+  }));
   const settled = await Promise.allSettled(stages.map(([, fn]) => fn(imageUrl, context)));
   const analysis = {
     subject: null,
@@ -2593,11 +2728,23 @@ async function analyzeAdImageForAdapt(imageUrl, context) {
     const key = stages[index][0];
     if (item.status === "fulfilled") {
       analysis[key] = item.value;
+      console.log(`[AdaptImage] Step1 ✓ ${key}`, JSON.stringify({
+        hasMask: Boolean(item.value?.maskUrl),
+        boxCount: Array.isArray(item.value?.boxes) ? item.value.boxes.length : item.value?.box ? 1 : 0,
+        textCount: Array.isArray(item.value?.texts) ? item.value.texts.length : 0,
+        exists: item.value?.exists,
+        hasTarget: item.value?.hasTarget
+      }));
     } else {
       const err = item.reason;
       analysis.warnings.push(`${key} 检测不可用：${err?.message || String(err)}`);
+      console.warn(`[AdaptImage] Step1 ✗ ${key}`, err?.message || String(err));
     }
   });
+  console.log("[AdaptImage] Step1 done", JSON.stringify({
+    success: stages.filter((_, index) => settled[index].status === "fulfilled").map(([key]) => key),
+    failed: stages.filter((_, index) => settled[index].status === "rejected").map(([key]) => key)
+  }));
   return analysis;
 }
 
@@ -2613,6 +2760,12 @@ async function buildProtectedMaskForAdapt(analysis, width, height) {
   ].filter(Boolean);
   const mergedProtected = await mergeProtectedMasks(protectedMaskUrls, width, height);
   const mergedRemovable = await mergeProtectedMasks(removableMaskUrls, width, height);
+  console.log("[AdaptImage] Step2 masks", JSON.stringify({
+    protectedSources: protectedMaskUrls.length,
+    removableSources: removableMaskUrls.length,
+    protectedMaskUrl: mergedProtected?.protectedMaskUrl || "",
+    removableMaskUrl: mergedRemovable?.protectedMaskUrl || ""
+  }));
   return {
     protectedMaskUrl: mergedProtected?.protectedMaskUrl || "",
     editableMaskUrl: mergedProtected?.editableMaskUrl || "",
@@ -2655,13 +2808,18 @@ async function ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight) {
 }
 
 async function inpaintForBackgroundPrep(imageUrl, masks, context) {
-  if (!masks?.removableMaskUrl) return imageUrl;
+  if (!masks?.removableMaskUrl) {
+    console.log("[AdaptImage] Step3 inpaint skipped", JSON.stringify({ reason: "no removable mask" }));
+    return imageUrl;
+  }
+  console.log("[AdaptImage] Step3 inpaint start", JSON.stringify({ imageUrl, maskUrl: masks.removableMaskUrl }));
   const inpainted = await inpaintImageForAdapt(
     imageUrl,
     masks.removableMaskUrl,
     context,
     "remove logo and text layers, rebuild a clean natural background only"
   );
+  console.log("[AdaptImage] Step3 inpaint done", JSON.stringify({ resultUrl: inpainted || imageUrl, changed: Boolean(inpainted) }));
   return inpainted || imageUrl;
 }
 
@@ -2813,10 +2971,19 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
 }
 
 async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, context, prompt, analysis, masks) {
+  console.log("[AdaptImage] plan", JSON.stringify({
+    strategy: plan.strategy,
+    steps: plan.steps,
+    reasons: plan.reasons,
+    targetWidth,
+    targetHeight
+  }));
   if (plan.strategy === "direct") {
+    console.log("[AdaptImage] execute direct");
     return ensureFinalAdaptSize(imageUrl, targetWidth, targetHeight);
   }
   if (plan.strategy === "crop") {
+    console.log("[AdaptImage] execute crop");
     const croppedUrl = await cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context);
     return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight);
   }
@@ -2834,9 +3001,11 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   workingUrl = await inpaintForBackgroundPrep(workingUrl, masks, context);
 
   const expandedUrl = await expandImageV4ForAdapt(workingUrl, targetWidth, targetHeight, context, enhancedPrompt);
+  console.log("[AdaptImage] Step4 expand done", JSON.stringify({ before: workingUrl, after: expandedUrl || workingUrl }));
   workingUrl = expandedUrl || workingUrl;
 
   workingUrl = await cropWithFallbackForAdapt(workingUrl, targetWidth, targetHeight, context);
+  console.log("[AdaptImage] Step5 crop done", JSON.stringify({ resultUrl: workingUrl }));
   return ensureFinalAdaptSize(workingUrl, targetWidth, targetHeight);
 }
 
@@ -3161,6 +3330,16 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
     if (!width || !height) {
       return res.status(400).json({ ok: false, error: "targetWidth / targetHeight 必须是正整数" });
     }
+    console.log("[AdaptImage] start", JSON.stringify({
+      imageUrl,
+      targetWidth: width,
+      targetHeight: height,
+      templateId,
+      templateName,
+      appName,
+      allowRelayout,
+      promptLength: typeof prompt === "string" ? prompt.length : 0
+    }));
 
     const config = getAigcConfig();
     const publicBaseUrl = getRequestPublicBaseUrl(req);
@@ -3182,6 +3361,12 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       ? await resizeStaticImageToTarget(resizableUrl, width, height, { quality: 88 })
       : resizableUrl;
     const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
+    console.log("[AdaptImage] done", JSON.stringify({
+      strategy: plan.strategy,
+      resultUrl: finalUrl,
+      qaPassed: qa?.passed,
+      qaWarnings: qa?.warnings?.length || 0
+    }));
 
     res.json({
       ok: true,
