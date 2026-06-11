@@ -2199,11 +2199,16 @@ function buildOpenapiDirectBody(payload = {}) {
 
 function buildOpenapiAsyncBody(payload = {}) {
   const mediaList = payload.media_info_list || [];
-  const parameter = payload.parameter || {};
+  const parameter = payload.parameter && typeof payload.parameter === "object" ? payload.parameter : {};
+  const flattenedParameter = { ...parameter };
+  if (flattenedParameter.parameter && typeof flattenedParameter.parameter === "object") {
+    Object.assign(flattenedParameter, flattenedParameter.parameter);
+    delete flattenedParameter.parameter;
+  }
 
   return {
     ...(payload.body || {}),
-    ...(Object.keys(parameter).length ? { parameter } : {}),
+    ...flattenedParameter,
     ...(mediaList.length ? { media_info_list: mediaList } : {})
   };
 }
@@ -2263,17 +2268,17 @@ function getOpenapiPollState(raw) {
 async function pollOpenapiV3Async(msgId, options = {}) {
   const config = options.config || getAigcConfig();
   if (options.pollMode === "algorithm_poll") {
-    const url = `${config.apiHost}/v1/algorithm/poll`;
-    const requestPayload = { body: { msg_id: msgId } };
+    const url = withAigcQueryAuth(`${config.apiHost}/openapi-poll/query_result`, config);
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
     await sleep(initialDelay);
     for (let index = 0; index < maxPolls; index += 1) {
-      const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+      const pollUrl = `${url}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+      const raw = await aigcJsonRequest(pollUrl, "GET", null, { ...config, authMode: "none" });
       const state = getOpenapiPollState(raw);
       if (state === "finished") return raw?.data || raw;
-      if (state === "failed") throw createProviderError("openapi-poll", "algorithm/poll", raw);
+      if (state === "failed") throw createProviderError("openapi-poll", "openapi-poll/query_result", raw);
       await sleep(pollInterval);
     }
     throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
