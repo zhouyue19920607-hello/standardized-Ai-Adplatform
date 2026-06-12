@@ -3271,10 +3271,7 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
           rsp_media_type: "url",
           mode: 1,
           ratio,
-          seed: -1,
-          generate_num: 1,
-          high_quality_encode: true,
-          extra_prompt: prompt || "Extend background naturally, keep original subject, text and logo unchanged"
+          image_num: 1
         }
       };
   const raw = await runAdaptProvider("expand", payload, context);
