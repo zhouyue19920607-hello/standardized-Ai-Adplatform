@@ -3255,8 +3255,17 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
   const ratio = normalizeOpenapiAspectRatio(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
-    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    ? /^https?:\/\//i.test(publicImageUrl)
+      ? mediaInfoFromUrl(publicImageUrl)
+      : await mediaInfoForOpenapiAdaptImage(imageUrl, context)
     : null;
+  if (apiStyle === ADAPT_API_STYLES.openapi) {
+    console.log("[EXPAND] input media", JSON.stringify({
+      publicImageUrl,
+      mediaDataType: mediaInfo?.media_profiles?.media_data_type || "",
+      isHttpUrl: /^https?:\/\//i.test(mediaInfo?.media_data || "")
+    }));
+  }
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? {
         image_url: publicImageUrl,
