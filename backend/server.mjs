@@ -827,14 +827,14 @@ const AIGC_VIDEO_EXPAND_MAX_SIDE = 1024;
 const videoExpandJobs = new Map();
 
 function getAigcConfig() {
-  const defaultInnerOpenapiHost = "http://openapi-ai.meitu.com";
+  const apiHost = (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, "");
   return {
     ak: process.env.AIGC_AK || "",
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
-    apiHost: (process.env.AIGC_API_HOST || "https://openapi-ali.meitu.com").replace(/\/+$/, ""),
-    mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || defaultInnerOpenapiHost).replace(/\/+$/, ""),
-    aiApiHost: (process.env.AIGC_AI_API_HOST || defaultInnerOpenapiHost).replace(/\/+$/, ""),
+    apiHost,
+    mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || apiHost).replace(/\/+$/, ""),
+    aiApiHost: (process.env.AIGC_AI_API_HOST || apiHost).replace(/\/+$/, ""),
     authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
     apiStyle: (process.env.AIGC_PROVIDER_API_STYLE || "").toLowerCase(),
     pollEndpointTemplate: process.env.AIGC_POLL_ENDPOINT_TEMPLATE || "/v2/task/{taskId}",
@@ -2113,8 +2113,11 @@ function resolveOpenapiEndpointUrl(apiName, config) {
   if (apiName === "mtimage_expand_v4_async") {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
-  if (apiName === "logo_seg" || apiName === "textdetect_img") {
+  if (apiName === "logo_seg") {
     return `${config.aiApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "textdetect_img") {
+    return `${config.aiApiHost}/v1/textdetect`;
   }
   return `${config.apiHost}/v1/${apiName}`;
 }
@@ -2126,9 +2129,7 @@ function isProviderNoRouteError(raw) {
 
 function shouldUseOpenapiMessageEnvelope(apiName) {
   return [
-    "mtimage_expand_v4_async",
-    "logo_seg",
-    "textdetect_img"
+    "mtimage_expand_v4_async"
   ].includes(apiName);
 }
 
@@ -2213,6 +2214,180 @@ function summarizeProviderRaw(raw) {
   };
 }
 
+function logOpenapiRequestDebug(label, url, payload, method = "POST") {
+  try {
+    const bodyText = JSON.stringify(payload, null, 2);
+    const bodySize = JSON.stringify(payload).length;
+    console.log(`[${label}] 🔍 请求详情`);
+    console.log(`[${label}]   URL: ${url}`);
+    console.log(`[${label}]   Method: ${method}`);
+    console.log(`[${label}]   Body:`);
+    console.log(bodyText);
+    console.log(`[${label}]   Body Size: ${bodySize} bytes`);
+  } catch (err) {
+    console.log(`[${label}] 🔍 请求详情打印失败: ${err.message}`);
+  }
+}
+
+function logOpenapiPollDebug(label, url, taskId, method) {
+  console.log(`[${label}] 🔍 轮询详情`);
+  console.log(`[${label}]   URL: ${url}`);
+  console.log(`[${label}]   task_id: ${taskId}`);
+  console.log(`[${label}]   Method: ${method}`);
+}
+
+async function debugPollEndpoints(host, msgId, apiKey, apiSecret) {
+  const endpoints = [
+    {
+      name: "endpoint-1: /openapi-poll/query_result (GET)",
+      build: () => ({
+        method: "GET",
+        url: `${host}/openapi-poll/query_result?api_key=${apiKey}&api_secret=${apiSecret}&msg_id=${msgId}`,
+        parseJson: true
+      })
+    },
+    {
+      name: "endpoint-2: /v1/algorithm/poll (POST)",
+      build: () => ({
+        method: "POST",
+        url: `${host}/v1/algorithm/poll?api_key=${apiKey}&api_secret=${apiSecret}&msg_id=${msgId}`,
+        body: { body: { msg_id: msgId } },
+        parseJson: true
+      })
+    },
+    {
+      name: "endpoint-3: /v1/mtimage_expand_v4/result (GET)",
+      build: () => ({
+        method: "GET",
+        url: `${host}/v1/mtimage_expand_v4/result?api_key=${apiKey}&api_secret=${apiSecret}&msg_id=${msgId}`,
+        parseJson: true
+      })
+    },
+    {
+      name: "endpoint-4: /api/v1/sdk/status (GET, msg_id)",
+      build: () => ({
+        method: "GET",
+        url: `${host}/api/v1/sdk/status?api_key=${apiKey}&api_secret=${apiSecret}&msg_id=${msgId}`,
+        parseJson: true
+      })
+    },
+    {
+      name: "endpoint-5: /api/v1/sdk/status (GET, task_id)",
+      build: () => ({
+        method: "GET",
+        url: `${host}/api/v1/sdk/status?api_key=${apiKey}&api_secret=${apiSecret}&task_id=${msgId}`,
+        parseJson: true
+      })
+    }
+  ];
+
+  console.log(`\n[POLL-DEBUG] 开始探测 ${endpoints.length} 个轮询路径，task_msg_id=${msgId}\n`);
+
+  for (const endpoint of endpoints) {
+    const spec = endpoint.build();
+    console.log(`[POLL-DEBUG] ====== ${endpoint.name} ======`);
+    console.log(`[POLL-DEBUG]   ${spec.method} ${spec.url}`);
+    try {
+      const response = await fetch(spec.url, {
+        method: spec.method,
+        ...(spec.body
+          ? { body: JSON.stringify(spec.body), headers: { "Content-Type": "application/json" } }
+          : {})
+      });
+      console.log(`[POLL-DEBUG]   HTTP Status: ${response.status} ${response.statusText}`);
+      console.log("[POLL-DEBUG]   Headers:");
+      console.log("               ", Object.fromEntries(response.headers.entries()));
+      const raw = await response.text();
+      console.log(`[POLL-DEBUG]   Raw Body (${raw.length} chars):`);
+      console.log(raw.slice(0, 2000));
+      if (raw.length > 2000) {
+        console.log(`              ... [截断，总长 ${raw.length} 字符]`);
+      }
+      if (spec.parseJson) {
+        try {
+          const parsed = JSON.parse(raw);
+          console.log("[POLL-DEBUG]   Parsed JSON Keys:", Object.keys(parsed));
+          if (parsed.code !== undefined) console.log("[POLL-DEBUG]   code:", parsed.code);
+          if (parsed.status !== undefined) console.log("[POLL-DEBUG]   status:", parsed.status);
+          if (parsed.error !== undefined) console.log("[POLL-DEBUG]   error:", JSON.stringify(parsed.error));
+          if (parsed.message !== undefined) console.log("[POLL-DEBUG]   message:", parsed.message);
+        } catch {}
+      }
+    } catch (err) {
+      console.log(`[POLL-DEBUG]   ❌ ERROR: ${err.message}`);
+    }
+    console.log();
+  }
+}
+
+async function debugPollEndpointsV2(host, msgId, apiKey, apiSecret) {
+  const endpoints = [
+    {
+      name: "A: /api/v1/sdk/status (task_id + msg_id)",
+      method: "GET",
+      url: `${host}/api/v1/sdk/status?api_key=${apiKey}&api_secret=${apiSecret}&task_id=${msgId}&msg_id=${msgId}`
+    },
+    {
+      name: "B: /api/v1/sdk/task_status",
+      method: "GET",
+      url: `${host}/api/v1/sdk/task_status?api_key=${apiKey}&api_secret=${apiSecret}&task_id=${msgId}`
+    },
+    {
+      name: "C: /api/v1/sdk/status (POST, body)",
+      method: "POST",
+      url: `${host}/api/v1/sdk/status?api_key=${apiKey}&api_secret=${apiSecret}`,
+      body: { task_id: msgId }
+    },
+    {
+      name: "D: /v1/algorithm/status",
+      method: "GET",
+      url: `${host}/v1/algorithm/status?api_key=${apiKey}&api_secret=${apiSecret}&task_id=${msgId}`
+    },
+    {
+      name: "E: /v1/task/result",
+      method: "GET",
+      url: `${host}/v1/task/result?api_key=${apiKey}&api_secret=${apiSecret}&task_id=${msgId}`
+    },
+    {
+      name: "F: /api/v1/sdk/task_id (msg_id 查 task_id)",
+      method: "GET",
+      url: `${host}/api/v1/sdk/task_id?api_key=${apiKey}&api_secret=${apiSecret}&msg_id=${msgId}`
+    }
+  ];
+
+  console.log(`\n[POLL-V2] 探测 ${endpoints.length} 个新路径\n`);
+
+  for (const endpoint of endpoints) {
+    console.log(`[POLL-V2] ====== ${endpoint.name} ======`);
+    console.log(`[POLL-V2]   ${endpoint.method} ${endpoint.url.replace(apiKey, "***").replace(apiSecret, "***")}`);
+    try {
+      const response = await fetch(endpoint.url, {
+        method: endpoint.method,
+        ...(endpoint.body
+          ? {
+              body: JSON.stringify(endpoint.body),
+              headers: { "Content-Type": "application/json" }
+            }
+          : {})
+      });
+      console.log(`[POLL-V2]   HTTP: ${response.status} ${response.statusText}`);
+      const raw = await response.text();
+      console.log(`[POLL-V2]   Body: ${raw.slice(0, 500)}`);
+      if (response.status === 200) {
+        try {
+          const parsed = JSON.parse(raw);
+          if ([0, 200, 20000].includes(parsed.code) || parsed.status === "finished") {
+            console.log("[POLL-V2]   ✅ ✅ ✅ 命中！");
+          }
+        } catch {}
+      }
+    } catch (err) {
+      console.log(`[POLL-V2]   ❌ ${err.message}`);
+    }
+    console.log();
+  }
+}
+
 function buildOpenapiDirectBody(payload = {}, options = {}) {
   const mediaList = payload.media_info_list || [];
   const parameter = payload.parameter || {};
@@ -2254,7 +2429,17 @@ async function callOpenapiV3Sync(apiName, payload, options = {}) {
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
   const url = resolveOpenapiEndpointUrl(apiName, config);
   const requestPayload = buildOpenapiDirectBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
-  const raw = await aigcJsonRequest(withAigcQueryAuth(url, config, { withMsgId: true }), "POST", requestPayload, { ...config, authMode: "none" });
+  const requestUrl = withAigcQueryAuth(url, config, { withMsgId: true });
+  const debugLabelMap = {
+    sod: "SOD",
+    logo_seg: "LOGO",
+    textdetect_img: "TEXT"
+  };
+  const debugLabel = debugLabelMap[apiName];
+  if (debugLabel) {
+    logOpenapiRequestDebug(debugLabel, requestUrl, requestPayload, "POST");
+  }
+  const raw = await aigcJsonRequest(requestUrl, "POST", requestPayload, { ...config, authMode: "none" });
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-sync", apiName, raw);
   return raw?.data || raw;
 }
@@ -2268,12 +2453,32 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
     if (payload.extra_params && Object.keys(payload.extra_params).length) {
       requestPayload.extra_params = payload.extra_params;
     }
-    const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
+    const requestUrl = withAigcQueryAuth(url, config);
+    if (apiName === "mtimage_expand_v4_async") {
+      logOpenapiRequestDebug("EXPAND", requestUrl, requestPayload, "POST");
+    }
+    const raw = await aigcJsonRequest(requestUrl, "POST", requestPayload, { ...config, authMode: "none" });
+    if (apiName === "mtimage_expand_v4_async") {
+      console.log("[EXPAND] 🔍 提交响应");
+      console.log("[EXPAND]   keys:", Object.keys(raw || {}));
+      console.log("[EXPAND]   task_id:", raw?.data?.task_id || raw?.task_id || "");
+      console.log("[EXPAND]   msg_id:", raw?.data?.msg_id || raw?.msg_id || "");
+      console.log("[EXPAND]   data keys:", Object.keys(raw?.data || {}));
+    }
     if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
-    const taskId = raw?.data?.task_id || raw?.task_id || raw?.data?.msg_id || raw?.msg_id;
-    if (!taskId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No task_id in response" });
+    const directTaskId = raw?.data?.task_id || raw?.task_id || "";
+    const directMsgId = raw?.data?.msg_id || raw?.msg_id || "";
+    const pollId = directTaskId || directMsgId;
+    if (!pollId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No task_id or msg_id in response" });
+    if (apiName === "mtimage_expand_v4_async" && directMsgId) {
+      console.log("[EXPAND] submit success, msg_id:", directMsgId);
+      await debugPollEndpoints(new URL(url).origin, directMsgId, config.ak, config.sk);
+      await debugPollEndpointsV2(new URL(url).origin, directMsgId, config.ak, config.sk);
+    }
     return {
-      taskId,
+      taskId: pollId,
+      pollId,
+      pollParamName: directTaskId ? "task_id" : "msg_id",
       raw,
       pollMode: "task_query_result",
       pollHost: new URL(url).origin
@@ -2311,31 +2516,43 @@ async function pollOpenapiV3Async(msgId, options = {}) {
   if (options.pollMode === "task_query_result") {
     const pollHost = options.pollHost || config.mtlabApiHost || config.apiHost;
     const queryAuth = { ...config, authMode: "none" };
+    const pollParamName = options.pollParamName === "msg_id" ? "msg_id" : "task_id";
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
     const candidatePollers = [
       {
-        key: "openapi-poll/query_result",
+        key: `openapi-poll/query_result(${pollParamName})`,
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       },
       {
-        key: "v1/algorithm/poll",
+        key: `v1/algorithm/poll(${pollParamName})`,
         run: async () => {
           const pollUrl = withAigcQueryAuth(`${pollHost}/v1/algorithm/poll`, config);
-          return aigcJsonRequest(pollUrl, "POST", { body: { task_id: msgId } }, queryAuth);
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "POST");
+          return aigcJsonRequest(pollUrl, "POST", { body: { [pollParamName]: msgId } }, queryAuth);
         }
       },
       {
-        key: "v1/mtimage_expand_v4/result",
+        key: `v1/mtimage_expand_v4/result(${pollParamName})`,
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/v1/mtimage_expand_v4/result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+        }
+      },
+      {
+        key: `api/v1/sdk/status(${pollParamName})`,
+        run: async () => {
+          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
+          return aigcJsonRequest(pollUrl, "GET", null, config);
         }
       }
     ];
@@ -2406,11 +2623,12 @@ async function pollOpenapiV3Async(msgId, options = {}) {
 
 async function callOpenapiV3Async(apiName, payload, options = {}) {
   const submitted = await submitOpenapiV3Async(apiName, payload, options);
-  const jobId = submitted.taskId || submitted.msgId;
+  const jobId = submitted.pollId || submitted.taskId || submitted.msgId;
   return pollOpenapiV3Async(jobId, {
     ...options,
     pollMode: submitted.pollMode,
-    pollHost: submitted.pollHost
+    pollHost: submitted.pollHost,
+    pollParamName: submitted.pollParamName
   });
 }
 
@@ -2552,6 +2770,30 @@ function targetRatioLabel(width, height) {
   const h = toPositiveInt(height);
   if (!w || !h) return "1:1";
   return `${w}:${h}`;
+}
+
+function normalizeOpenapiAspectRatio(width, height) {
+  const w = toPositiveInt(width);
+  const h = toPositiveInt(height);
+  if (!w || !h) return "1:1";
+  const target = w / h;
+  const supportedRatios = [
+    { label: "1:1", value: 1 },
+    { label: "3:4", value: 3 / 4 },
+    { label: "4:3", value: 4 / 3 },
+    { label: "9:16", value: 9 / 16 },
+    { label: "16:9", value: 16 / 9 }
+  ];
+  let best = supportedRatios[0];
+  let bestDelta = Math.abs(target - best.value);
+  for (const candidate of supportedRatios.slice(1)) {
+    const delta = Math.abs(target - candidate.value);
+    if (delta < bestDelta) {
+      best = candidate;
+      bestDelta = delta;
+    }
+  }
+  return best.label;
 }
 
 function computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight) {
@@ -3010,7 +3252,7 @@ async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
 async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, context, prompt = "") {
   const config = context.config;
   const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
-  const ratio = targetRatioLabel(targetWidth, targetHeight);
+  const ratio = normalizeOpenapiAspectRatio(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
     ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
