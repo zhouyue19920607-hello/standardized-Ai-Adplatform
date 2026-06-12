@@ -1236,6 +1236,11 @@ function objectKeyForAigcVideo(sourcePath) {
   return `videos/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${crypto.randomUUID()}${ext}`;
 }
 
+function objectKeyForAigcImage(sourcePath) {
+  const ext = path.extname(sourcePath).toLowerCase() || ".jpg";
+  return `images/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${crypto.randomUUID()}${ext}`;
+}
+
 async function uploadBufferToObserverOss(buffer, objectName, contentType = "video/mp4") {
   const config = getObserverConfig();
   if (!config.accessId || !config.biz || !config.cdnDomain) {
@@ -1280,8 +1285,21 @@ async function uploadLocalVideoToObserverUrl(sourcePath) {
   return uploadBufferToObserverOss(buffer, objectName, "video/mp4");
 }
 
+async function uploadLocalImageToObserverUrl(sourcePath) {
+  await fs.access(sourcePath);
+  const buffer = await fs.readFile(sourcePath);
+  const ext = path.extname(sourcePath).toLowerCase();
+  const contentType = ext === ".png" ? "image/png" : "image/jpeg";
+  const objectName = objectKeyForAigcImage(sourcePath);
+  return uploadBufferToObserverOss(buffer, objectName, contentType);
+}
+
 async function uploadStaticVideoToObserverUrl(staticUrl) {
   return uploadLocalVideoToObserverUrl(staticUrlToLocalPath(staticUrl));
+}
+
+async function uploadStaticImageToObserverUrl(staticUrl) {
+  return uploadLocalImageToObserverUrl(staticUrlToLocalPath(staticUrl));
 }
 
 async function writeStandardizedAigcImage(input) {
@@ -1648,6 +1666,10 @@ async function persistAigcResult(resultUrl, mediaType, options = {}) {
 async function resizeStaticImageToTarget(staticUrl, targetWidth, targetHeight, options = {}) {
   const sourcePath = staticUrlToLocalPath(staticUrl);
   await fs.access(sourcePath);
+  const sourceMeta = await sharp(sourcePath).metadata();
+  if (sourceMeta.width === targetWidth && sourceMeta.height === targetHeight) {
+    return staticUrl;
+  }
   await ensureDir(STORAGE_DIR);
   const quality = Number(options.quality) || 88;
   const outputFilename = `aigc_image_adapt_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
@@ -1982,6 +2004,35 @@ async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, se
   });
 }
 
+async function submitAigcSmartCropTask({
+  imageUrl,
+  targetWidth,
+  targetHeight,
+  baseModelName = "miracle_vision_edit",
+  publicBaseUrl,
+  mediaOptions,
+  persistOptions
+}) {
+  return submitAigcTask({
+    task: AIGC_TASKS.dispatcher,
+    params: {
+      parameter: {
+        base_model_name: baseModelName,
+        rsp_media_type: "url",
+        extra_pipe_inputs: {
+          task_type: "smart_crop",
+          target_width: toPositiveInt(targetWidth),
+          target_height: toPositiveInt(targetHeight)
+        }
+      }
+    },
+    mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+    publicBaseUrl,
+    mediaOptions,
+    persistOptions
+  });
+}
+
 async function ensureStaticImageUrlForResize(imageUrl) {
   if (!imageUrl || typeof imageUrl !== "string") return imageUrl;
   if (imageUrl.startsWith("/static/")) return imageUrl;
@@ -2120,6 +2171,20 @@ function resolveOpenapiEndpointUrl(apiName, config) {
     return `${config.aiApiHost}/v1/textdetect`;
   }
   return `${config.apiHost}/v1/${apiName}`;
+}
+
+function resolveOpenapiEndpointCandidates(apiName, config) {
+  if (apiName === "textdetect_img") {
+    return [
+      `${config.aiApiHost}/v1/textdetect`,
+      `${config.aiApiHost}/v1/textdetect_img`,
+      `${config.apiHost}/v1/textdetect`,
+      `${config.apiHost}/v1/textdetect_img`,
+      `${config.aiApiHost}/v1/vision/ocr/text_detection`,
+      `${config.apiHost}/v1/vision/ocr/text_detection`
+    ];
+  }
+  return [resolveOpenapiEndpointUrl(apiName, config)];
 }
 
 function isProviderNoRouteError(raw) {
@@ -2425,21 +2490,34 @@ function buildOpenapiAsyncBody(payload = {}, options = {}) {
 async function callOpenapiV3Sync(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
-  const url = resolveOpenapiEndpointUrl(apiName, config);
   const requestPayload = buildOpenapiDirectBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
-  const requestUrl = withAigcQueryAuth(url, config, { withMsgId: true });
   const debugLabelMap = {
     sod: "SOD",
     logo_seg: "LOGO",
     textdetect_img: "TEXT"
   };
   const debugLabel = debugLabelMap[apiName];
-  if (debugLabel) {
-    logOpenapiRequestDebug(debugLabel, requestUrl, requestPayload, "POST");
+  const candidates = resolveOpenapiEndpointCandidates(apiName, config);
+  let lastRaw = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const url = candidates[index];
+    const requestUrl = withAigcQueryAuth(url, config, { withMsgId: true });
+    if (debugLabel) {
+      if (candidates.length > 1) {
+        console.log(`[${debugLabel}] route candidate ${index + 1}/${candidates.length}: ${url}`);
+      }
+      logOpenapiRequestDebug(debugLabel, requestUrl, requestPayload, "POST");
+    }
+    const raw = await aigcJsonRequest(requestUrl, "POST", requestPayload, { ...config, authMode: "none" });
+    if (isProviderSuccess(raw)) return raw?.data || raw;
+    lastRaw = raw;
+    if (!isProviderNoRouteError(raw) || index === candidates.length - 1) {
+      throw createProviderError("openapi-sync", apiName, raw);
+    }
   }
-  const raw = await aigcJsonRequest(requestUrl, "POST", requestPayload, { ...config, authMode: "none" });
-  if (!isProviderSuccess(raw)) throw createProviderError("openapi-sync", apiName, raw);
-  return raw?.data || raw;
+
+  throw createProviderError("openapi-sync", apiName, lastRaw || { message: "no route found" });
 }
 
 async function submitOpenapiV3Async(apiName, payload, options = {}) {
@@ -2507,6 +2585,33 @@ function getOpenapiPollState(raw) {
   if (code === 2 || status === "failed" || status === "error") return "failed";
   if (![undefined, null, "", 0, "0"].includes(code)) return "failed";
   return "unknown";
+}
+
+async function callOpenapiTaskGateway(apiName, payload, options = {}) {
+  const config = options.config || getAigcConfig();
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+
+  const task = apiName.startsWith("/") ? apiName : `/v1/${apiName}`;
+  const params = {
+    ...(payload.body && typeof payload.body === "object" ? payload.body : {}),
+    ...(payload.parameter && typeof payload.parameter === "object" ? { parameter: payload.parameter } : {})
+  };
+
+  return submitAigcTask({
+    task,
+    taskType: "mtlab",
+    params,
+    mediaInfoList: payload.media_info_list || [],
+    extra: payload.extra_params,
+    rspMediaType: payload?.parameter?.rsp_media_type || payload?.rsp_media_type || "url",
+    publicBaseUrl: options.publicBaseUrl,
+    mediaOptions: options.mediaOptions,
+    pollIntervalMs: options.pollIntervalMs,
+    maxPolls: options.maxPolls,
+    persistOptions: options.persistOptions
+  });
 }
 
 async function pollOpenapiV3Async(msgId, options = {}) {
@@ -2657,6 +2762,41 @@ async function mediaInfoForOpenapiAdaptImage(imageUrl, context = {}) {
   return mediaInfoFromUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
 }
 
+async function resolveOpenapiAdaptImageUrl(imageUrl, context = {}) {
+  const config = context.config || getAigcConfig();
+  const publicBaseUrl = context.publicBaseUrl || config.publicBaseUrl || "";
+  const observerConfig = getObserverConfig();
+  const localStaticUrl = imageUrl?.startsWith("/static/")
+    ? imageUrl
+    : publicUrlToStaticUrl(imageUrl || "", publicBaseUrl);
+
+  if (/^https?:\/\//i.test(imageUrl || "")) {
+    try {
+      const parsed = new URL(imageUrl);
+      if (!/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(parsed.hostname)) {
+        return imageUrl;
+      }
+    } catch (err) {
+      // ignore parse failure and continue with fallbacks
+    }
+  }
+
+  if (!localStaticUrl) return imageUrl;
+
+  const standardizedStaticUrl = await standardizeStaticImageForAigc(localStaticUrl);
+
+  if (observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
+    return uploadStaticImageToObserverUrl(standardizedStaticUrl);
+  }
+
+  const publicUrl = publicStaticUrl(standardizedStaticUrl, publicBaseUrl);
+  if (/^https?:\/\//i.test(publicUrl || "")) {
+    return publicUrl;
+  }
+
+  return imageUrl;
+}
+
 function boxFromProvider(value, width, height) {
   if (!value || typeof value !== "object") return null;
   const x = Number(value.x ?? value.left ?? value.top_x ?? value.xmin);
@@ -2693,13 +2833,31 @@ function boxFromPolygon(points = []) {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+function denormalizeBox(box, width, height) {
+  if (!box) return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return box;
+  }
+  const maxX = Math.max(box.x, box.x + box.width);
+  const maxY = Math.max(box.y, box.y + box.height);
+  const looksNormalized = maxX <= 1.01 && maxY <= 1.01;
+  if (!looksNormalized) return box;
+  return {
+    x: box.x * width,
+    y: box.y * height,
+    width: box.width * width,
+    height: box.height * height
+  };
+}
+
 function normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight) {
   if (!box || !sourceWidth || !sourceHeight || !targetWidth || !targetHeight) return box || null;
+  const sourceBox = denormalizeBox(box, sourceWidth, sourceHeight);
   return {
-    x: (box.x / sourceWidth) * targetWidth,
-    y: (box.y / sourceHeight) * targetHeight,
-    width: (box.width / sourceWidth) * targetWidth,
-    height: (box.height / sourceHeight) * targetHeight
+    x: (sourceBox.x / sourceWidth) * targetWidth,
+    y: (sourceBox.y / sourceHeight) * targetHeight,
+    width: (sourceBox.width / sourceWidth) * targetWidth,
+    height: (sourceBox.height / sourceHeight) * targetHeight
   };
 }
 
@@ -2862,17 +3020,21 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
   const endpoint = ADAPT_ENDPOINTS[apiStyle]?.[endpointName];
   if (!endpoint) throw new Error(`未知算法 endpoint: ${apiStyle}/${endpointName}`);
   const isAsync = apiStyle === ADAPT_API_STYLES.aiPlatform ? true : endpoint.endsWith("_async");
+  const useTaskGateway = apiStyle === ADAPT_API_STYLES.openapi && isAsync;
   console.log("[AdaptImage] request", JSON.stringify({
     endpointName,
     apiStyle,
     endpoint,
     isAsync,
+    useTaskGateway,
     payload: summarizeAdaptPayload(payload)
   }));
   try {
     const raw = apiStyle === ADAPT_API_STYLES.aiPlatform
       ? await runPlatformTask(endpoint, payload, { ...options, config })
-      : isAsync
+      : useTaskGateway
+        ? await callOpenapiTaskGateway(endpoint, payload, { ...options, config })
+        : isAsync
         ? await callOpenapiV3Async(endpoint, payload, { ...options, config })
         : await callOpenapiV3Sync(endpoint, payload, { ...options, config });
     console.log("[AdaptImage] response", JSON.stringify({
@@ -3000,8 +3162,13 @@ async function detectLogoForAdapt(imageUrl, context) {
   const config = context.config;
   const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const openapiImageUrl = apiStyle === ADAPT_API_STYLES.openapi
+    ? await resolveOpenapiAdaptImageUrl(imageUrl, context)
+    : "";
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
-    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    ? /^https?:\/\//i.test(openapiImageUrl || "")
+      ? mediaInfoFromUrl(openapiImageUrl)
+      : await mediaInfoForOpenapiAdaptImage(imageUrl, context)
     : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? { image_url: publicUrl, task: "logo_seg", inpaint: false, return_mask: true }
@@ -3013,7 +3180,17 @@ async function detectLogoForAdapt(imageUrl, context) {
   const data = raw?.data || raw?.raw?.data || {};
   const parameter = raw?.parameter || raw?.raw?.parameter || data?.parameter || {};
   const regions = Array.isArray(data.logo_regions) ? data.logo_regions : [];
-  const boxes = regions.map(region => boxFromProvider(region)).filter(Boolean);
+  const detectedBoxes = Array.isArray(data.detected_boxes)
+    ? data.detected_boxes
+    : Array.isArray(parameter.detected_boxes)
+      ? parameter.detected_boxes
+      : [];
+  const boxes = [
+    ...regions.map(region => boxFromProvider(region)),
+    ...detectedBoxes.map(item => boxFromPolygon(item?.box || item?.polygon || item?.points || []))
+  ]
+    .filter(Boolean)
+    .map(box => denormalizeBox(box, context.sourceWidth, context.sourceHeight));
   const maskUrl = data.mask_url
     ? await persistProviderImageValue(data.mask_url, "logo_mask")
     : await persistFirstProviderImage(raw, "logo_mask");
@@ -3030,8 +3207,13 @@ async function detectTextForAdapt(imageUrl, context) {
   const config = context.config;
   const publicUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const apiStyle = getAdaptApiStyle(config);
+  const openapiImageUrl = apiStyle === ADAPT_API_STYLES.openapi
+    ? await resolveOpenapiAdaptImageUrl(imageUrl, context)
+    : "";
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
-    ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
+    ? /^https?:\/\//i.test(openapiImageUrl || "")
+      ? mediaInfoFromUrl(openapiImageUrl)
+      : await mediaInfoForOpenapiAdaptImage(imageUrl, context)
     : null;
   const payload = apiStyle === ADAPT_API_STYLES.aiPlatform
     ? { image_url: publicUrl, return_polygon: true, return_text: true }
@@ -3155,7 +3337,12 @@ async function cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, con
 
 async function ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight) {
   if (!resultUrl?.startsWith("/static/")) return resultUrl;
-  return resizeStaticImageToTarget(resultUrl, targetWidth, targetHeight, { quality: 88 });
+  const localPath = staticUrlToLocalPath(resultUrl);
+  const meta = await sharp(localPath).metadata();
+  if (meta.width === targetWidth && meta.height === targetHeight) {
+    return resultUrl;
+  }
+  return cropImageToTargetForAdapt(resultUrl, targetWidth, targetHeight, { quality: 88 });
 }
 
 async function inpaintForBackgroundPrep(imageUrl, masks, context) {
@@ -3298,8 +3485,22 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
 async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, context) {
   const config = context.config;
   const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
-  const ratio = targetRatioLabel(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
+  if (apiStyle === ADAPT_API_STYLES.openapi) {
+    const smartCrop = await submitAigcSmartCropTask({
+      imageUrl: publicImageUrl,
+      targetWidth,
+      targetHeight,
+      publicBaseUrl: context.publicBaseUrl,
+      mediaOptions: { preferPublicImageUrl: true }
+    });
+    return {
+      resultUrl: smartCrop.resultUrl || "",
+      raw: smartCrop.raw || smartCrop
+    };
+  }
+
+  const ratio = targetRatioLabel(targetWidth, targetHeight);
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
     ? await mediaInfoForOpenapiAdaptImage(imageUrl, context)
     : null;
@@ -3714,9 +3915,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
 
     const resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
     const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
-    const finalUrl = resizableUrl?.startsWith("/static/")
-      ? await resizeStaticImageToTarget(resizableUrl, width, height, { quality: 88 })
-      : resizableUrl;
+    const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height);
     const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
     console.log("[AdaptImage] done", JSON.stringify({
       strategy: plan.strategy,
