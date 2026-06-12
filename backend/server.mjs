@@ -2128,9 +2128,7 @@ function isProviderNoRouteError(raw) {
 }
 
 function shouldUseOpenapiMessageEnvelope(apiName) {
-  return [
-    "mtimage_expand_v4_async"
-  ].includes(apiName);
+  return false;
 }
 
 function getAdaptApiStyle(config = getAigcConfig()) {
