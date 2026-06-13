@@ -2156,6 +2156,7 @@ const ADAPT_ENDPOINTS = {
     logo: "logo_seg",
     text: "textdetect_img",
     posterLayer: "poster_edit_layer_async",
+    posterDesign: "poster_trans_design_async",
     expand: "mtimage_expand_v4_async",
     inpaint: "image_manipulation_fl_async",
     crop: "image_cropping_async"
@@ -2183,6 +2184,9 @@ function resolveOpenapiEndpointUrl(apiName, config) {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
   if (apiName === "poster_edit_layer_async") {
+    return `${config.mtlabApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "poster_trans_design_async") {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
   if (apiName === "logo_seg") {
@@ -3563,6 +3567,195 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
   return normalized;
 }
 
+async function parseProviderJsonValue(value) {
+  if (!value || typeof value !== "string") return null;
+  try {
+    if (/^https?:\/\//i.test(value)) {
+      const response = await axios.get(value, { timeout: 60000, responseType: "text" });
+      return typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+    }
+    const cleaned = value.replace(/^data:application\/json;base64,/, "");
+    if (/^\s*[\[{]/.test(cleaned)) return JSON.parse(cleaned);
+    if (isLikelyBase64Image(cleaned)) {
+      const decoded = Buffer.from(cleaned, "base64").toString("utf-8");
+      if (/^\s*[\[{]/.test(decoded)) return JSON.parse(decoded);
+    }
+  } catch (err) {
+    console.warn("[AdaptImage] design json parse skipped:", err.message);
+  }
+  return null;
+}
+
+function collectObjectsDeep(value, output = [], depth = 0) {
+  if (!value || depth > 8) return output;
+  if (Array.isArray(value)) {
+    value.forEach(item => collectObjectsDeep(item, output, depth + 1));
+    return output;
+  }
+  if (typeof value === "object") {
+    output.push(value);
+    Object.values(value).forEach(item => collectObjectsDeep(item, output, depth + 1));
+  }
+  return output;
+}
+
+function classifyDesignLayer(value = {}) {
+  const text = JSON.stringify({
+    type: value.type,
+    layer_type: value.layer_type,
+    category: value.category,
+    name: value.name,
+    label: value.label,
+    role: value.role,
+    text: value.text,
+    content: value.content
+  }).toLowerCase();
+  if (/(logo|brand|trademark)/.test(text)) return "logo";
+  if (/(text|word|copy|title|subtitle|slogan|ocr|文字|文案|标题)/.test(text)) return "text";
+  if (/(subject|person|product|foreground|main|主体|商品|人物)/.test(text)) return "subject";
+  return "";
+}
+
+function boxFromAnyLayer(value, width, height) {
+  const candidates = [
+    value?.box,
+    value?.bbox,
+    value?.rect,
+    value?.frame,
+    value?.bounds,
+    value?.position,
+    value?.coord,
+    value?.box_coord,
+    value
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate) && candidate.length >= 4) {
+      const [left, top, right, bottom] = candidate.map(Number);
+      if ([left, top, right, bottom].every(Number.isFinite) && right > left && bottom > top) {
+        return clampBoxToImage({ x: left, y: top, width: right - left, height: bottom - top }, width, height);
+      }
+    }
+    const box = clampBoxToImage(denormalizeBox(boxFromProvider(candidate), width, height), width, height);
+    if (box) return box;
+  }
+  return null;
+}
+
+async function analyzePosterDesignForAdapt(imageUrl, context) {
+  const config = context.config;
+  if (getAdaptApiStyle(config) !== ADAPT_API_STYLES.openapi) {
+    return { layers: [], raw: null, warnings: ["poster design analysis skipped for non-openapi style"] };
+  }
+  const endpoint = ADAPT_ENDPOINTS.openapi.posterDesign;
+  const url = resolveOpenapiEndpointUrl(endpoint, config);
+  const openapiImageUrl = await resolveOpenapiAdaptImageUrl(imageUrl, context);
+  const mediaInfo = /^https?:\/\//i.test(openapiImageUrl || "")
+    ? mediaInfoFromUrl(openapiImageUrl)
+    : await mediaInfoForOpenapiAdaptImage(imageUrl, context);
+  const requestPayload = {
+    parameter: {
+      rsp_media_type: "url",
+      ori_lang: "zh",
+      lang_ori: "zh"
+    },
+    extra: {},
+    media_info_list: [mediaInfo]
+  };
+  console.log("[AdaptImage] design analysis start", JSON.stringify({
+    endpoint,
+    media: summarizeMediaInfoList([mediaInfo])[0]
+  }));
+  const rawSubmit = await aigcJsonRequest(
+    withAigcQueryAuth(url, config),
+    "POST",
+    requestPayload,
+    { ...config, authMode: "none" }
+  );
+  if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-design-submit", endpoint, rawSubmit);
+  const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
+  if (!msgId) throw createProviderError("poster-design-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const raw = await pollOpenapiV3Async(msgId, {
+    ...context,
+    pollMode: "task_query_result",
+    pollHost: new URL(url).origin,
+    pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
+    initialDelayMs: 3000,
+    pollIntervalMs: config.pollIntervalMs,
+    maxPolls: config.maxPolls,
+    config
+  });
+
+  const parsedPayloads = [raw];
+  const mediaList = extractAigcResultMedia(raw);
+  for (const media of mediaList) {
+    const parsed = await parseProviderJsonValue(media?.media_data || media?.media_url);
+    if (parsed) parsedPayloads.push(parsed);
+  }
+  const objects = parsedPayloads.flatMap(payload => collectObjectsDeep(payload));
+  const layers = objects
+    .map(item => {
+      const type = classifyDesignLayer(item);
+      const box = boxFromAnyLayer(item, context.sourceWidth, context.sourceHeight);
+      if (!type || !box) return null;
+      return {
+        type,
+        box,
+        text: item.text || item.content || item.value || "",
+        raw: item
+      };
+    })
+    .filter(Boolean);
+  console.log("[AdaptImage] design analysis done", JSON.stringify({
+    mediaCount: mediaList.length,
+    layerCount: layers.length,
+    counts: layers.reduce((acc, layer) => {
+      acc[layer.type] = (acc[layer.type] || 0) + 1;
+      return acc;
+    }, {})
+  }));
+  return { layers, raw, mediaCount: mediaList.length, warnings: [] };
+}
+
+function buildRelayoutZonesForAdapt(analysis, designAnalysis, width, height) {
+  const zones = [];
+  if (analysis.subject?.box) {
+    zones.push({ id: "subject-0", type: "subject", box: clampBoxToImage(denormalizeBox(analysis.subject.box, width, height), width, height), source: "saliency" });
+  }
+  (analysis.logo?.boxes || []).forEach((box, index) => {
+    zones.push({ id: `logo-${index}`, type: "logo", box: clampBoxToImage(denormalizeBox(box, width, height), width, height), source: "logo" });
+  });
+  (analysis.text?.boxes || []).forEach((box, index) => {
+    zones.push({ id: `text-${index}`, type: "text", box: clampBoxToImage(denormalizeBox(box, width, height), width, height), source: "text", text: analysis.text?.texts?.[index] || "" });
+  });
+  (designAnalysis?.layers || []).forEach((layer, index) => {
+    zones.push({ id: `design-${layer.type}-${index}`, type: layer.type, box: clampBoxToImage(layer.box, width, height), source: "poster-design", text: layer.text || "" });
+  });
+  const validZones = zones
+    .filter(zone => zone.box)
+    .sort((a, b) => {
+      const priority = { subject: 0, logo: 1, text: 2 };
+      return (priority[a.type] ?? 9) - (priority[b.type] ?? 9);
+    });
+  const deduped = [];
+  for (const zone of validZones) {
+    const duplicate = deduped.some(existing => existing.type === zone.type && boxIou(existing.box, zone.box) > 0.72);
+    if (!duplicate) deduped.push(zone);
+  }
+  return deduped.slice(0, 6);
+}
+
+function boxIou(a, b) {
+  if (!a || !b) return 0;
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.width, b.x + b.width);
+  const y2 = Math.min(a.y + a.height, b.y + b.height);
+  const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const union = a.width * a.height + b.width * b.height - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
 async function trimForegroundLayerForAdapt(foregroundUrl) {
   if (!foregroundUrl?.startsWith("/static/")) return { url: foregroundUrl, meta: null };
   const sourcePath = staticUrlToLocalPath(foregroundUrl);
@@ -3599,6 +3792,95 @@ function planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight) {
     height,
     scale
   };
+}
+
+function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0) {
+  const sourceWidth = Math.max(1, sourceMeta?.width || zone.box?.width || targetWidth);
+  const sourceHeight = Math.max(1, sourceMeta?.height || zone.box?.height || targetHeight);
+  const marginX = targetWidth * 0.07;
+  const marginY = targetHeight * 0.06;
+  let maxWidth = targetWidth * 0.78;
+  let maxHeight = targetHeight * 0.58;
+  let anchorX = (targetWidth - maxWidth) / 2;
+  let anchorY = targetHeight * 0.22;
+
+  if (zone.type === "logo") {
+    maxWidth = targetWidth * 0.24;
+    maxHeight = targetHeight * 0.12;
+    anchorX = marginX;
+    anchorY = marginY + indexByType * targetHeight * 0.075;
+  } else if (zone.type === "text") {
+    maxWidth = targetWidth * 0.76;
+    maxHeight = targetHeight * 0.18;
+    anchorX = (targetWidth - maxWidth) / 2;
+    anchorY = targetHeight * 0.70 + indexByType * targetHeight * 0.09;
+  } else if (zone.type === "subject") {
+    maxWidth = targetWidth * 0.74;
+    maxHeight = targetHeight * 0.62;
+    anchorX = (targetWidth - maxWidth) / 2;
+    anchorY = targetHeight * 0.22;
+  }
+
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, zone.type === "subject" ? 1.25 : 1.05);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  return {
+    x: Math.round(Math.max(marginX, Math.min(targetWidth - marginX - width, anchorX + (maxWidth - width) / 2))),
+    y: Math.round(Math.max(marginY, Math.min(targetHeight - marginY - height, anchorY + (maxHeight - height) / 2))),
+    width,
+    height,
+    scale
+  };
+}
+
+async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targetWidth, targetHeight) {
+  const backgroundStatic = await ensureStaticImageUrlForResize(backgroundUrl);
+  if (!backgroundStatic?.startsWith("/static/")) {
+    throw new Error("multi-layer relayout requires a local static background layer");
+  }
+  const composites = [];
+  for (const item of layerItems) {
+    const foregroundStatic = await ensureStaticImageUrlForResize(item.url);
+    if (!foregroundStatic?.startsWith("/static/")) continue;
+    const foregroundPath = staticUrlToLocalPath(foregroundStatic);
+    const buffer = await sharp(foregroundPath)
+      .rotate()
+      .resize({
+        width: item.layout.width,
+        height: item.layout.height,
+        fit: "contain",
+        withoutEnlargement: false,
+        kernel: sharp.kernel.lanczos3
+      })
+      .png()
+      .toBuffer();
+    composites.push({
+      input: buffer,
+      left: Math.round(item.layout.x),
+      top: Math.round(item.layout.y),
+      blend: "over"
+    });
+  }
+  if (!composites.length) {
+    throw new Error("multi-layer relayout produced no compositable foreground layers");
+  }
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `aigc_multilayer_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await sharp(staticUrlToLocalPath(backgroundStatic))
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .composite(composites)
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/${outputFilename}`;
 }
 
 async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targetWidth, targetHeight, layout) {
@@ -3647,14 +3929,98 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
   const split = await splitPosterLayersForAdapt(imageUrl, layerBox, context);
-  const expandedBackground = await expandImageV4ForAdapt(
-    split.background.url,
-    targetWidth,
-    targetHeight,
-    context,
-    [AIGC_BACKGROUND_ONLY_EXPAND_PROMPT, prompt || ""].filter(Boolean).join(" ")
-  );
-  const backgroundUrl = expandedBackground || split.background.url;
+  // Keep relayout deterministic: model-based background expansion can hallucinate
+  // unrelated objects/text. The clean background layer is resized during compose.
+  const backgroundUrl = split.background.url;
+  let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
+  try {
+    designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
+  } catch (err) {
+    designAnalysis = { layers: [], warnings: [err.message] };
+    console.warn("[AdaptImage] design analysis fallback:", err.message);
+  }
+
+  const zones = buildRelayoutZonesForAdapt(analysis, designAnalysis, context.sourceWidth, context.sourceHeight);
+  const selectedZones = [];
+  const selectedCounts = {};
+  for (const zone of zones) {
+    selectedCounts[zone.type] = selectedCounts[zone.type] || 0;
+    const limit = zone.type === "text" ? 2 : 1;
+    if (selectedCounts[zone.type] >= limit) continue;
+    selectedZones.push(zone);
+    selectedCounts[zone.type] += 1;
+  }
+  const multiLayerItems = [];
+  const typeIndexes = {};
+  for (const zone of selectedZones) {
+    try {
+      const zoneSplit = await splitPosterLayersForAdapt(imageUrl, zone.box, context);
+      const trimmed = await trimForegroundLayerForAdapt(zoneSplit.foreground.url);
+      const meta = trimmed.meta || await sharp(staticUrlToLocalPath(trimmed.url)).metadata();
+      typeIndexes[zone.type] = typeIndexes[zone.type] || 0;
+      const layout = planZonePlacementForAdapt(zone, meta, targetWidth, targetHeight, typeIndexes[zone.type]);
+      typeIndexes[zone.type] += 1;
+      multiLayerItems.push({
+        id: zone.id,
+        type: zone.type,
+        source: zone.source,
+        text: zone.text || "",
+        url: trimmed.url,
+        rawUrl: zoneSplit.foreground.url,
+        box: zone.box,
+        layout,
+        width: meta.width || 0,
+        height: meta.height || 0
+      });
+    } catch (err) {
+      console.warn("[AdaptImage] zone layer split skipped", JSON.stringify({
+        id: zone.id,
+        type: zone.type,
+        message: err.message
+      }));
+    }
+  }
+  const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text");
+  if (multiLayerItems.length >= 2 && hasIndependentInfoLayer) {
+    const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
+    return {
+      resultUrl,
+      layerBox,
+      layout: { mode: "zones-v2", itemCount: multiLayerItems.length },
+      zones,
+      designAnalysis: {
+        layerCount: designAnalysis.layers?.length || 0,
+        warnings: designAnalysis.warnings || []
+      },
+      layers: {
+        mode: "multi-layer-v2",
+        foregroundUrl: "",
+        rawForegroundUrl: "",
+        backgroundUrl: split.background.url,
+        expandedBackgroundUrl: "",
+        backgroundMode: "deterministic-cover",
+        items: multiLayerItems.map(item => ({
+          id: item.id,
+          type: item.type,
+          source: item.source,
+          url: item.url,
+          rawUrl: item.rawUrl,
+          box: item.box,
+          layout: item.layout,
+          width: item.width,
+          height: item.height
+        })),
+        all: split.layers.map(layer => ({
+          url: layer.url,
+          roleHint: layer.roleHint,
+          width: layer.width,
+          height: layer.height,
+          hasAlpha: layer.hasAlpha
+        }))
+      }
+    };
+  }
+
   const trimmedForeground = await trimForegroundLayerForAdapt(split.foreground.url);
   const foregroundMeta = trimmedForeground.meta || await sharp(staticUrlToLocalPath(trimmedForeground.url)).metadata();
   const layout = planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight);
@@ -3663,11 +4029,18 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
     resultUrl,
     layerBox,
     layout,
+    zones,
+    designAnalysis: {
+      layerCount: designAnalysis.layers?.length || 0,
+      warnings: designAnalysis.warnings || []
+    },
     layers: {
+      mode: "foreground-background-v1",
       foregroundUrl: trimmedForeground.url,
       rawForegroundUrl: split.foreground.url,
       backgroundUrl: split.background.url,
-      expandedBackgroundUrl: backgroundUrl,
+      expandedBackgroundUrl: "",
+      backgroundMode: "deterministic-cover",
       all: split.layers.map(layer => ({
         url: layer.url,
         roleHint: layer.roleHint,
