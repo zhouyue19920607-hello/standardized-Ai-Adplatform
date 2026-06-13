@@ -2139,6 +2139,7 @@ const ADAPT_ENDPOINTS = {
     saliency: "sod",
     logo: "logo_seg",
     text: "textdetect_img",
+    posterLayer: "poster_edit_layer_async",
     expand: "mtimage_expand_v4_async",
     inpaint: "image_manipulation_fl_async",
     crop: "image_cropping_async"
@@ -2156,12 +2157,16 @@ const ADAPT_ENDPOINTS = {
 const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "mtimage_expand_v4_async",
   "image_manipulation_fl_async",
-  "image_cropping_async"
+  "image_cropping_async",
+  "poster_edit_layer_async"
 ]);
 
 function resolveOpenapiEndpointUrl(apiName, config) {
   if (/^https?:\/\//i.test(apiName)) return apiName;
   if (apiName === "mtimage_expand_v4_async") {
+    return `${config.mtlabApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "poster_edit_layer_async") {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
   if (apiName === "logo_seg") {
@@ -3361,6 +3366,303 @@ async function inpaintForBackgroundPrep(imageUrl, masks, context) {
   return inpainted || imageUrl;
 }
 
+function clampBoxToImage(box, width, height) {
+  if (!box || !width || !height) return null;
+  const x1 = Math.max(0, Math.min(width, Number(box.x) || 0));
+  const y1 = Math.max(0, Math.min(height, Number(box.y) || 0));
+  const x2 = Math.max(0, Math.min(width, (Number(box.x) || 0) + (Number(box.width) || 0)));
+  const y2 = Math.max(0, Math.min(height, (Number(box.y) || 0) + (Number(box.height) || 0)));
+  if (x2 <= x1 || y2 <= y1) return null;
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+}
+
+function unionBoxesForAdapt(boxes = [], width, height, paddingRatio = 0.06) {
+  const valid = boxes
+    .map(box => clampBoxToImage(denormalizeBox(box, width, height), width, height))
+    .filter(Boolean);
+  if (!valid.length) return null;
+  const minX = Math.min(...valid.map(box => box.x));
+  const minY = Math.min(...valid.map(box => box.y));
+  const maxX = Math.max(...valid.map(box => box.x + box.width));
+  const maxY = Math.max(...valid.map(box => box.y + box.height));
+  const padding = Math.max(width, height) * paddingRatio;
+  return clampBoxToImage({
+    x: minX - padding,
+    y: minY - padding,
+    width: (maxX - minX) + padding * 2,
+    height: (maxY - minY) + padding * 2
+  }, width, height);
+}
+
+function buildLayerSplitBoxForAdapt(analysis, width, height) {
+  const boxes = [
+    analysis.subject?.box,
+    ...(analysis.logo?.boxes || []),
+    ...(analysis.text?.boxes || [])
+  ].filter(Boolean);
+  const union = unionBoxesForAdapt(boxes, width, height, 0.055);
+  if (union) return union;
+  const fallbackW = width * 0.78;
+  const fallbackH = height * 0.78;
+  return {
+    x: (width - fallbackW) / 2,
+    y: (height - fallbackH) / 2,
+    width: fallbackW,
+    height: fallbackH
+  };
+}
+
+function boxToCoord(box) {
+  return [
+    Math.max(0, Math.round(box.x)),
+    Math.max(0, Math.round(box.y)),
+    Math.max(1, Math.round(box.x + box.width)),
+    Math.max(1, Math.round(box.y + box.height))
+  ];
+}
+
+async function inspectStaticImageLayer(staticUrl) {
+  if (!staticUrl?.startsWith("/static/")) return null;
+  const localPath = staticUrlToLocalPath(staticUrl);
+  const meta = await sharp(localPath).metadata();
+  return {
+    url: staticUrl,
+    path: localPath,
+    width: meta.width || 0,
+    height: meta.height || 0,
+    hasAlpha: Boolean(meta.hasAlpha),
+    channels: meta.channels || 0
+  };
+}
+
+function inferLayerRole(media, index) {
+  const text = JSON.stringify({
+    index,
+    media_extra: media?.media_extra,
+    extra: media?.extra,
+    profiles: media?.media_profiles,
+    type: media?.type,
+    name: media?.name,
+    layer: media?.layer
+  }).toLowerCase();
+  if (/(background|bg|clean|base|back)/.test(text)) return "background";
+  if (/(foreground|fg|front|subject|layer|alpha)/.test(text)) return "foreground";
+  return "";
+}
+
+async function normalizePosterLayerResult(raw) {
+  const mediaList = extractAigcResultMedia(raw);
+  const layers = [];
+  for (let index = 0; index < mediaList.length; index += 1) {
+    const media = mediaList[index];
+    const value = media?.media_data || media?.media_url;
+    const storedUrl = await persistProviderImageValue(value, `poster_layer_${index}`);
+    if (!storedUrl) continue;
+    try {
+      const inspected = await inspectStaticImageLayer(storedUrl);
+      if (inspected) {
+        layers.push({
+          ...inspected,
+          index,
+          roleHint: inferLayerRole(media, index),
+          media
+        });
+      }
+    } catch (err) {
+      console.warn("[AdaptImage] poster layer inspect skipped:", err.message);
+    }
+  }
+
+  const foreground =
+    layers.find(layer => layer.roleHint === "foreground") ||
+    layers.find(layer => layer.hasAlpha) ||
+    layers[0] ||
+    null;
+  const background =
+    layers.find(layer => layer.roleHint === "background" && layer.url !== foreground?.url) ||
+    layers.find(layer => !layer.hasAlpha && layer.url !== foreground?.url) ||
+    layers.find(layer => layer.url !== foreground?.url) ||
+    null;
+
+  return { foreground, background, layers, raw };
+}
+
+async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
+  const config = context.config;
+  const apiStyle = getAdaptApiStyle(config);
+  if (apiStyle !== ADAPT_API_STYLES.openapi) {
+    throw new Error("poster layer split is currently only configured for OpenAPI style");
+  }
+  const openapiImageUrl = await resolveOpenapiAdaptImageUrl(imageUrl, context);
+  const mediaInfo = /^https?:\/\//i.test(openapiImageUrl || "")
+    ? mediaInfoFromUrl(openapiImageUrl)
+    : await mediaInfoForOpenapiAdaptImage(imageUrl, context);
+  const endpoint = ADAPT_ENDPOINTS.openapi.posterLayer;
+  const url = resolveOpenapiEndpointUrl(endpoint, config);
+  const requestPayload = {
+    parameter: {
+      input_type: "box",
+      box_coord: boxToCoord(layerBox),
+      json_file: "",
+      subject_protect: true,
+      only_text_eliminate: false,
+      eliminate_type: "v0421"
+    },
+    extra: {},
+    media_info_list: [mediaInfo]
+  };
+  console.log("[AdaptImage] Step3 layer split start", JSON.stringify({
+    endpoint,
+    boxCoord: requestPayload.parameter.box_coord,
+    media: summarizeMediaInfoList([mediaInfo])[0]
+  }));
+  const rawSubmit = await aigcJsonRequest(
+    withAigcQueryAuth(url, config),
+    "POST",
+    requestPayload,
+    { ...config, authMode: "none" }
+  );
+  if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-layer-submit", endpoint, rawSubmit);
+  const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
+  if (!msgId) throw createProviderError("poster-layer-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const raw = await pollOpenapiV3Async(msgId, {
+    ...context,
+    pollMode: "task_query_result",
+    pollHost: new URL(url).origin,
+    pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
+    initialDelayMs: 3000,
+    pollIntervalMs: config.pollIntervalMs,
+    maxPolls: config.maxPolls,
+    config
+  });
+  const normalized = await normalizePosterLayerResult(raw);
+  if (!normalized.foreground?.url || !normalized.background?.url) {
+    throw new Error(`poster layer split did not return usable foreground/background layers, mediaCount=${normalized.layers.length}`);
+  }
+  console.log("[AdaptImage] Step3 layer split done", JSON.stringify({
+    foreground: normalized.foreground.url,
+    background: normalized.background.url,
+    layerCount: normalized.layers.length
+  }));
+  return normalized;
+}
+
+async function trimForegroundLayerForAdapt(foregroundUrl) {
+  if (!foregroundUrl?.startsWith("/static/")) return { url: foregroundUrl, meta: null };
+  const sourcePath = staticUrlToLocalPath(foregroundUrl);
+  const meta = await sharp(sourcePath).metadata();
+  if (!meta.hasAlpha) return { url: foregroundUrl, meta };
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `poster_foreground_trim_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  try {
+    await sharp(sourcePath)
+      .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
+      .png()
+      .toFile(outputPath);
+    const trimmedMeta = await sharp(outputPath).metadata();
+    return { url: `/static/${outputFilename}`, meta: trimmedMeta };
+  } catch (err) {
+    console.warn("[AdaptImage] foreground trim skipped:", err.message);
+    return { url: foregroundUrl, meta };
+  }
+}
+
+function planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight) {
+  const sourceWidth = Math.max(1, foregroundMeta?.width || targetWidth);
+  const sourceHeight = Math.max(1, foregroundMeta?.height || targetHeight);
+  const maxWidth = targetWidth * 0.82;
+  const maxHeight = targetHeight * 0.82;
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, 1.15);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  return {
+    x: Math.round((targetWidth - width) / 2),
+    y: Math.round((targetHeight - height) / 2),
+    width,
+    height,
+    scale
+  };
+}
+
+async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targetWidth, targetHeight, layout) {
+  const backgroundStatic = await ensureStaticImageUrlForResize(backgroundUrl);
+  const foregroundStatic = await ensureStaticImageUrlForResize(foregroundUrl);
+  if (!backgroundStatic?.startsWith("/static/") || !foregroundStatic?.startsWith("/static/")) {
+    throw new Error("layered relayout requires local static background and foreground layers");
+  }
+  const backgroundPath = staticUrlToLocalPath(backgroundStatic);
+  const foregroundPath = staticUrlToLocalPath(foregroundStatic);
+  const foregroundBuffer = await sharp(foregroundPath)
+    .rotate()
+    .resize({
+      width: layout.width,
+      height: layout.height,
+      fit: "contain",
+      withoutEnlargement: false,
+      kernel: sharp.kernel.lanczos3
+    })
+    .png()
+    .toBuffer();
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `aigc_layered_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await sharp(backgroundPath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .composite([{
+      input: foregroundBuffer,
+      left: Math.round(layout.x),
+      top: Math.round(layout.y),
+      blend: "over"
+    }])
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/${outputFilename}`;
+}
+
+async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, prompt = "") {
+  const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
+  const split = await splitPosterLayersForAdapt(imageUrl, layerBox, context);
+  const expandedBackground = await expandImageV4ForAdapt(
+    split.background.url,
+    targetWidth,
+    targetHeight,
+    context,
+    prompt || "extend clean advertising poster background naturally, no text, no logo, no main subject"
+  );
+  const backgroundUrl = expandedBackground || split.background.url;
+  const trimmedForeground = await trimForegroundLayerForAdapt(split.foreground.url);
+  const foregroundMeta = trimmedForeground.meta || await sharp(staticUrlToLocalPath(trimmedForeground.url)).metadata();
+  const layout = planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight);
+  const resultUrl = await composeLayeredRelayoutForAdapt(backgroundUrl, trimmedForeground.url, targetWidth, targetHeight, layout);
+  return {
+    resultUrl,
+    layerBox,
+    layout,
+    layers: {
+      foregroundUrl: trimmedForeground.url,
+      rawForegroundUrl: split.foreground.url,
+      backgroundUrl: split.background.url,
+      expandedBackgroundUrl: backgroundUrl,
+      all: split.layers.map(layer => ({
+        url: layer.url,
+        roleHint: layer.roleHint,
+        width: layer.width,
+        height: layer.height,
+        hasAlpha: layer.hasAlpha
+      }))
+    }
+  };
+}
+
 async function buildProtectedMaskFallback() {
   return {
     protectedMaskUrl: "",
@@ -3556,6 +3858,25 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   ].filter(Boolean).join("");
   let workingUrl = imageUrl;
 
+  if (plan.strategy === "relayout") {
+    try {
+      const layered = await executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, enhancedPrompt);
+      context.layeredRelayout = layered;
+      console.log("[AdaptImage] layered relayout done", JSON.stringify({
+        resultUrl: layered.resultUrl,
+        layerBox: layered.layerBox,
+        layout: layered.layout
+      }));
+      return ensureFinalAdaptSize(layered.resultUrl, targetWidth, targetHeight);
+    } catch (err) {
+      context.layeredRelayout = {
+        failed: true,
+        error: err.message
+      };
+      console.warn("[AdaptImage] layered relayout fallback:", err.message);
+    }
+  }
+
   workingUrl = await inpaintForBackgroundPrep(workingUrl, masks, context);
 
   const expandedUrl = await expandImageV4ForAdapt(workingUrl, targetWidth, targetHeight, context, enhancedPrompt);
@@ -3667,7 +3988,11 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   const safeAreaPassed = normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
   if (!safeAreaPassed) warnings.push("some protected regions are too close to the output safe-area edge");
   if (analysis.warnings?.length) warnings.push(...analysis.warnings);
-  if (plan.strategy === "relayout") warnings.push("true layered relayout is unavailable; current MVP only uses inpaint + expand + crop fallback");
+  if (plan.strategy === "relayout" && context.layeredRelayout?.failed) {
+    warnings.push(`layered relayout failed and fell back to inpaint + expand + crop: ${context.layeredRelayout.error}`);
+  } else if (plan.strategy === "relayout" && !context.layeredRelayout) {
+    warnings.push("true layered relayout was not executed; current MVP only uses inpaint + expand + crop fallback");
+  }
 
   let subjectIou = null;
   if (analysis.subject?.maskUrl) {
@@ -3955,6 +4280,13 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       },
       masks,
       plan,
+      layeredRelayout: context.layeredRelayout ? {
+        failed: Boolean(context.layeredRelayout.failed),
+        error: context.layeredRelayout.error,
+        layerBox: context.layeredRelayout.layerBox,
+        layout: context.layeredRelayout.layout,
+        layers: context.layeredRelayout.layers
+      } : null,
       qa,
       limitations: [
         "MVP 尚未做主体/文案/Logo 的真实分层重排。",
