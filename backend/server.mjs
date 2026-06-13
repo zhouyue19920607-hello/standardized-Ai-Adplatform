@@ -815,6 +815,22 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
 const AIGC_SIGN_ALGORITHM = "SDK-HMAC-SHA256";
 const AIGC_DEFAULT_PROMPT = "preserve the original subject, logo and text exactly, only extend the background outside the original image";
+const AIGC_BACKGROUND_ONLY_EXPAND_PROMPT = [
+  "Background extension only.",
+  "Continue the original background, lighting, color, material, perspective and depth of field.",
+  "Do not add any new people, products, objects, props, decorations, icons, buttons, packaging, logos, brand marks, labels, slogans or text.",
+  "Do not redraw, modify or invent the subject, product, person, logo or copywriting.",
+  "Keep the extended area clean and empty enough for the existing foreground layers to be composited later.",
+  "No extra elements, no fake text, no new focal object, no visual clutter."
+].join(" ");
+const AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT = [
+  "Strictly preserve the original subject, product, person, copywriting, button, logo and brand marks.",
+  "Only extend or repair the background around the original content.",
+  "Do not add any unrelated new people, products, objects, decorations, icons, buttons, packaging, logos, labels, slogans or text.",
+  "Do not change, redraw, crop, cover, stretch or deform the original key content.",
+  "The new area must follow the original background, lighting, color, material, perspective and depth of field.",
+  "Keep the result clean, natural and faithful to the source image."
+].join(" ");
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
   textToVideo: "/v1/ltx_2_async",
@@ -3636,7 +3652,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
     targetWidth,
     targetHeight,
     context,
-    prompt || "extend clean advertising poster background naturally, no text, no logo, no main subject"
+    [AIGC_BACKGROUND_ONLY_EXPAND_PROMPT, prompt || ""].filter(Boolean).join(" ")
   );
   const backgroundUrl = expandedBackground || split.background.url;
   const trimmedForeground = await trimForegroundLayerForAdapt(split.foreground.url);
@@ -3848,7 +3864,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight);
   }
 
-  const enhancedPrompt = [
+  const legacyEnhancedPromptParts = [
     "最高优先级：完整保留原图主体、产品、人物、文案、按钮、Logo 和品牌识别，不裁切、不遮挡、不拉伸、不变形、不改字、不重绘 Logo。",
     "只扩展或修补背景环境，补全区域需要与原图光影、材质、色彩、透视一致。",
     plan.strategy === "relayout"
@@ -3856,6 +3872,13 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       : "根据目标比例补全背景并优化构图，让核心内容全部出现在安全区域内。",
     prompt || ""
   ].filter(Boolean).join("");
+  const enhancedPrompt = [
+    AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+    plan.strategy === "relayout"
+      ? "For large ratio changes, prefer empty background extension and leave composition to the protected foreground/layout pipeline. Do not invent new advertising elements."
+      : "For moderate ratio changes, keep the original content intact and only fill missing background area. Do not redesign the poster.",
+    prompt || ""
+  ].filter(Boolean).join(" ");
   let workingUrl = imageUrl;
 
   if (plan.strategy === "relayout") {
