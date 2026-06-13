@@ -50,6 +50,11 @@ export interface AdAsset {
   showMask?: boolean;
   showCrop?: boolean;
   showBadge?: boolean;
+  aiAdaptation?: {
+    label: string;
+    strategy?: string;
+    warnings?: string[];
+  };
   // NOTE: 三平台开屏样式蒙版 — 存储三个平台各自的 mask_path
   splashPlatformMasks?: {
     meitu: string | null;

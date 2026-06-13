@@ -72,6 +72,38 @@ const getRequestErrorMessage = (error: unknown) => {
   return '美图 AI 适配失败';
 };
 
+const describeAdaptImageResult = (result: {
+  strategy?: string;
+  plan?: { strategy?: string };
+  qa?: { warnings?: string[] };
+  layeredRelayout?: {
+    failed?: boolean;
+    error?: string;
+    layers?: { mode?: string };
+  } | null;
+}) => {
+  const mode = result.layeredRelayout?.layers?.mode || result.strategy || result.plan?.strategy || 'adapt';
+  if (result.layeredRelayout?.failed) {
+    return {
+      label: `AI智能排版已降级：${result.layeredRelayout.error || mode}`,
+      strategy: mode,
+      warnings: result.qa?.warnings || [],
+    };
+  }
+  const label = mode === 'multi-layer-v2'
+    ? 'AI智能排版：多层重排 v2'
+    : mode === 'foreground-background-v1'
+      ? 'AI智能排版：前景/背景分层'
+      : mode === 'relayout'
+        ? 'AI智能排版：重排'
+        : `AI适配：${mode}`;
+  return {
+    label,
+    strategy: mode,
+    warnings: result.qa?.warnings || [],
+  };
+};
+
 const isRawImageMatchingTemplate = (raw: RawFile, template: AdTemplate) => {
   const target = getTemplateOutputDimensions(template);
   return Boolean(
@@ -609,6 +641,7 @@ const App: React.FC = () => {
         }
 
         let finalUrl = raw.previewUrl;
+        let aiAdaptation: AdAsset['aiAdaptation'] | undefined;
         const shouldBypassAiForExactImage = raw.file.type.startsWith('image/') && activeTemplates.length === 1 && isRawImageMatchingTemplate(raw, template);
 
         // category check
@@ -693,6 +726,14 @@ const App: React.FC = () => {
           try {
             console.log(`[AIGC Adapt] ${raw.file.name} -> ${template.app}${template.name} ${aigcTarget.width}x${aigcTarget.height}`);
             const uploaded = await uploadRawAsset(raw.file);
+            const imageAdaptPrompt = [
+              'Poster resize and relayout task. Preserve the uploaded image content, product, subject, logo, slogan and all readable copy exactly.',
+              'Use detected layers to move, scale and arrange existing visual elements into the target ad size. Keep text and logo inside safe areas.',
+              'Do not invent new objects, decorative elements, products, people, icons, labels, words, logos or unrelated background content.',
+              'If extra canvas area is needed, extend only the original background texture, color, lighting and perspective.',
+              `Template: ${template.app}${template.name}`,
+              `Target size: ${aigcTarget.width} x ${aigcTarget.height}`
+            ].join(' ');
             const aigcResult = await adaptImageWithAigc({
               imageUrl: uploaded.url,
               targetWidth: aigcTarget.width,
@@ -700,16 +741,14 @@ const App: React.FC = () => {
               templateId: template.id,
               templateName: template.name,
               app: template.app,
-              prompt: [
-                '将上传图片智能适配为目标尺寸。保持主体、产品、文案和 Logo 完整不变，不拉伸、不变形、不改字、不重绘 Logo。根据目标尺寸比例自动扩展背景并优化排版，使画面美观、平衡、有广告设计感。文案和 Logo 必须距离画面边缘至少 15% 安全距离，避免裁切。禁止裁切主体、文字错乱、Logo 变形、比例异常。',
-                `广告模板：${template.app}${template.name}`,
-                `目标尺寸：${aigcTarget.width} x ${aigcTarget.height}`
-              ].join('。'),
+              prompt: imageAdaptPrompt,
               allowRelayout: true
             });
             if (aigcResult.qa && !aigcResult.qa.passed) {
               console.warn('[AIGC Adapt] QA warnings', aigcResult.qa.warnings);
             }
+            aiAdaptation = describeAdaptImageResult(aigcResult);
+            console.log('[AIGC Adapt] result mode', aiAdaptation);
             finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;
           } catch (e) {
             console.error('[AIGC Adapt] failed', e);
@@ -1111,6 +1150,7 @@ const App: React.FC = () => {
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,
           badgeOverlayUrl: template.badge_overlay_path ? `${template.badge_overlay_path}?v=${config.assetsVersion}` : null,
+          aiAdaptation,
           // NOTE: 三平台开屏样式 — 查找同 splashGroup 的三个平台蒙版路径
           ...(template.category === '开屏' && template.splashGroup ? (() => {
             const meituTpl = templates.find(t => t.category === '开屏' && t.app === '美图秀秀' && t.splashGroup === template.splashGroup);

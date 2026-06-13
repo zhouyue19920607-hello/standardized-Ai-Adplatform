@@ -216,13 +216,21 @@ const AdCard: React.FC<{
 
   return (
     <div className="bg-[#F4F5F7] group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-slate-200/60 rounded-[20px] pb-3 relative shadow-md">
-      <div className="px-3 pt-3 pb-2 flex items-center justify-center bg-transparent shrink-0">
+      <div className="px-3 pt-3 pb-2 flex flex-col items-center justify-center gap-1 bg-transparent shrink-0">
         {/* Dimension Text */}
         <span className="text-[12px] text-slate-400 font-bold font-mono tracking-[0.1em] shrink min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-center">
           {localShowMask && asset.category === '焦点视窗' 
             ? (asset.app === 'wink' ? '1126 x 2438' : '1126 x 2436') 
             : asset.dimensions}
         </span>
+        {asset.aiAdaptation?.label && (
+          <span
+            className="max-w-full truncate rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-600"
+            title={[asset.aiAdaptation.label, ...(asset.aiAdaptation.warnings || [])].filter(Boolean).join('\n')}
+          >
+            {asset.aiAdaptation.label}
+          </span>
+        )}
       </div>
       <div
         className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"

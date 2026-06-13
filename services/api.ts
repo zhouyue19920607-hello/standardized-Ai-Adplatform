@@ -271,6 +271,15 @@ export interface AdaptImageWithAigcResponse extends AigcTaskResponse {
         logoSimilarity?: number | null;
         warnings: string[];
     };
+    layeredRelayout?: {
+        failed?: boolean;
+        error?: string;
+        layers?: {
+            mode?: string;
+            items?: unknown[];
+            backgroundMode?: string;
+        };
+    } | null;
     limitations?: string[];
 }
 
