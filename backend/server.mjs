@@ -1137,6 +1137,23 @@ async function resolveExpandPixels({ imageUrl, targetWidth, targetHeight, expand
 function extractAigcResultMedia(statusData) {
   const taskData = statusData?.data || {};
   const result = taskData.result || {};
+  const details = taskData.details || {};
+  const callback = details.mtlab_callback_response || {};
+  if (callback.error_code === 0 && Array.isArray(callback.media_info_list)) return callback.media_info_list;
+  if (Array.isArray(details.media_info_list)) return details.media_info_list;
+  if (Array.isArray(details.images)) {
+    return details.images.map(item => typeof item === "string"
+      ? { media_data: item, media_url: item }
+      : {
+          media_data: item?.media_image || item?.media_url || item?.media_data || item?.url,
+          media_url: item?.media_url || item?.media_image || item?.media_data || item?.url,
+          width: item?.width,
+          height: item?.height
+        });
+  }
+  if (Array.isArray(result.urls)) {
+    return result.urls.map(url => ({ media_data: url, media_url: url }));
+  }
   if (statusData?.data?.media_url) {
     return [{
       media_data: statusData.data.media_url,
@@ -2612,12 +2629,15 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
 function getOpenapiPollState(raw) {
   const code = raw?.error_code ?? raw?.code;
   const status = String(raw?.data?.status || raw?.status || "").toLowerCase();
+  const numericStatus = Number(raw?.data?.status ?? raw?.status);
   const mediaList = extractAigcResultMedia(raw);
   if ((code === 0 || code === "0") && mediaList.length > 0) return "finished";
+  if ((numericStatus === 9 || numericStatus === 10) && mediaList.length > 0) return "finished";
+  if (numericStatus === 0 || numericStatus === 1 || numericStatus === 9) return "processing";
   if (status === "finished" || status === "completed" || status === "success") return "finished";
   if ((code === 0 || code === "0") && mediaList.length === 0) return "processing";
   if (code === 1 || status === "processing" || status === "pending" || status === "queued") return "processing";
-  if (code === 2 || status === "failed" || status === "error") return "failed";
+  if (code === 2 || numericStatus === 2 || numericStatus === -1 || status === "failed" || status === "error") return "failed";
   if (![undefined, null, "", 0, "0"].includes(code)) return "failed";
   return "unknown";
 }
@@ -2654,28 +2674,20 @@ async function pollOpenapiV3Async(msgId, options = {}) {
   if (options.pollMode === "task_query_result") {
     const pollHost = options.pollHost || config.mtlabApiHost || config.apiHost;
     const queryAuth = { ...config, authMode: "none" };
-    let pollParamName = options.pollParamName === "msg_id" ? "msg_id" : "task_id";
-    let pollId = msgId;
+    const pollParamName = "task_id";
+    const pollId = msgId;
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
-    if (pollParamName === "msg_id") {
-      try {
-        const taskIdBaseUrl = withAigcQueryAuth(`${config.apiHost}/api/v1/sdk/task_id`, config);
-        const taskIdUrl = `${taskIdBaseUrl}&${new URLSearchParams({ msg_id: msgId }).toString()}`;
-        logOpenapiPollDebug("EXPAND-POLL", taskIdUrl, msgId, "GET");
-        const rawTaskId = await aigcJsonRequest(taskIdUrl, "GET", null, queryAuth);
-        const resolvedTaskId = rawTaskId?.data?.task_id || rawTaskId?.task_id || rawTaskId?.data?.data?.task_id;
-        if (resolvedTaskId) {
-          pollParamName = "task_id";
-          pollId = resolvedTaskId;
-          console.log("[OpenAPI Poll] resolved msg_id to task_id", JSON.stringify({ msgId, taskId: pollId }));
-        }
-      } catch (err) {
-        console.warn("[OpenAPI Poll] msg_id to task_id lookup skipped:", err.message);
-      }
-    }
     const candidatePollers = [
+      {
+        key: `api/v1/sdk/status(${pollParamName})`,
+        run: async () => {
+          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
+          return aigcJsonRequest(pollUrl, "GET", null, config);
+        }
+      },
       {
         key: `v1/task_query_result(${pollParamName})`,
         run: async () => {
@@ -2718,14 +2730,6 @@ async function pollOpenapiV3Async(msgId, options = {}) {
           const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
           logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
-        }
-      },
-      {
-        key: `api/v1/sdk/status(${pollParamName})`,
-        run: async () => {
-          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
-          return aigcJsonRequest(pollUrl, "GET", null, config);
         }
       }
     ];
