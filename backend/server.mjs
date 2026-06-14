@@ -1901,7 +1901,12 @@ async function pushAigcTask({
     biz: config.biz,
     params: JSON.stringify(taskPayload),
     rsp_media_type: rspMediaType,
-    ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {})
+    ...(normalizedMediaInfoList.length
+      ? {
+          media_info_list: normalizedMediaInfoList,
+          mediaInfoList: normalizedMediaInfoList
+        }
+      : {})
   };
   const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
   if (initImages.length > 0) payload.init_images = initImages;
@@ -5067,6 +5072,12 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
     } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const config = getAigcConfig();
+    const videoInputImageUrl = await resolveOpenapiAdaptImageUrl(imageUrl, { config, publicBaseUrl });
+    if (!/^https?:\/\//i.test(videoInputImageUrl || "")) {
+      throw new Error("图生视频输入图需要可被美图算法访问的 URL，请配置 AIGC_PUBLIC_BASE_URL 或 OBSERVER_* 上传中转");
+    }
     const result = await submitAigcTask({
       task: AIGC_TASKS.imageToVideo,
       params: {
@@ -5077,13 +5088,13 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
           lora_id: loraId || "i2v-nolora"
         }
       },
-      mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      mediaInfoList: [mediaInfoFromUrl(videoInputImageUrl)],
       initialDelayMs: 10000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req),
+      publicBaseUrl,
       mediaOptions: { preferPublicImageUrl: true }
     });
-    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.imageToVideo, ...result });
+    res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.imageToVideo, inputImageUrl: videoInputImageUrl, ...result });
   } catch (err) {
     console.error("[AIGC Image To Video] failed:", err.message);
     res.status(500).json({ error: "AI 图生视频失败", details: err.message });
