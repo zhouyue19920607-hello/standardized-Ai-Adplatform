@@ -879,7 +879,7 @@ function getAigcConfig() {
     sk: process.env.AIGC_SK || "",
     biz: process.env.AIGC_BIZ || "ai-saap",
     apiHost,
-    mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || apiHost).replace(/\/+$/, ""),
+    mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || "https://openapi.mtlab.meitu.com").replace(/\/+$/, ""),
     aiApiHost: (process.env.AIGC_AI_API_HOST || apiHost).replace(/\/+$/, ""),
     authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
     apiStyle: (process.env.AIGC_PROVIDER_API_STYLE || "").toLowerCase(),
@@ -2228,8 +2228,7 @@ const ADAPT_ENDPOINTS = {
 const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "mtimage_expand_v4_async",
   "image_manipulation_fl_async",
-  "image_cropping_async",
-  "poster_edit_layer_async"
+  "image_cropping_async"
 ]);
 
 function resolveOpenapiEndpointUrl(apiName, config) {
@@ -2247,20 +2246,21 @@ function resolveOpenapiEndpointUrl(apiName, config) {
     return `${config.aiApiHost}/v1/${apiName}`;
   }
   if (apiName === "textdetect_img") {
-    return `${config.aiApiHost}/v1/textdetect`;
+    return `${config.mtlabApiHost}/v1/textdetect_img`;
   }
   return `${config.apiHost}/v1/${apiName}`;
 }
 
 function resolveOpenapiEndpointCandidates(apiName, config) {
   if (apiName === "textdetect_img") {
+    const hosts = [
+      config.mtlabApiHost,
+      config.aiApiHost,
+      config.apiHost
+    ].filter(Boolean).map(host => String(host).replace(/\/+$/, ""));
+    const paths = ["/v1/textdetect_img", "/v1/textdetect", "/v1/vision/ocr/text_detection"];
     return [
-      `${config.aiApiHost}/v1/textdetect`,
-      `${config.aiApiHost}/v1/textdetect_img`,
-      `${config.apiHost}/v1/textdetect`,
-      `${config.apiHost}/v1/textdetect_img`,
-      `${config.aiApiHost}/v1/vision/ocr/text_detection`,
-      `${config.apiHost}/v1/vision/ocr/text_detection`
+      ...new Set(hosts.flatMap(host => paths.map(endpointPath => `${host}${endpointPath}`)))
     ];
   }
   return [resolveOpenapiEndpointUrl(apiName, config)];
@@ -2679,7 +2679,13 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
     };
   }
 
-  const url = `${config.apiHost}/v1/algorithm/submit`;
+  const configuredAlgorithmHost = options.algorithmHost || config.mtlabApiHost;
+  const algorithmHost = (
+    configuredAlgorithmHost && configuredAlgorithmHost !== config.apiHost
+      ? configuredAlgorithmHost
+      : "https://openapi.mtlab.meitu.com"
+  ).replace(/\/+$/, "");
+  const url = `${algorithmHost}/v1/algorithm/submit`;
   const requestPayload = {
     api_name: apiName,
     body: buildOpenapiAsyncBody(payload),
@@ -2689,7 +2695,7 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
   const msgId = raw?.data?.msg_id || raw?.msg_id || raw?.data?.task_id || raw?.task_id;
   if (!msgId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No msg_id in response" });
-  return { msgId, raw, pollMode: "algorithm_poll" };
+  return { msgId, raw, pollMode: "algorithm_poll", pollHost: algorithmHost };
 }
 
 function getOpenapiPollState(raw) {
@@ -2765,27 +2771,19 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
-    const configuredPollHosts = [pollHost, config.mtlabApiHost, config.apiHost].filter(Boolean);
+    const configuredPollHosts = [config.mtlabApiHost, pollHost, config.apiHost].filter(Boolean);
     const documentedMtlabPollHosts = ["https://openapi.mtlab.meitu.com"];
     if (configuredPollHosts.some(host => /pre/i.test(String(host)))) {
       documentedMtlabPollHosts.push("https://openapi-pre.mtlab.meitu.com");
     }
     const pollHosts = [
       ...new Set(
-        [...configuredPollHosts, ...documentedMtlabPollHosts]
+        [...documentedMtlabPollHosts, ...configuredPollHosts]
           .filter(Boolean)
           .map(host => String(host).replace(/\/+$/, ""))
       )
     ];
     const candidatePollers = [
-      {
-        key: "api/v1/sdk/status(task_id)",
-        run: async () => {
-          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ task_id: taskId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, taskId, "GET");
-          return aigcJsonRequest(pollUrl, "GET", null, config);
-        }
-      },
       ...pollHosts.map(host => ({
         key: `openapi-poll/query_result(msg_id)@${new URL(host).host}`,
         run: async () => {
@@ -2795,6 +2793,14 @@ async function pollOpenapiV3Async(msgId, options = {}) {
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       })),
+      {
+        key: "api/v1/sdk/status(task_id)",
+        run: async () => {
+          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ task_id: taskId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, taskId, "GET");
+          return aigcJsonRequest(pollUrl, "GET", null, config);
+        }
+      },
       {
         key: "v1/task_query_result(task_id)",
         run: async () => {
@@ -2876,13 +2882,14 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     throw new Error(`OpenAPI 任务超时未完成: ${msgId}`);
   }
   if (options.pollMode === "algorithm_poll") {
-    const url = withAigcQueryAuth(`${config.apiHost}/openapi-poll/query_result`, config);
+    const pollHost = (options.pollHost || config.mtlabApiHost || "https://openapi.mtlab.meitu.com").replace(/\/+$/, "");
+    const url = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
     await sleep(initialDelay);
     for (let index = 0; index < maxPolls; index += 1) {
-      const pollUrl = `${url}&${new URLSearchParams({ task_id: msgId }).toString()}`;
+      const pollUrl = `${url}&${new URLSearchParams({ msg_id: msgId }).toString()}`;
       const raw = await aigcJsonRequest(pollUrl, "GET", null, { ...config, authMode: "none" });
       const state = getOpenapiPollState(raw);
       if (state === "finished") return raw?.data || raw;
@@ -3707,8 +3714,12 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-layer-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-layer-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
-  const raw = await pollOpenapiSdkStatusAsync(msgId, {
+  const raw = await pollOpenapiV3Async(msgId, {
     ...context,
+    pollMode: "task_query_result",
+    pollHost: config.mtlabApiHost,
+    taskId: msgId,
+    msgId,
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
@@ -3834,8 +3845,12 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-design-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-design-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
-  const raw = await pollOpenapiSdkStatusAsync(msgId, {
+  const raw = await pollOpenapiV3Async(msgId, {
     ...context,
+    pollMode: "task_query_result",
+    pollHost: config.mtlabApiHost,
+    taskId: msgId,
+    msgId,
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
