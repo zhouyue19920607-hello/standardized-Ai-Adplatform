@@ -2677,6 +2677,24 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     }
     const candidatePollers = [
       {
+        key: `v1/task_query_result(${pollParamName})`,
+        run: async () => {
+          const baseUrl = withAigcQueryAuth(`${pollHost}/v1/task_query_result`, config);
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
+          return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+        }
+      },
+      {
+        key: `v1/query_result(${pollParamName})`,
+        run: async () => {
+          const baseUrl = withAigcQueryAuth(`${pollHost}/v1/query_result`, config);
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
+          return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+        }
+      },
+      {
         key: `openapi-poll/query_result(${pollParamName})`,
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
