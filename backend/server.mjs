@@ -2688,9 +2688,17 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   const url = `${algorithmHost}/v1/algorithm/submit`;
   const requestPayload = {
     api_name: apiName,
-    body: buildOpenapiAsyncBody(payload),
+    body: options.preserveBody ? payload : buildOpenapiAsyncBody(payload),
     extra_params: payload.extra_params || {}
   };
+  if (options.preserveBody) {
+    console.log("[OpenAPI Submit] algorithm submit", JSON.stringify({
+      apiName,
+      url,
+      mediaCount: Array.isArray(payload?.media_info_list) ? payload.media_info_list.length : 0,
+      parameterKeys: Object.keys(payload?.parameter || {})
+    }));
+  }
   const raw = await aigcJsonRequest(withAigcQueryAuth(url, config), "POST", requestPayload, { ...config, authMode: "none" });
   if (!isProviderSuccess(raw)) throw createProviderError("openapi-submit", apiName, raw);
   const msgId = raw?.data?.msg_id || raw?.msg_id || raw?.data?.task_id || raw?.task_id;
@@ -3687,7 +3695,6 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
     ? mediaInfoFromUrl(openapiImageUrl)
     : await mediaInfoForOpenapiAdaptImage(imageUrl, context);
   const endpoint = ADAPT_ENDPOINTS.openapi.posterLayer;
-  const url = resolveOpenapiEndpointUrl(endpoint, config);
   const requestPayload = {
     parameter: {
       input_type: "box",
@@ -3705,21 +3712,17 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
     boxCoord: requestPayload.parameter.box_coord,
     media: summarizeMediaInfoList([mediaInfo])[0]
   }));
-  const rawSubmit = await aigcJsonRequest(
-    withAigcQueryAuth(url, config),
-    "POST",
-    requestPayload,
-    { ...config, authMode: "none" }
-  );
-  if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-layer-submit", endpoint, rawSubmit);
-  const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
-  if (!msgId) throw createProviderError("poster-layer-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const submitted = await submitOpenapiV3Async(endpoint, requestPayload, {
+    ...context,
+    config,
+    algorithmHost: config.mtlabApiHost,
+    preserveBody: true
+  });
+  const msgId = submitted.msgId || submitted.pollId || submitted.taskId;
   const raw = await pollOpenapiV3Async(msgId, {
     ...context,
-    pollMode: "task_query_result",
-    pollHost: config.mtlabApiHost,
-    taskId: msgId,
-    msgId,
+    pollMode: submitted.pollMode,
+    pollHost: submitted.pollHost,
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
@@ -3818,7 +3821,6 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
     return { layers: [], raw: null, warnings: ["poster design analysis skipped for non-openapi style"] };
   }
   const endpoint = ADAPT_ENDPOINTS.openapi.posterDesign;
-  const url = resolveOpenapiEndpointUrl(endpoint, config);
   const openapiImageUrl = await resolveOpenapiAdaptImageUrl(imageUrl, context);
   const mediaInfo = /^https?:\/\//i.test(openapiImageUrl || "")
     ? mediaInfoFromUrl(openapiImageUrl)
@@ -3836,21 +3838,17 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
     endpoint,
     media: summarizeMediaInfoList([mediaInfo])[0]
   }));
-  const rawSubmit = await aigcJsonRequest(
-    withAigcQueryAuth(url, config),
-    "POST",
-    requestPayload,
-    { ...config, authMode: "none" }
-  );
-  if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-design-submit", endpoint, rawSubmit);
-  const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
-  if (!msgId) throw createProviderError("poster-design-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const submitted = await submitOpenapiV3Async(endpoint, requestPayload, {
+    ...context,
+    config,
+    algorithmHost: config.mtlabApiHost,
+    preserveBody: true
+  });
+  const msgId = submitted.msgId || submitted.pollId || submitted.taskId;
   const raw = await pollOpenapiV3Async(msgId, {
     ...context,
-    pollMode: "task_query_result",
-    pollHost: config.mtlabApiHost,
-    taskId: msgId,
-    msgId,
+    pollMode: submitted.pollMode,
+    pollHost: submitted.pollHost,
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
