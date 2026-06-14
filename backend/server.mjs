@@ -4281,13 +4281,20 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
   const raw = await runAdaptProvider("expand", payload, context);
   let resultUrl = await persistFirstProviderImage(raw, "adapt_expand");
   if (!resultUrl && getAdaptApiStyle(config) === ADAPT_API_STYLES.openapi) {
-    const fallback = await submitAigcExpandTask({
-      imageUrl: publicImageUrl,
-      targetRatio: ratio,
-      prompt,
-      seed: -1
-    });
-    resultUrl = fallback.resultUrl || "";
+    try {
+      const fallback = await submitAigcExpandTask({
+        imageUrl: publicImageUrl,
+        targetRatio: ratio,
+        prompt,
+        seed: -1
+      });
+      resultUrl = fallback.resultUrl || "";
+    } catch (err) {
+      if (!isAigcTimeoutError(err)) throw err;
+      context.fallbackWarnings = context.fallbackWarnings || [];
+      context.fallbackWarnings.push(`expand fallback timed out and used local resize/crop: ${err.message}`);
+      console.warn("[AdaptImage] expand fallback timeout, continue with local resize/crop:", err.message);
+    }
   }
   return resultUrl;
 }
@@ -4760,6 +4767,10 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
     const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
     const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height);
     const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
+    if (context.fallbackWarnings?.length) {
+      qa.warnings = [...(qa.warnings || []), ...context.fallbackWarnings];
+      qa.passed = false;
+    }
     console.log("[AdaptImage] done", JSON.stringify({
       strategy: plan.strategy,
       resultUrl: finalUrl,
@@ -4808,6 +4819,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         layout: context.layeredRelayout.layout,
         layers: context.layeredRelayout.layers
       } : null,
+      fallbackWarnings: context.fallbackWarnings || [],
       qa,
       limitations: [
         "MVP 尚未做主体/文案/Logo 的真实分层重排。",
