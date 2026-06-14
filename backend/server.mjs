@@ -2265,6 +2265,18 @@ function normalizeProviderMessage(raw) {
   return raw?.message || raw?.error_msg || raw?.msg || raw?.data?.message || raw?.data?.error_msg || raw?.data?.msg || "";
 }
 
+function extractOpenapiTaskTraceId(raw) {
+  return raw?.data?.task_id
+    || raw?.task_id
+    || raw?.data?.trace_id
+    || raw?.trace_id
+    || raw?.data?.request_id
+    || raw?.request_id
+    || raw?.data?.traceId
+    || raw?.traceId
+    || "";
+}
+
 function isProviderPermissionError(raw) {
   const text = JSON.stringify(raw || {}).toLowerCase();
   return text.includes("permission") || text.includes("unauthorized") || text.includes("forbidden") || text.includes("no auth") || text.includes("no_permission");
@@ -2679,7 +2691,8 @@ async function pollOpenapiV3Async(msgId, options = {}) {
   if (options.pollMode === "task_query_result") {
     const pollHost = options.pollHost || config.mtlabApiHost || config.apiHost;
     const queryAuth = { ...config, authMode: "none" };
-    const taskId = msgId;
+    const taskId = options.taskId || msgId;
+    const callbackMsgId = options.msgId || msgId;
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
@@ -2696,8 +2709,8 @@ async function pollOpenapiV3Async(msgId, options = {}) {
         key: "openapi-poll/query_result(msg_id)",
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: taskId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, taskId, "GET");
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: callbackMsgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, callbackMsgId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       },
@@ -2723,8 +2736,8 @@ async function pollOpenapiV3Async(msgId, options = {}) {
         key: "v1/query_result(msg_id)",
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/v1/query_result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: taskId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, taskId, "GET");
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: callbackMsgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, callbackMsgId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       },
@@ -2732,8 +2745,8 @@ async function pollOpenapiV3Async(msgId, options = {}) {
         key: "v1/algorithm/poll(msg_id)",
         run: async () => {
           const pollUrl = withAigcQueryAuth(`${pollHost}/v1/algorithm/poll`, config);
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, taskId, "POST");
-          return aigcJsonRequest(pollUrl, "POST", { body: { msg_id: taskId } }, queryAuth);
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, callbackMsgId, "POST");
+          return aigcJsonRequest(pollUrl, "POST", { body: { msg_id: callbackMsgId } }, queryAuth);
         }
       },
       {
@@ -3607,10 +3620,13 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-layer-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-layer-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const taskId = extractOpenapiTaskTraceId(rawSubmit) || msgId;
   const raw = await pollOpenapiV3Async(msgId, {
     ...context,
     pollMode: "task_query_result",
     pollHost: new URL(url).origin,
+    taskId,
+    msgId,
     pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
@@ -3737,10 +3753,13 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-design-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-design-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
+  const taskId = extractOpenapiTaskTraceId(rawSubmit) || msgId;
   const raw = await pollOpenapiV3Async(msgId, {
     ...context,
     pollMode: "task_query_result",
     pollHost: new URL(url).origin,
+    taskId,
+    msgId,
     pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
