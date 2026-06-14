@@ -856,7 +856,7 @@ function getAigcConfig() {
     pollEndpointTemplate: process.env.AIGC_POLL_ENDPOINT_TEMPLATE || "/v2/task/{taskId}",
     publicBaseUrl: (process.env.AIGC_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
-    maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 120)),
+    maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 360)),
     pollIntervalMs: Math.max(500, Number(process.env.AIGC_POLL_INTERVAL_MS || 2000))
   };
 }
