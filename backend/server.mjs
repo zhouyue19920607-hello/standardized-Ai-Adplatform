@@ -2244,6 +2244,18 @@ function isProviderTaskNotFound(raw) {
   return message.includes("task not found") || message.includes("not found");
 }
 
+function summarizePollProbeResult(endpoint, raw) {
+  const code = raw?.code ?? raw?.error_code ?? raw?.status_code ?? raw?.httpStatus ?? "";
+  const status = raw?.data?.status ?? raw?.status ?? "";
+  const message = normalizeProviderMessage(raw) || "";
+  return {
+    endpoint,
+    code,
+    status,
+    message: String(message).slice(0, 180)
+  };
+}
+
 function shouldUseOpenapiMessageEnvelope(apiName) {
   return false;
 }
@@ -2696,6 +2708,7 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+    const pollHosts = [...new Set([pollHost, config.mtlabApiHost, config.apiHost].filter(Boolean))];
     const candidatePollers = [
       {
         key: "api/v1/sdk/status(task_id)",
@@ -2705,15 +2718,15 @@ async function pollOpenapiV3Async(msgId, options = {}) {
           return aigcJsonRequest(pollUrl, "GET", null, config);
         }
       },
-      {
-        key: "openapi-poll/query_result(msg_id)",
+      ...pollHosts.map(host => ({
+        key: `openapi-poll/query_result(msg_id)@${new URL(host).host}`,
         run: async () => {
-          const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
+          const baseUrl = withAigcQueryAuth(`${host}/openapi-poll/query_result`, config);
           const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: callbackMsgId }).toString()}`;
           logOpenapiPollDebug("EXPAND-POLL", pollUrl, callbackMsgId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
-      },
+      })),
       {
         key: "v1/task_query_result(task_id)",
         run: async () => {
@@ -2766,9 +2779,11 @@ async function pollOpenapiV3Async(msgId, options = {}) {
       if (isProviderNoRouteError(raw) || isProviderPollEndpointMismatch(raw) || isProviderTaskNotFound(raw)) {
         const nextPoller = candidatePollers.find(candidate => candidate.key !== activePoller.key);
         const remainingPollers = candidatePollers.filter(candidate => candidate.key !== activePoller.key);
+        const probeResults = [summarizePollProbeResult(activePoller.key, raw)];
         let switched = false;
         for (const candidate of remainingPollers) {
           const probe = await candidate.run();
+          probeResults.push(summarizePollProbeResult(candidate.key, probe));
           if (!isProviderNoRouteError(probe) && !isProviderPollEndpointMismatch(probe) && !isProviderTaskNotFound(probe)) {
             activePoller = candidate;
             raw = probe;
@@ -2778,7 +2793,11 @@ async function pollOpenapiV3Async(msgId, options = {}) {
           }
         }
         if (!switched && nextPoller) {
-          throw createProviderError("openapi-poll", activePoller.key, raw);
+          throw createProviderError("openapi-poll", "all-candidates", {
+            code: raw?.code ?? raw?.error_code ?? raw?.status_code,
+            message: `all poll candidates failed: ${probeResults.map(item => `${item.endpoint} -> ${item.message || item.code || item.status || "unknown"}`).join("; ")}`,
+            attempts: probeResults
+          });
         }
       }
       const state = getOpenapiPollState(raw);
