@@ -2687,13 +2687,13 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   ).replace(/\/+$/, "");
   const url = `${algorithmHost}/v1/algorithm/submit`;
   const requestPayload = {
-    api_name: apiName,
+    api_name: options.algorithmApiName || apiName,
     body: options.preserveBody ? payload : buildOpenapiAsyncBody(payload),
     extra_params: payload.extra_params || {}
   };
   if (options.preserveBody) {
     console.log("[OpenAPI Submit] algorithm submit", JSON.stringify({
-      apiName,
+      apiName: requestPayload.api_name,
       url,
       mediaCount: Array.isArray(payload?.media_info_list) ? payload.media_info_list.length : 0,
       parameterKeys: Object.keys(payload?.parameter || {})
@@ -3716,6 +3716,7 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
     ...context,
     config,
     algorithmHost: config.mtlabApiHost,
+    algorithmApiName: `/v1/${endpoint}`,
     preserveBody: true
   });
   const msgId = submitted.msgId || submitted.pollId || submitted.taskId;
@@ -3842,6 +3843,7 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
     ...context,
     config,
     algorithmHost: config.mtlabApiHost,
+    algorithmApiName: `/v1/${endpoint}`,
     preserveBody: true
   });
   const msgId = submitted.msgId || submitted.pollId || submitted.taskId;
