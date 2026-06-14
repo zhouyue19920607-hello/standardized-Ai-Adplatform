@@ -1900,7 +1900,8 @@ async function pushAigcTask({
     task_type: taskType,
     biz: config.biz,
     params: JSON.stringify(taskPayload),
-    rsp_media_type: rspMediaType
+    rsp_media_type: rspMediaType,
+    ...(normalizedMediaInfoList.length ? { media_info_list: normalizedMediaInfoList } : {})
   };
   const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
   if (initImages.length > 0) payload.init_images = initImages;
