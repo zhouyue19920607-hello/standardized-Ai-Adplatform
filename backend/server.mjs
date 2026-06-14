@@ -2217,6 +2217,11 @@ function isProviderNoRouteError(raw) {
   return message.includes("no route found") || message.includes("404");
 }
 
+function isProviderPollEndpointMismatch(raw) {
+  const message = normalizeProviderMessage(raw).toLowerCase();
+  return message.includes("invalid arguments") || message.includes("invalid argument");
+}
+
 function shouldUseOpenapiMessageEnvelope(apiName) {
   return false;
 }
@@ -2649,17 +2654,34 @@ async function pollOpenapiV3Async(msgId, options = {}) {
   if (options.pollMode === "task_query_result") {
     const pollHost = options.pollHost || config.mtlabApiHost || config.apiHost;
     const queryAuth = { ...config, authMode: "none" };
-    const pollParamName = options.pollParamName === "msg_id" ? "msg_id" : "task_id";
+    let pollParamName = options.pollParamName === "msg_id" ? "msg_id" : "task_id";
+    let pollId = msgId;
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+    if (pollParamName === "msg_id") {
+      try {
+        const taskIdBaseUrl = withAigcQueryAuth(`${config.apiHost}/api/v1/sdk/task_id`, config);
+        const taskIdUrl = `${taskIdBaseUrl}&${new URLSearchParams({ msg_id: msgId }).toString()}`;
+        logOpenapiPollDebug("EXPAND-POLL", taskIdUrl, msgId, "GET");
+        const rawTaskId = await aigcJsonRequest(taskIdUrl, "GET", null, queryAuth);
+        const resolvedTaskId = rawTaskId?.data?.task_id || rawTaskId?.task_id || rawTaskId?.data?.data?.task_id;
+        if (resolvedTaskId) {
+          pollParamName = "task_id";
+          pollId = resolvedTaskId;
+          console.log("[OpenAPI Poll] resolved msg_id to task_id", JSON.stringify({ msgId, taskId: pollId }));
+        }
+      } catch (err) {
+        console.warn("[OpenAPI Poll] msg_id to task_id lookup skipped:", err.message);
+      }
+    }
     const candidatePollers = [
       {
         key: `openapi-poll/query_result(${pollParamName})`,
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/openapi-poll/query_result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       },
@@ -2667,24 +2689,24 @@ async function pollOpenapiV3Async(msgId, options = {}) {
         key: `v1/algorithm/poll(${pollParamName})`,
         run: async () => {
           const pollUrl = withAigcQueryAuth(`${pollHost}/v1/algorithm/poll`, config);
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "POST");
-          return aigcJsonRequest(pollUrl, "POST", { body: { [pollParamName]: msgId } }, queryAuth);
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "POST");
+          return aigcJsonRequest(pollUrl, "POST", { body: { [pollParamName]: pollId } }, queryAuth);
         }
       },
       {
         key: `v1/mtimage_expand_v4/result(${pollParamName})`,
         run: async () => {
           const baseUrl = withAigcQueryAuth(`${pollHost}/v1/mtimage_expand_v4/result`, config);
-          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
+          const pollUrl = `${baseUrl}&${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
         }
       },
       {
         key: `api/v1/sdk/status(${pollParamName})`,
         run: async () => {
-          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ [pollParamName]: msgId }).toString()}`;
-          logOpenapiPollDebug("EXPAND-POLL", pollUrl, msgId, "GET");
+          const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ [pollParamName]: pollId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", pollUrl, pollId, "GET");
           return aigcJsonRequest(pollUrl, "GET", null, config);
         }
       }
@@ -2693,17 +2715,17 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     await sleep(initialDelay);
     for (let index = 0; index < maxPolls; index += 1) {
       let raw = await activePoller.run();
-      if (isProviderNoRouteError(raw)) {
+      if (isProviderNoRouteError(raw) || isProviderPollEndpointMismatch(raw)) {
         const nextPoller = candidatePollers.find(candidate => candidate.key !== activePoller.key);
         const remainingPollers = candidatePollers.filter(candidate => candidate.key !== activePoller.key);
         let switched = false;
         for (const candidate of remainingPollers) {
           const probe = await candidate.run();
-          if (!isProviderNoRouteError(probe)) {
+          if (!isProviderNoRouteError(probe) && !isProviderPollEndpointMismatch(probe)) {
             activePoller = candidate;
             raw = probe;
             switched = true;
-            console.log("[OpenAPI Poll] switched poll endpoint", JSON.stringify({ endpoint: candidate.key, taskId: msgId }));
+            console.log("[OpenAPI Poll] switched poll endpoint", JSON.stringify({ endpoint: candidate.key, taskId: pollId }));
             break;
           }
         }
