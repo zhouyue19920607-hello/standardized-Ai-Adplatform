@@ -274,6 +274,9 @@ export interface AdaptImageWithAigcResponse extends AigcTaskResponse {
     layeredRelayout?: {
         failed?: boolean;
         error?: string;
+        status?: 'permission_denied' | 'failed' | string;
+        endpoint?: string;
+        stage?: string;
         layers?: {
             mode?: string;
             items?: unknown[];

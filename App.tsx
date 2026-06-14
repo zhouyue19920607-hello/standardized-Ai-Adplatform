@@ -79,11 +79,21 @@ const describeAdaptImageResult = (result: {
   layeredRelayout?: {
     failed?: boolean;
     error?: string;
+    status?: string;
+    endpoint?: string;
+    stage?: string;
     layers?: { mode?: string };
   } | null;
 }) => {
   const mode = result.layeredRelayout?.layers?.mode || result.strategy || result.plan?.strategy || 'adapt';
   if (result.layeredRelayout?.failed) {
+    if (result.layeredRelayout.status === 'permission_denied') {
+      return {
+        label: `AI智能排版未执行：${result.layeredRelayout.endpoint || '分层接口'}权限未开`,
+        strategy: 'permission_denied',
+        warnings: result.qa?.warnings || [],
+      };
+    }
     return {
       label: `AI智能排版已降级：${result.layeredRelayout.error || mode}`,
       strategy: mode,

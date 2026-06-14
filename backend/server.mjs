@@ -2243,6 +2243,11 @@ function isProviderPermissionError(raw) {
   return text.includes("permission") || text.includes("unauthorized") || text.includes("forbidden") || text.includes("no auth") || text.includes("no_permission");
 }
 
+function isProviderPermissionException(err) {
+  if (!err) return false;
+  return Boolean(err.permission) || isProviderPermissionError(err.providerRaw) || /forbidden|permission|unauthorized|no auth|no_permission/i.test(err.message || "");
+}
+
 function isProviderSuccess(raw) {
   if (!raw || typeof raw !== "object") return false;
   const code = normalizeProviderCode(raw);
@@ -4267,7 +4272,10 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     } catch (err) {
       context.layeredRelayout = {
         failed: true,
-        error: err.message
+        error: err.message,
+        status: isProviderPermissionException(err) ? "permission_denied" : "failed",
+        endpoint: err.endpoint,
+        stage: err.stage
       };
       console.warn("[AdaptImage] layered relayout fallback:", err.message);
     }
@@ -4679,6 +4687,9 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       layeredRelayout: context.layeredRelayout ? {
         failed: Boolean(context.layeredRelayout.failed),
         error: context.layeredRelayout.error,
+        status: context.layeredRelayout.status,
+        stage: context.layeredRelayout.stage,
+        endpoint: context.layeredRelayout.endpoint,
         layerBox: context.layeredRelayout.layerBox,
         layout: context.layeredRelayout.layout,
         layers: context.layeredRelayout.layers
