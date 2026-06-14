@@ -2419,7 +2419,6 @@ const ConfigWorkspace: React.FC = () => {
             ].join('\n')
             : [
                 `${phaseTitle}：${phaseText}`,
-                `${phaseTitle}${phase === 0 ? '在第一次触发时间出现' : '在第二次触发时间出现'}，${BREAK_AI_DURATION_RULE}`,
                 `生成方式：${source === 'text' ? '文生视频' : '图生视频'}`,
                 source === 'image' ? (imageSourceFile === activeFrameAsset.file ? '使用破框素材区图片作为视频底图' : '使用参考图作为视频底图') : ''
             ].join('\n');
@@ -2432,7 +2431,6 @@ const ConfigWorkspace: React.FC = () => {
             const videoTarget = getApproxAigcVideoTarget(BREAK_FRAME_W, frameHeight);
             const promptText = [
                 fullPrompt,
-                `输出接近 ${videoTarget.label} 的破框透明感营销视频，目标容器为 ${BREAK_FRAME_W} x ${frameHeight}，后续会裁剪到准确尺寸`,
                 '主体轻微跃出边界，光影自然，商业质感，不要文字'
             ].join('\n');
             const result = source === 'image'
@@ -2446,6 +2444,7 @@ const ConfigWorkspace: React.FC = () => {
                 : await generateVideoWithAigc({
                     prompt: promptText,
                     ratio: videoTarget.ratio,
+                    duration: isJumpingFrame ? 3 : 5,
                 });
             const file = await fileFromGeneratedUrl(result.resultUrl, 'break-frame-ai.mp4', 'video/mp4');
             setActiveFrameAsset({

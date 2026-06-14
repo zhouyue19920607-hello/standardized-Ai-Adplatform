@@ -4998,8 +4998,10 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
 
 app.post("/api/aigc/text-to-video", async (req, res) => {
   try {
-    const { prompt, text, ratio = "16:9", seed = -1, loraId = "i2v-nolora" } = req.body || {};
+    const { prompt, text, ratio = "16:9", seed = -1, loraId = "i2v-nolora", duration } = req.body || {};
     const finalText = text || prompt;
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const config = getAigcConfig();
     if (!finalText || typeof finalText !== "string") {
       return res.status(400).json({ error: "缺少 prompt/text" });
     }
@@ -5011,12 +5013,19 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     if (!firstFrame.resultUrl) {
       throw new Error("文生视频首帧图生成失败，未返回图片 URL");
     }
+    const firstFrameInputUrl =
+      firstFrame.remoteResultUrl ||
+      publicAigcImageUrl(firstFrame.resultUrl, config, publicBaseUrl);
+    if (!/^https?:\/\//i.test(firstFrameInputUrl || "")) {
+      throw new Error("文生视频首帧图需要可被美图算法访问的 URL，请配置 AIGC_PUBLIC_BASE_URL 或使用远程结果 URL");
+    }
     const ltxVideoParams = {
       parameter: {
         lora_id: String(loraId || "i2v-nolora"),
         prompt: finalText,
         rsp_media_type: "url",
-        task_type: "i2v-distilled"
+        task_type: "i2v-distilled",
+        ...(Number(duration) > 0 ? { duration: Number(duration) } : {})
       }
     };
 
@@ -5024,11 +5033,11 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     const result = await submitAigcTask({
       task: usedTask,
       params: ltxVideoParams,
-      mediaInfoList: [mediaInfoFromUrl(firstFrame.resultUrl)],
+      mediaInfoList: [mediaInfoFromUrl(firstFrameInputUrl)],
       extra: {},
       initialDelayMs: 10000,
       pollIntervalMs: 5000,
-      publicBaseUrl: getRequestPublicBaseUrl(req),
+      publicBaseUrl,
       mediaOptions: { preferPublicImageUrl: true }
     });
     res.json({
@@ -5038,6 +5047,7 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
       fallbackUsed: false,
       firstFrameUrl: firstFrame.resultUrl,
       firstFrameRemoteUrl: firstFrame.remoteResultUrl,
+      firstFrameInputUrl,
       ...result
     });
   } catch (err) {
