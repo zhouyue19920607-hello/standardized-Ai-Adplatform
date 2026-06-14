@@ -2708,7 +2708,18 @@ async function pollOpenapiV3Async(msgId, options = {}) {
     const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
     const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
     const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
-    const pollHosts = [...new Set([pollHost, config.mtlabApiHost, config.apiHost].filter(Boolean))];
+    const configuredPollHosts = [pollHost, config.mtlabApiHost, config.apiHost].filter(Boolean);
+    const documentedMtlabPollHosts = ["https://openapi.mtlab.meitu.com"];
+    if (configuredPollHosts.some(host => /pre/i.test(String(host)))) {
+      documentedMtlabPollHosts.push("https://openapi-pre.mtlab.meitu.com");
+    }
+    const pollHosts = [
+      ...new Set(
+        [...configuredPollHosts, ...documentedMtlabPollHosts]
+          .filter(Boolean)
+          .map(host => String(host).replace(/\/+$/, ""))
+      )
+    ];
     const candidatePollers = [
       {
         key: "api/v1/sdk/status(task_id)",
