@@ -2671,6 +2671,26 @@ function getOpenapiPollState(raw) {
   return "unknown";
 }
 
+async function pollOpenapiSdkStatusAsync(taskId, options = {}) {
+  const config = options.config || getAigcConfig();
+  const initialDelay = Math.max(500, Number(options.initialDelayMs || 3000));
+  const pollInterval = Math.max(500, Number(options.pollIntervalMs || config.pollIntervalMs || 2000));
+  const maxPolls = Math.max(1, Number(options.maxPolls || config.maxPolls || 90));
+  const pollUrl = `${config.apiHost}/api/v1/sdk/status?${new URLSearchParams({ task_id: taskId }).toString()}`;
+  const signedConfig = { ...config, authMode: "sdk_header" };
+
+  await sleep(initialDelay);
+  for (let index = 0; index < maxPolls; index += 1) {
+    logOpenapiPollDebug("POSTER-LAYER-POLL", pollUrl, taskId, "GET");
+    const raw = await aigcJsonRequest(pollUrl, "GET", null, signedConfig);
+    const state = getOpenapiPollState(raw);
+    if (state === "finished") return raw;
+    if (state === "failed") throw createProviderError("openapi-poll", "api/v1/sdk/status(task_id)", raw);
+    await sleep(pollInterval);
+  }
+  throw new Error(`OpenAPI poster layer task timed out: ${taskId}`);
+}
+
 async function callOpenapiTaskGateway(apiName, payload, options = {}) {
   const config = options.config || getAigcConfig();
   if (!config.ak || !config.sk) {
@@ -3650,14 +3670,8 @@ async function splitPosterLayersForAdapt(imageUrl, layerBox, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-layer-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-layer-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
-  const taskId = extractOpenapiTaskTraceId(rawSubmit) || msgId;
-  const raw = await pollOpenapiV3Async(msgId, {
+  const raw = await pollOpenapiSdkStatusAsync(msgId, {
     ...context,
-    pollMode: "task_query_result",
-    pollHost: new URL(url).origin,
-    taskId,
-    msgId,
-    pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
@@ -3783,14 +3797,8 @@ async function analyzePosterDesignForAdapt(imageUrl, context) {
   if (!isProviderSuccess(rawSubmit)) throw createProviderError("poster-design-submit", endpoint, rawSubmit);
   const msgId = rawSubmit?.data?.msg_id || rawSubmit?.msg_id || rawSubmit?.data?.task_id || rawSubmit?.task_id;
   if (!msgId) throw createProviderError("poster-design-submit", endpoint, { ...rawSubmit, message: "No msg_id in response" });
-  const taskId = extractOpenapiTaskTraceId(rawSubmit) || msgId;
-  const raw = await pollOpenapiV3Async(msgId, {
+  const raw = await pollOpenapiSdkStatusAsync(msgId, {
     ...context,
-    pollMode: "task_query_result",
-    pollHost: new URL(url).origin,
-    taskId,
-    msgId,
-    pollParamName: rawSubmit?.data?.task_id || rawSubmit?.task_id ? "task_id" : "msg_id",
     initialDelayMs: 3000,
     pollIntervalMs: config.pollIntervalMs,
     maxPolls: config.maxPolls,
