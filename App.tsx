@@ -737,10 +737,12 @@ const App: React.FC = () => {
             console.log(`[AIGC Adapt] ${raw.file.name} -> ${template.app}${template.name} ${aigcTarget.width}x${aigcTarget.height}`);
             const uploaded = await uploadRawAsset(raw.file);
             const imageAdaptPrompt = [
-              'Poster resize and relayout task. Preserve the uploaded image content, product, subject, logo, slogan and all readable copy exactly.',
-              'Use detected layers to move, scale and arrange existing visual elements into the target ad size. Keep text and logo inside safe areas.',
-              'Do not invent new objects, decorative elements, products, people, icons, labels, words, logos or unrelated background content.',
-              'If extra canvas area is needed, extend only the original background texture, color, lighting and perspective.',
+              'Highest priority: preserve the uploaded poster content exactly. Keep the original product, subject, logo, slogan, readable copy, button and brand marks unchanged.',
+              'Use detected layers only to move, scale and arrange existing original visual elements into the target ad size. Keep text and logo inside safe areas.',
+              'Do not create or add any new objects, decorative elements, products, people, icons, labels, words, captions, slogans, logos, buttons, stickers, badges, UI elements, packaging or unrelated background content.',
+              'Do not generate fake text, fake letters, fake logos, fake signs, watermarks or extra marketing copy.',
+              'If extra canvas area is needed, extend only the original background texture, color, lighting and perspective. Prefer clean empty background over adding any content.',
+              'The result must look like the same original poster adapted to a new size, not a redesigned poster.',
               `Template: ${template.app}${template.name}`,
               `Target size: ${aigcTarget.width} x ${aigcTarget.height}`
             ].join(' ');

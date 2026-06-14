@@ -825,12 +825,42 @@ const AIGC_BACKGROUND_ONLY_EXPAND_PROMPT = [
 ].join(" ");
 const AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT = [
   "Strictly preserve the original subject, product, person, copywriting, button, logo and brand marks.",
-  "Only extend or repair the background around the original content.",
-  "Do not add any unrelated new people, products, objects, decorations, icons, buttons, packaging, logos, labels, slogans or text.",
+  "Only extend or repair the existing background around the original content.",
+  "Do not add any unrelated people, products, objects, props, decorations, icons, buttons, packaging, logos, brand marks, labels, slogans, captions, typography or text.",
+  "Do not add new marketing copy, fake letters, fake words, fake UI, fake stickers, fake labels, signs, badges, watermarks or call-to-action buttons.",
   "Do not change, redraw, crop, cover, stretch or deform the original key content.",
+  "Do not reinterpret the poster, redesign the scene, invent a new composition, or create additional foreground elements.",
   "The new area must follow the original background, lighting, color, material, perspective and depth of field.",
+  "Keep the extended area visually quiet and empty enough for the existing original layers.",
   "Keep the result clean, natural and faithful to the source image."
 ].join(" ");
+const AIGC_NO_NEW_CONTENT_NEGATIVE_PROMPT = [
+  "new text",
+  "extra text",
+  "fake text",
+  "unreadable text",
+  "new logo",
+  "extra logo",
+  "watermark",
+  "label",
+  "sticker",
+  "badge",
+  "button",
+  "icon",
+  "packaging",
+  "product",
+  "person",
+  "character",
+  "animal",
+  "vehicle",
+  "decoration",
+  "prop",
+  "unrelated object",
+  "visual clutter",
+  "redesigned poster",
+  "changed copywriting",
+  "changed brand mark"
+].join(", ");
 const AIGC_TASKS = {
   dispatcher: "/v1/dispatcher",
   textToVideo: "/v1/ltx_2_async",
@@ -2018,10 +2048,17 @@ async function submitAigcDirectRequest(endpoint, payload) {
 }
 
 async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, seed = -1 }) {
+  const conservativePrompt = [
+    AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+    "This is not an image generation task. It is background-only outpainting for an existing poster.",
+    "Use only visual information already present in the uploaded image. Empty/simple background is preferred over adding content.",
+    prompt || AIGC_DEFAULT_PROMPT
+  ].filter(Boolean).join(" ");
   const params = {
     parameter: {
       base_model_name: "miracle_vision_edit",
-      prompt: prompt || AIGC_DEFAULT_PROMPT,
+      prompt: conservativePrompt,
+      negative_prompt: AIGC_NO_NEW_CONTENT_NEGATIVE_PROMPT,
       rsp_media_type: "url",
       seed: Number.isFinite(Number(seed)) ? Number(seed) : -1,
       extra_pipe_inputs: {
