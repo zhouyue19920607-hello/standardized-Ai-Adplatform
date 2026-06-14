@@ -4807,6 +4807,17 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
     const sourceWidth = sourceMeta.width || width;
     const sourceHeight = sourceMeta.height || height;
     const context = { config, publicBaseUrl, sourceWidth, sourceHeight };
+    const settings = await readJson(SETTINGS_FILE, {
+      aiEnhancedMode: false,
+      aiProvider: "nanobanner",
+      nanobannerApiKey: "",
+      nanobannerBaseUrl: "",
+      tongyiExpandPrompt: ""
+    });
+    const shouldUseNanoBannerAdapt =
+      Boolean(settings.aiEnhancedMode) &&
+      settings.aiProvider === "nanobanner" &&
+      Boolean(settings.nanobannerApiKey);
     const analysis = await analyzeAdImageForAdapt(imageUrl, context);
     const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
     const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
@@ -4815,7 +4826,50 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       plan.reasons.push("调用方禁用 relayout，回退到 outpaint");
     }
 
-    const resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
+    let resultUrl = "";
+    if (shouldUseNanoBannerAdapt) {
+      try {
+        const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
+        const sourcePath = sourceStaticUrl?.startsWith("/static/") ? staticUrlToLocalPath(sourceStaticUrl) : "";
+        if (!sourcePath) throw new Error("NanoBanner requires a local static source image");
+        const nanoPrompt = [
+          AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+          "Adapt this exact original poster to the target ad size.",
+          "Move or extend only existing visual information. Prefer clean empty background over adding any new content.",
+          "Do not add unrelated objects, new text, fake letters, fake logos, labels, stickers, UI buttons or marketing copy.",
+          settings.tongyiExpandPrompt || "",
+          prompt || ""
+        ].filter(Boolean).join(" ");
+        console.log("[AdaptImage] NanoBanner override enabled", JSON.stringify({
+          targetWidth: width,
+          targetHeight: height,
+          templateId,
+          templateName
+        }));
+        const nanoResult = await nanobannerOutpaint(
+          sourcePath,
+          width,
+          height,
+          settings.nanobannerApiKey,
+          settings.nanobannerBaseUrl,
+          nanoPrompt
+        );
+        resultUrl = nanoResult.url;
+        context.layeredRelayout = {
+          failed: false,
+          status: "nanobanner_override",
+          layout: { mode: "nanobanner-outpaint", provider: "nanobanner" },
+          layers: { mode: "nanobanner-outpaint", provider: "nanobanner" }
+        };
+      } catch (err) {
+        context.fallbackWarnings = context.fallbackWarnings || [];
+        context.fallbackWarnings.push(`nanobanner override failed and fell back to Meitu adapt: ${err.message}`);
+        console.warn("[AdaptImage] NanoBanner override failed, fallback to Meitu adapt:", err.message);
+      }
+    }
+    if (!resultUrl) {
+      resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
+    }
     const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
     const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height);
     const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
