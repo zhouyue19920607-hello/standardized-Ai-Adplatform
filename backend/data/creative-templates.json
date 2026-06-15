@@ -5,6 +5,7 @@
     "groupName": "开屏创意模版",
     "name": "炫动开屏",
     "dimensions": "1440 x 2340 / 5s",
+    "preview_video_path": "/template-previews/dynamic-splash.mp4",
     "enabled": true
   },
   {
@@ -13,6 +14,7 @@
     "groupName": "开屏创意模版",
     "name": "杂志翻页",
     "dimensions": "1440 x 2340 / 3-5素材",
+    "preview_video_path": "/template-previews/magazine-flip.mp4",
     "enabled": true
   },
   {
@@ -29,6 +31,7 @@
     "groupName": "首页创意模版",
     "name": "秀秀-破框焦点视窗3D",
     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+    "preview_video_path": "/template-previews/break-frame-focal-3d.mp4",
     "enabled": true
   },
   {
@@ -53,6 +56,7 @@
     "groupName": "首页创意模版",
     "name": "跃动焦点视窗",
     "dimensions": "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900",
+    "preview_video_path": "/template-previews/jumping-focal-window.mp4",
     "enabled": true
   },
   {
@@ -61,6 +65,7 @@
     "groupName": "首页创意模版",
     "name": "焕新UI/底导",
     "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252",
+    "preview_video_path": "/template-previews/refresh-ui-bottom-nav.mp4",
     "enabled": true
   }
 ]

@@ -75,7 +75,12 @@ const getRequestErrorMessage = (error: unknown) => {
 const describeAdaptImageResult = (result: {
   strategy?: string;
   plan?: { strategy?: string };
-  qa?: { warnings?: string[] };
+  qa?: { warnings?: string[]; passed?: boolean };
+  analysis?: {
+    subject?: { exists?: boolean } | null;
+    logo?: { hasTarget?: boolean } | null;
+    text?: { hasText?: boolean } | null;
+  } | null;
   layeredRelayout?: {
     failed?: boolean;
     error?: string;
@@ -86,18 +91,56 @@ const describeAdaptImageResult = (result: {
   } | null;
 }) => {
   const mode = result.layeredRelayout?.layers?.mode || result.strategy || result.plan?.strategy || 'adapt';
+  const planStrategy = result.plan?.strategy || result.strategy || 'adapt';
+  const layeredFailed = Boolean(result.layeredRelayout?.failed);
+  const layeredStatus = result.layeredRelayout?.status || (result.layeredRelayout ? 'executed' : 'not_started');
+  const subjectDetected = Boolean(result.analysis?.subject?.exists);
+  const logoDetected = Boolean(result.analysis?.logo?.hasTarget);
+  const textDetected = Boolean(result.analysis?.text?.hasText);
+  const qaPassed = result.qa?.passed;
+  const relayoutExecuted = planStrategy === 'relayout' && Boolean(result.layeredRelayout) && !layeredFailed;
+  const debugLines = [
+    `plan.strategy: ${planStrategy}`,
+    `layeredRelayout: ${result.layeredRelayout ? (layeredFailed ? `failed (${layeredStatus})` : `ok (${layeredStatus})`) : 'not_started'}`,
+    `subject detected: ${subjectDetected ? 'yes' : 'no'}`,
+    `logo detected: ${logoDetected ? 'yes' : 'no'}`,
+    `text detected: ${textDetected ? 'yes' : 'no'}`,
+    `qa passed: ${typeof qaPassed === 'boolean' ? (qaPassed ? 'yes' : 'no') : 'unknown'}`,
+  ];
   if (result.layeredRelayout?.failed) {
     if (result.layeredRelayout.status === 'permission_denied') {
       return {
         label: `AI智能排版未执行：${result.layeredRelayout.endpoint || '分层接口'}权限未开`,
         strategy: 'permission_denied',
         warnings: result.qa?.warnings || [],
+        debugLines,
+        debugSummary: {
+          planStrategy,
+          layeredStatus,
+          layeredFailed,
+          relayoutExecuted,
+          subjectDetected,
+          logoDetected,
+          textDetected,
+          qaPassed,
+        }
       };
     }
     return {
       label: `AI智能排版已降级：${result.layeredRelayout.error || mode}`,
       strategy: mode,
       warnings: result.qa?.warnings || [],
+      debugLines,
+      debugSummary: {
+        planStrategy,
+        layeredStatus,
+        layeredFailed,
+        relayoutExecuted,
+        subjectDetected,
+        logoDetected,
+        textDetected,
+        qaPassed,
+      }
     };
   }
   const label = mode === 'multi-layer-v2'
@@ -111,6 +154,17 @@ const describeAdaptImageResult = (result: {
     label,
     strategy: mode,
     warnings: result.qa?.warnings || [],
+    debugLines,
+    debugSummary: {
+      planStrategy,
+      layeredStatus,
+      layeredFailed,
+      relayoutExecuted,
+      subjectDetected,
+      logoDetected,
+      textDetected,
+      qaPassed,
+    }
   };
 };
 
@@ -759,6 +813,13 @@ const App: React.FC = () => {
             if (aigcResult.qa && !aigcResult.qa.passed) {
               console.warn('[AIGC Adapt] QA warnings', aigcResult.qa.warnings);
             }
+            console.log('[AIGC Adapt] diagnostic', {
+              strategy: aigcResult.strategy,
+              planStrategy: aigcResult.plan?.strategy,
+              layeredRelayout: aigcResult.layeredRelayout,
+              analysis: aigcResult.analysis,
+              qa: aigcResult.qa,
+            });
             aiAdaptation = describeAdaptImageResult(aigcResult);
             console.log('[AIGC Adapt] result mode', aiAdaptation);
             finalUrl = aigcResult.resultUrl.startsWith('http') ? aigcResult.resultUrl : `${ASSETS_URL}${aigcResult.resultUrl}`;

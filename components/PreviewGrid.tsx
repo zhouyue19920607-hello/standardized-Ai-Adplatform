@@ -226,11 +226,31 @@ const AdCard: React.FC<{
         {asset.aiAdaptation?.label && (
           <span
             className="max-w-full truncate rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-600"
-            title={[asset.aiAdaptation.label, ...(asset.aiAdaptation.warnings || [])].filter(Boolean).join('\n')}
+            title={[
+              asset.aiAdaptation.label,
+              ...(asset.aiAdaptation.debugLines || []),
+              ...(asset.aiAdaptation.warnings || [])
+            ].filter(Boolean).join('\n')}
           >
             {asset.aiAdaptation.label}
           </span>
         )}
+        {asset.aiAdaptation?.debugLines?.length ? (
+          <div className="mt-1.5 w-full rounded-[12px] border border-amber-200/80 bg-amber-50 px-2.5 py-2 text-[9px] font-bold leading-relaxed text-amber-700">
+            <div className="mb-1 flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-500">
+              <span className="material-symbols-outlined text-[11px]">lab_profile</span>
+              <span>AI诊断</span>
+            </div>
+            {asset.aiAdaptation.debugLines.slice(0, 4).map((line) => (
+              <div key={line} className="truncate" title={line}>{line}</div>
+            ))}
+            {asset.aiAdaptation.warnings?.length ? (
+              <div className="mt-1 truncate text-rose-500" title={asset.aiAdaptation.warnings[0]}>
+                warning: {asset.aiAdaptation.warnings[0]}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div
         className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"
@@ -554,12 +574,57 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('all');
   const [selectedAssetInfo, setSelectedAssetInfo] = useState<{ asset: AdAsset, showMask: boolean, showCrop?: boolean, showBadge?: boolean } | null>(null);
+  const [templatePreviewAspectRatio, setTemplatePreviewAspectRatio] = useState<string | null>(null);
 
   const filteredAssets = activeTab === 'all' ? assets : assets.filter(a => a.category === activeTab);
   const templatePreviewAsset = assets.find(asset => asset.id.startsWith('template-preview-'));
   const selectedAsset = selectedAssetInfo?.asset;
   const shouldOffsetSelectedMeiyanFocal = !!selectedAsset && selectedAssetInfo?.showMask && selectedAsset.category === '焦点视窗' && selectedAsset.app === '美颜' && !!selectedAsset.maskUrl;
   const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
+
+  useEffect(() => {
+    if (!templatePreviewAsset?.url) {
+      setTemplatePreviewAspectRatio(null);
+      return;
+    }
+
+    if (!templatePreviewAsset.type.startsWith('video')) {
+      setTemplatePreviewAspectRatio(null);
+      return;
+    }
+
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    const handleLoadedMetadata = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setTemplatePreviewAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
+      } else {
+        setTemplatePreviewAspectRatio(null);
+      }
+      video.remove();
+    };
+
+    const handleError = () => {
+      setTemplatePreviewAspectRatio(null);
+      video.remove();
+    };
+
+    video.onloadedmetadata = handleLoadedMetadata;
+    video.onerror = handleError;
+    video.src = templatePreviewAsset.url;
+
+    return () => {
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      video.remove();
+    };
+  }, [templatePreviewAsset?.url, templatePreviewAsset?.type]);
 
   if (assets.length === 0 && !isGenerating) {
     return (
@@ -660,7 +725,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   }
 
   if (templatePreviewAsset && !isGenerating) {
-    const previewAspectRatio = parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340');
+    const previewAspectRatio = templatePreviewAspectRatio || parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340');
     return (
       <div className="w-full">
         <div className="px-6 pt-2 pb-6 flex items-start justify-center">
@@ -670,12 +735,12 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
             <div
-              className="relative overflow-hidden rounded-[24px] bg-black shadow-2xl ring-1 ring-black/10"
+              className="relative overflow-hidden rounded-[24px] shadow-2xl ring-1 ring-black/10 bg-zinc-950"
               style={{ aspectRatio: previewAspectRatio, height: 'min(52vh, 520px)', maxWidth: 'min(92vw, 720px)' }}
             >
               <video
                 src={templatePreviewAsset.url}
-                className="absolute inset-0 h-full w-full object-contain bg-black"
+                className="absolute inset-0 h-full w-full object-contain"
                 controls={false}
                 autoPlay
                 playsInline

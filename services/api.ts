@@ -410,6 +410,7 @@ export interface CreativeTemplateItem {
     name: string;
     dimensions: string;
     enabled: boolean;
+    preview_video_path?: string | null;
     interaction_asset_path?: string;
     interaction_bubble_asset_path?: string;
     interaction_twist_asset_path?: string;
