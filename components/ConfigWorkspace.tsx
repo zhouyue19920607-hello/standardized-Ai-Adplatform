@@ -94,6 +94,81 @@ const defaultCreativeCategories = [
     },
 ];
 
+const defaultCreativeTemplates: CreativeTemplateItem[] = [
+    {
+        id: 'dynamic-splash',
+        groupId: 'splash',
+        groupName: '开屏创意模版',
+        name: '炫动开屏',
+        dimensions: '1440 x 2340 / 5s',
+        preview_video_path: '/static/previews/dynamic-splash_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'magazine-flip',
+        groupId: 'splash',
+        groupName: '开屏创意模版',
+        name: '杂志翻页',
+        dimensions: '1440 x 2340 / 3-5素材',
+        preview_video_path: '/static/previews/magazine-flip_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'slide-splash',
+        groupId: 'splash',
+        groupName: '开屏创意模版',
+        name: '聚光开屏',
+        dimensions: '小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340',
+        preview_video_path: '/static/previews/slide-splash_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'break-frame-focal-3d',
+        groupId: 'home',
+        groupName: '首页创意模版',
+        name: '秀秀-破框焦点视窗3D',
+        dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+        preview_video_path: '/static/previews/break-frame-focal-3d_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'meiyan-break-frame-focal-3d',
+        groupId: 'home',
+        groupName: '首页创意模版',
+        name: '美颜-破框焦点视窗3D',
+        dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+        preview_video_path: '/static/previews/meiyan-break-frame-focal-3d_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'polymorphic-flip-card',
+        groupId: 'home',
+        groupName: '首页创意模版',
+        name: '多态翻卡',
+        dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+        preview_video_path: '/static/previews/polymorphic-flip-card_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'jumping-focal-window',
+        groupId: 'home',
+        groupName: '首页创意模版',
+        name: '跃动焦点视窗',
+        dimensions: '预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900',
+        preview_video_path: '/static/previews/jumping-focal-window_preview.mp4',
+        enabled: true,
+    },
+    {
+        id: 'refresh-ui-bottom-nav',
+        groupId: 'home',
+        groupName: '首页创意模版',
+        name: '焕新UI/底导',
+        dimensions: 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252',
+        preview_video_path: '/static/previews/refresh-ui-bottom-nav_preview.mp4',
+        enabled: true,
+    },
+];
+
 const implementedCreativeTemplateIds = new Set(
     defaultCreativeCategories.flatMap((group) => group.templates.map((template) => template.id)),
 );
@@ -708,7 +783,7 @@ const ConfigWorkspace: React.FC = () => {
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
-    const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>([]);
+    const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>(defaultCreativeTemplates);
     const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
     const [hoveredPreviewAspectRatio, setHoveredPreviewAspectRatio] = useState<string | null>(null);
     const [asset, setAsset] = useState<UploadState>(emptyUpload);
@@ -778,18 +853,42 @@ const ConfigWorkspace: React.FC = () => {
 
     useEffect(() => {
         let mounted = true;
-        Promise.all([getCreativeSettings(), getCreativeTemplates()])
-            .then(([settings, templateList]) => {
+        Promise.allSettled([getCreativeSettings(), getCreativeTemplates()])
+            .then(([settingsResult, templatesResult]) => {
                 if (!mounted) return;
-                const creative = settings.creativeTemplateSettings || defaultCreativeSettings;
-                setInteractionType(creative.interactionType || defaultCreativeSettings.interactionType);
-                setCropAreaEnabled(creative.cropAreaEnabled ?? defaultCreativeSettings.cropAreaEnabled);
-                setSelectedPlatforms(creative.platforms?.length ? [creative.platforms[0]] : defaultCreativeSettings.platforms);
-                setCreativeTemplates(templateList);
-                setCategories(buildCreativeCategories(templateList));
+
+                if (settingsResult.status === 'fulfilled') {
+                    const creative = settingsResult.value.creativeTemplateSettings || defaultCreativeSettings;
+                    setInteractionType(creative.interactionType || defaultCreativeSettings.interactionType);
+                    setCropAreaEnabled(creative.cropAreaEnabled ?? defaultCreativeSettings.cropAreaEnabled);
+                    setSelectedPlatforms(creative.platforms?.length ? [creative.platforms[0]] : defaultCreativeSettings.platforms);
+                } else {
+                    setInteractionType(defaultCreativeSettings.interactionType);
+                    setCropAreaEnabled(defaultCreativeSettings.cropAreaEnabled);
+                    setSelectedPlatforms(defaultCreativeSettings.platforms);
+                }
+
+                if (templatesResult.status === 'fulfilled' && templatesResult.value.length) {
+                    const mergedTemplates = defaultCreativeTemplates.map((fallback) => {
+                        const remote = templatesResult.value.find((item) => item.id === fallback.id);
+                        return remote ? { ...fallback, ...remote } : fallback;
+                    });
+                    setCreativeTemplates(mergedTemplates);
+                    setCategories(buildCreativeCategories(mergedTemplates));
+                } else {
+                    setCreativeTemplates(defaultCreativeTemplates);
+                    setCategories(buildCreativeCategories(defaultCreativeTemplates));
+                }
+
+                if (settingsResult.status !== 'fulfilled' || templatesResult.status !== 'fulfilled') {
+                    setSaveMessage('后台模版配置读取失败，已使用默认配置');
+                }
             })
             .catch(() => {
-                if (mounted) setSaveMessage('后台模版配置读取失败，已使用默认配置');
+                if (!mounted) return;
+                setCreativeTemplates(defaultCreativeTemplates);
+                setCategories(buildCreativeCategories(defaultCreativeTemplates));
+                setSaveMessage('后台模版配置读取失败，已使用默认配置');
             });
 
         return () => {
@@ -798,7 +897,9 @@ const ConfigWorkspace: React.FC = () => {
     }, []);
 
     const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === hoveredTemplateId) || null;
-    const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
+    const selectedPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === expandedTemplate) || null;
+    const activePreviewTemplate = hoveredPreviewTemplate || (!generatedVideoUrl ? selectedPreviewTemplate : null);
+    const hoveredPreviewVideoUrl = activePreviewTemplate?.preview_video_path || null;
 
     useEffect(() => {
         if (!hoveredPreviewVideoUrl) {
