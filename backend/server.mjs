@@ -2234,12 +2234,16 @@ const ADAPT_ENDPOINTS = {
 const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "mtimage_expand_v4_async",
   "image_manipulation_fl_async",
-  "image_cropping_async"
+  "image_cropping_async",
+  "ltx_2_async"
 ]);
 
 function resolveOpenapiEndpointUrl(apiName, config) {
   if (/^https?:\/\//i.test(apiName)) return apiName;
   if (apiName === "mtimage_expand_v4_async") {
+    return `${config.mtlabApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "ltx_2_async") {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
   if (apiName === "poster_edit_layer_async") {
@@ -2398,6 +2402,44 @@ function summarizeProviderRaw(raw) {
     hasMsgId: Boolean(raw?.msg_id || data?.msg_id),
     hasTaskId: Boolean(raw?.task_id || data?.task_id),
     status: data?.status || raw?.status || ""
+  };
+}
+
+function summarizeLtxSubmitPayload(payload = {}) {
+  const mediaList = Array.isArray(payload?.media_info_list) ? payload.media_info_list : [];
+  return {
+    parameterKeys: Object.keys(payload?.parameter || {}),
+    taskType: payload?.parameter?.task_type || "",
+    promptLength: typeof payload?.parameter?.prompt === "string" ? payload.parameter.prompt.length : 0,
+    mediaCount: mediaList.length,
+    mediaList: summarizeMediaInfoList(mediaList)
+  };
+}
+
+function summarizeLtxSubmitResponse(raw) {
+  return {
+    code: normalizeProviderCode(raw),
+    message: normalizeProviderMessage(raw),
+    taskId: raw?.data?.task_id || raw?.task_id || "",
+    msgId: raw?.data?.msg_id || raw?.msg_id || "",
+    dataKeys: Object.keys(raw?.data || {})
+  };
+}
+
+function summarizeLtxPollResponse(raw) {
+  const mediaList = extractAigcResultMedia(raw);
+  return {
+    state: getOpenapiPollState(raw),
+    code: normalizeProviderCode(raw),
+    message: normalizeProviderMessage(raw),
+    dataKeys: Object.keys(raw?.data || {}),
+    mediaCount: mediaList.length,
+    firstMedia: mediaList[0]
+      ? {
+          mediaType: mediaList[0]?.media_type || "",
+          mediaUrl: mediaList[0]?.media_url || mediaList[0]?.media_data || ""
+        }
+      : null
   };
 }
 
@@ -2649,15 +2691,29 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
   if (!config.ak || !config.sk) throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
   if (OPENAPI_DIRECT_ASYNC_ENDPOINTS.has(apiName)) {
     const url = resolveOpenapiEndpointUrl(apiName, config);
-    const requestPayload = buildOpenapiAsyncBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
-    if (payload.extra_params && Object.keys(payload.extra_params).length) {
+    const requestPayload = options.preserveBody
+      ? {
+          ...(payload && typeof payload === "object" ? payload : {}),
+          ...(payload?.extra_params && !payload?.extra
+            ? { extra: payload.extra_params }
+            : {})
+        }
+      : buildOpenapiAsyncBody(payload, { wrapMessage: shouldUseOpenapiMessageEnvelope(apiName) });
+    if (!options.preserveBody && payload.extra_params && Object.keys(payload.extra_params).length) {
       requestPayload.extra_params = payload.extra_params;
     }
     const requestUrl = withAigcQueryAuth(url, config);
     if (apiName === "mtimage_expand_v4_async") {
       logOpenapiRequestDebug("EXPAND", requestUrl, requestPayload, "POST");
     }
+    if (apiName === "ltx_2_async") {
+      logOpenapiRequestDebug("LTX", requestUrl, requestPayload, "POST");
+      console.log("[LTX] submit payload summary", JSON.stringify(summarizeLtxSubmitPayload(requestPayload)));
+    }
     const raw = await aigcJsonRequest(requestUrl, "POST", requestPayload, { ...config, authMode: "none" });
+    if (apiName === "ltx_2_async") {
+      console.log("[LTX] submit response summary", JSON.stringify(summarizeLtxSubmitResponse(raw)));
+    }
     if (apiName === "mtimage_expand_v4_async") {
       console.log("[EXPAND] 🔍 提交响应");
       console.log("[EXPAND]   keys:", Object.keys(raw || {}));
@@ -2941,6 +2997,60 @@ async function callOpenapiV3Async(apiName, payload, options = {}) {
     pollHost: submitted.pollHost,
     pollParamName: submitted.pollParamName
   });
+}
+
+async function submitDirectOpenapiMediaTask({
+  task,
+  parameter = {},
+  mediaInfoList = [],
+  extra = {},
+  initialDelayMs = 0,
+  pollIntervalMs,
+  maxPolls,
+  persistOptions,
+  config
+}) {
+  const normalizedTask = String(task || "").replace(/^\/v1\//, "").replace(/^\//, "");
+  const payload = {
+    parameter,
+    media_info_list: mediaInfoList,
+    extra
+  };
+  const submitted = await submitOpenapiV3Async(normalizedTask, payload, {
+    config,
+    preserveBody: true
+  });
+  const jobId = submitted.pollId || submitted.taskId || submitted.msgId;
+  const raw = await pollOpenapiV3Async(jobId, {
+    config,
+    pollMode: submitted.pollMode,
+    pollHost: submitted.pollHost,
+    pollParamName: submitted.pollParamName,
+    initialDelayMs,
+    pollIntervalMs,
+    maxPolls
+  });
+  if (normalizedTask === "ltx_2_async") {
+    console.log("[LTX] poll response summary", JSON.stringify(summarizeLtxPollResponse(raw)));
+  }
+  const mediaInfo = extractAigcResultMedia(raw)[0] || null;
+  const remoteResultUrl = mediaInfo?.media_data || mediaInfo?.media_url || extractAigcDirectResultUrl(raw) || "";
+  let resultUrl = remoteResultUrl;
+  if (/^https?:\/\//i.test(remoteResultUrl || "")) {
+    try {
+      resultUrl = (await persistAigcResult(remoteResultUrl, mediaInfo?.media_type, persistOptions)) || remoteResultUrl;
+    } catch (err) {
+      console.warn("[AIGC] direct result persistence failed, using remote URL:", err.message);
+    }
+  }
+  return {
+    ok: true,
+    task: task.startsWith("/") ? task : `/v1/${normalizedTask}`,
+    resultUrl,
+    remoteResultUrl,
+    mediaInfo,
+    raw
+  };
 }
 
 function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
@@ -5036,15 +5146,14 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     };
 
     const usedTask = AIGC_TASKS.textToVideo;
-    const result = await submitAigcTask({
+    const result = await submitDirectOpenapiMediaTask({
       task: usedTask,
-      params: ltxVideoParams,
+      parameter: ltxVideoParams.parameter,
       mediaInfoList: [mediaInfoFromUrl(firstFrameInputUrl)],
       extra: {},
       initialDelayMs: 10000,
       pollIntervalMs: 5000,
-      publicBaseUrl,
-      mediaOptions: { preferPublicImageUrl: true }
+      config
     });
     res.json({
       ok: true,
@@ -5078,21 +5187,19 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
     if (!/^https?:\/\//i.test(videoInputImageUrl || "")) {
       throw new Error("图生视频输入图需要可被美图算法访问的 URL，请配置 AIGC_PUBLIC_BASE_URL 或 OBSERVER_* 上传中转");
     }
-    const result = await submitAigcTask({
+    const result = await submitDirectOpenapiMediaTask({
       task: AIGC_TASKS.imageToVideo,
-      params: {
-        parameter: {
-          task_type: taskType || "i2v-distilled",
-          prompt,
-          rsp_media_type: "url",
-          lora_id: loraId || "i2v-nolora"
-        }
+      parameter: {
+        task_type: taskType || "i2v-distilled",
+        prompt,
+        rsp_media_type: "url",
+        lora_id: loraId || "i2v-nolora"
       },
       mediaInfoList: [mediaInfoFromUrl(videoInputImageUrl)],
+      extra: {},
       initialDelayMs: 10000,
       pollIntervalMs: 5000,
-      publicBaseUrl,
-      mediaOptions: { preferPublicImageUrl: true }
+      config
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.imageToVideo, inputImageUrl: videoInputImageUrl, ...result });
   } catch (err) {

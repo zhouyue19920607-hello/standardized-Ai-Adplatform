@@ -61,6 +61,7 @@ const AdCard: React.FC<{
   const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
   const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
+  const shouldRenderFixedFocalChrome = localShowMask && asset.category === '焦点视窗' && !asset.templateName.includes('动态');
   const shouldOffsetMeiyanFocal = localShowMask && asset.category === '焦点视窗' && asset.app === '美颜' && !!effectiveMaskUrl;
   const meiyanFocalOffsetStyle = shouldOffsetMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
 
@@ -301,14 +302,29 @@ const AdCard: React.FC<{
               </div>
             )}
 
-            {/* Focal Window Mask (Lower Layer - for transparent PNGs like Meitu) */}
-            {localShowMask && (isStaticFocal || isImmersiveFocal) && asset.maskUrl && asset.app === '美图秀秀' && (
-              <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
-                <img
-                  src={`${ASSETS_URL}${asset.maskUrl}`}
-                  className="w-full h-full object-contain"
-                  alt="Mask Background"
+            {shouldRenderFixedFocalChrome && (
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute inset-0 z-[10]">
+                  <img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" alt="" />
+                </div>
+                {!isImmersiveFocal && (
+                  <div className="absolute inset-0 z-[20]">
+                    <img src={`${focalAssetsPath}/gradient_layer.png`} className="w-full h-full object-fill" alt="" />
+                  </div>
+                )}
+                <div
+                  className="absolute inset-0 z-[30]"
+                  style={{
+                    backgroundColor: asset.aiExtractedColor || '#FF00FF',
+                    maskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                    WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                    maskSize: '100% 100%',
+                    WebkitMaskSize: '100% 100%',
+                  }}
                 />
+                <div className="absolute inset-0 z-[40]">
+                  <img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" alt="" />
+                </div>
               </div>
             )}
 
@@ -332,7 +348,7 @@ const AdCard: React.FC<{
             )}
 
             {/* Standard Mask (Overlay Layer - for other categories including 开屏, plus Meiyan/Wink Focal Window) */}
-            {localShowMask && effectiveMaskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || (isStaticFocal && asset.app === '美图秀秀') || (isImmersiveFocal && asset.app === '美图秀秀')) && (
+            {localShowMask && effectiveMaskUrl && !(isHotRecommend || isTopicBg || isHomePopup || isRecipeContent || shouldRenderFixedFocalChrome) && (
               <div className="absolute inset-0 z-20 pointer-events-none text-transparent"><img src={`${ASSETS_URL}${effectiveMaskUrl}`} className="w-full h-full object-contain" /></div>
             )}
 
@@ -725,7 +741,6 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   }
 
   if (templatePreviewAsset && !isGenerating) {
-    const previewAspectRatio = templatePreviewAspectRatio || parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340');
     return (
       <div className="w-full">
         <div className="px-6 pt-2 pb-6 flex items-start justify-center">
@@ -734,20 +749,24 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span className="material-symbols-outlined text-[16px] text-blue-500">movie</span>
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
-            <div
-              className="relative overflow-hidden rounded-[24px] shadow-2xl ring-1 ring-black/10 bg-zinc-950"
-              style={{ aspectRatio: previewAspectRatio, height: 'min(52vh, 520px)', maxWidth: 'min(92vw, 720px)' }}
-            >
+            {templatePreviewAsset.type.startsWith('video') ? (
               <video
                 src={templatePreviewAsset.url}
-                className="absolute inset-0 h-full w-full object-contain"
+                className="block h-auto w-auto max-h-[70vh] max-w-[min(94vw,960px)] rounded-[24px] shadow-2xl ring-1 ring-black/10"
                 controls={false}
                 autoPlay
                 playsInline
                 loop
                 muted
               />
-            </div>
+            ) : (
+              <div
+                className="relative overflow-hidden rounded-[24px] shadow-2xl ring-1 ring-black/10"
+                style={{ aspectRatio: templatePreviewAspectRatio || parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340'), width: 'min(94vw, 960px)', maxHeight: '70vh' }}
+              >
+                <img src={templatePreviewAsset.url} alt={templatePreviewAsset.templateName} className="block h-full w-full object-contain" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -834,11 +853,30 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               </div>
             )}
 
-            {/* Modal: Focal Window Mask (Lower Layer - for transparent PNGs like Meitu) */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && (selectedAsset.category === '焦点视窗') && selectedAsset.app === '美图秀秀' && (
-              <div className="absolute inset-0 z-0 bg-white pointer-events-none mix-blend-normal">
-                <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask bg" />
-              </div>
+            {selectedAssetInfo.showMask && selectedAsset.category === '焦点视窗' && !selectedAsset.templateName.includes('动态') && (
+              (() => {
+                const isImmersiveFocal = selectedAsset.templateName.includes('沉浸式');
+                const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
+                return (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-0 z-[10]"><img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" alt="" /></div>
+                    {!isImmersiveFocal && (
+                      <div className="absolute inset-0 z-[20]"><img src={`${focalAssetsPath}/gradient_layer.png`} className="w-full h-full object-fill" alt="" /></div>
+                    )}
+                    <div
+                      className="absolute inset-0 z-[30]"
+                      style={{
+                        backgroundColor: selectedAsset.aiExtractedColor || '#FF00FF',
+                        maskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                        WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                        maskSize: '100% 100%',
+                        WebkitMaskSize: '100% 100%',
+                      }}
+                    />
+                    <div className="absolute inset-0 z-[40]"><img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" alt="" /></div>
+                  </div>
+                );
+              })()
             )}
 
             {/* Modal: Focal Window Dynamic UI Background (for transparent PNGs) */}
@@ -868,7 +906,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             )}
 
             {/* Modal Overlays: Standard Mask Overlay (Top Layer - for Meiyan, Wink, and Splash) */}
-            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1') || (selectedAsset.category === '焦点视窗' && selectedAsset.app === '美图秀秀')) && (
+            {selectedAssetInfo.showMask && selectedAsset.maskUrl && !(selectedAsset.id.includes('mt-ib-1') || selectedAsset.id.includes('mt-ib-3') || selectedAsset.category === '弹窗' || selectedAsset.id.includes('mt-fe-1') || (selectedAsset.category === '焦点视窗' && !selectedAsset.templateName.includes('动态'))) && (
               <div className="absolute inset-0 pointer-events-none z-20 mix-blend-normal">
                 <img src={`${ASSETS_URL}${selectedAsset.maskUrl}`} className="w-full h-full object-contain" alt="zoom mask" />
               </div>
