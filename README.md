@@ -39,6 +39,8 @@ npm run server
 
 美图谷仓部署时，可按 [美图谷仓环境变量配置说明](docs/meitu-gucang-env.md) 填写。
 
+新人接手、迁移复盘和问题排查可先看 [AI 工具迁移到美图谷仓及服务器交接手册](docs/AI工具迁移到美图谷仓及服务器交接手册.docx)。
+
 ```bash
 AIGC_AK=你的开放平台AK
 AIGC_SK=你的开放平台SK

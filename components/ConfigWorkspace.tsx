@@ -641,6 +641,9 @@ const ConfigWorkspace: React.FC = () => {
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
+    const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>([]);
+    const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
+    const [hoveredPreviewAspectRatio, setHoveredPreviewAspectRatio] = useState<string | null>(null);
     const [asset, setAsset] = useState<UploadState>(emptyUpload);
     const [pendantReference, setPendantReference] = useState<UploadState>(emptyUpload);
     const [splash, setSplash] = useState<UploadState>(emptyUpload);
@@ -715,6 +718,7 @@ const ConfigWorkspace: React.FC = () => {
                 setInteractionType(creative.interactionType || defaultCreativeSettings.interactionType);
                 setCropAreaEnabled(creative.cropAreaEnabled ?? defaultCreativeSettings.cropAreaEnabled);
                 setSelectedPlatforms(creative.platforms?.length ? [creative.platforms[0]] : defaultCreativeSettings.platforms);
+                setCreativeTemplates(templateList);
                 setCategories(buildCreativeCategories(templateList));
             })
             .catch(() => {
@@ -725,6 +729,48 @@ const ConfigWorkspace: React.FC = () => {
             mounted = false;
         };
     }, []);
+
+    const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === hoveredTemplateId) || null;
+    const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
+
+    useEffect(() => {
+        if (!hoveredPreviewVideoUrl) {
+            setHoveredPreviewAspectRatio(null);
+            return;
+        }
+
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.muted = true;
+        video.playsInline = true;
+
+        const cleanup = () => {
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.remove();
+        };
+
+        video.onloadedmetadata = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setHoveredPreviewAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
+            } else {
+                setHoveredPreviewAspectRatio(null);
+            }
+            cleanup();
+        };
+
+        video.onerror = () => {
+            setHoveredPreviewAspectRatio(null);
+            cleanup();
+        };
+
+        video.src = hoveredPreviewVideoUrl;
+
+        return cleanup;
+    }, [hoveredPreviewVideoUrl]);
 
     useEffect(() => {
         if (expandedTemplate !== 'magazine-flip') {
@@ -3577,6 +3623,10 @@ const ConfigWorkspace: React.FC = () => {
                                             <div key={tpl.id} className="space-y-2">
                                                 <button
                                                     onClick={() => handleTemplateSelect(tpl.id)}
+                                                    onMouseEnter={() => setHoveredTemplateId(tpl.id)}
+                                                    onMouseLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
+                                                    onPointerEnter={() => setHoveredTemplateId(tpl.id)}
+                                                    onPointerLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
                                                     className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-white/15 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
                                                 >
                                                     <span>{tpl.label}</span>
@@ -5151,6 +5201,21 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
                                                 </button>
+                                            </>
+                                        ) : hoveredPreviewVideoUrl ? (
+                                            <>
+                                                <video
+                                                    src={hoveredPreviewVideoUrl}
+                                                    className="absolute inset-0 w-full h-full object-contain"
+                                                    style={hoveredPreviewAspectRatio ? { aspectRatio: hoveredPreviewAspectRatio } : undefined}
+                                                    autoPlay
+                                                    loop
+                                                    muted
+                                                    playsInline
+                                                />
+                                                <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black text-white/85 backdrop-blur-md">
+                                                    {hoveredPreviewTemplate?.name} 效果预览
+                                                </div>
                                             </>
                                         ) : (
                                             <>

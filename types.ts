@@ -54,6 +54,17 @@ export interface AdAsset {
     label: string;
     strategy?: string;
     warnings?: string[];
+    debugLines?: string[];
+    debugSummary?: {
+      planStrategy?: string;
+      layeredStatus?: string;
+      layeredFailed?: boolean;
+      relayoutExecuted?: boolean;
+      subjectDetected?: boolean;
+      logoDetected?: boolean;
+      textDetected?: boolean;
+      qaPassed?: boolean;
+    };
   };
   // NOTE: 三平台开屏样式蒙版 — 存储三个平台各自的 mask_path
   splashPlatformMasks?: {
