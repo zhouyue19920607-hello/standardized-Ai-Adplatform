@@ -1169,6 +1169,7 @@ function extractAigcResultMedia(statusData) {
   const result = taskData.result || {};
   const details = taskData.details || {};
   const callback = details.mtlab_callback_response || {};
+  if (Array.isArray(statusData?.media_info_list)) return statusData.media_info_list;
   if (callback.error_code === 0 && Array.isArray(callback.media_info_list)) return callback.media_info_list;
   if (Array.isArray(details.media_info_list)) return details.media_info_list;
   if (Array.isArray(details.images)) {
@@ -2778,7 +2779,7 @@ function getOpenapiPollState(raw) {
   if (numericStatus === 0 || numericStatus === 1 || numericStatus === 9) return "processing";
   if (status === "finished" || status === "completed" || status === "success") return "finished";
   if ((code === 0 || code === "0") && mediaList.length === 0) return "processing";
-  if (code === 1 || status === "processing" || status === "pending" || status === "queued") return "processing";
+  if (code === 1 || code === 29901 || code === "29901" || status === "processing" || status === "pending" || status === "queued") return "processing";
   if (code === 2 || numericStatus === 2 || numericStatus === -1 || status === "failed" || status === "error") return "failed";
   if (![undefined, null, "", 0, "0"].includes(code)) return "failed";
   return "unknown";
@@ -2854,6 +2855,15 @@ async function pollOpenapiV3Async(msgId, options = {}) {
       )
     ];
     const candidatePollers = [
+      ...pollHosts.map(host => ({
+        key: `v1/query(msg_id)@${new URL(host).host}`,
+        run: async () => {
+          const pollUrl = withAigcQueryAuth(`${host}/v1/query`, config);
+          const finalUrl = `${pollUrl}&${new URLSearchParams({ msg_id: callbackMsgId }).toString()}`;
+          logOpenapiPollDebug("EXPAND-POLL", finalUrl, callbackMsgId, "POST");
+          return aigcJsonRequest(finalUrl, "POST", {}, queryAuth);
+        }
+      })),
       ...pollHosts.map(host => ({
         key: `openapi-poll/query_result(msg_id)@${new URL(host).host}`,
         run: async () => {
