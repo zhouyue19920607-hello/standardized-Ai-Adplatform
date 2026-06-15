@@ -325,6 +325,20 @@ export const animateImageWithAigc = async (payload: {
     return response.data;
 };
 
+export const cutoutVideoWithAigc = async (payload: {
+    videoUrl: string;
+    prompt?: string;
+    similarity?: number;
+    blend?: number;
+    fps?: number;
+    maxDurationSec?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+}): Promise<AigcTaskResponse & { method?: string; warnings?: string[] }> => {
+    const response = await api.post<AigcTaskResponse & { method?: string; warnings?: string[] }>('/aigc/video-cutout', payload);
+    return response.data;
+};
+
 export const expandVideoWithAigc = async (payload: {
     videoUrl: string;
     targetWidth?: number;

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ASSETS_URL,
+    cutoutVideoWithAigc,
     CreativeTemplateItem,
     CreativeTemplateSettings,
     animateImageWithAigc,
@@ -21,6 +22,7 @@ interface UploadState {
     url: string | null;
     status: UploadStatus;
     message: string;
+    whiteRemovalMode?: 'none' | 'local-key' | 'provider-cutout';
 }
 
 interface MagazineAsset {
@@ -46,6 +48,7 @@ const emptyUpload: UploadState = {
     url: null,
     status: 'idle',
     message: '等待上传',
+    whiteRemovalMode: 'none',
 };
 
 const defaultCreativeSettings: CreativeTemplateSettings = {
@@ -535,6 +538,70 @@ const drawContain = (
     ctx.drawImage(source, x + (targetW - w) / 2, y + (targetH - h) / 2, w, h);
 };
 
+const softenWhiteBackgroundInCanvas = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const { data } = imageData;
+
+    for (let index = 0; index < data.length; index += 4) {
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const a = data[index + 3];
+        if (a === 0) continue;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const saturation = max - min;
+        const whiteness = (r + g + b) / 3;
+
+        if (saturation <= 20 && whiteness >= 246) {
+            data[index + 3] = 0;
+            continue;
+        }
+
+        if (saturation <= 36 && whiteness >= 232) {
+            const alphaScale = Math.max(0, Math.min(1, (246 - whiteness) / 14));
+            data[index + 3] = Math.round(a * alphaScale);
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+};
+
+const drawContainWithWhiteRemoval = (
+    ctx: CanvasRenderingContext2D,
+    source: CanvasImageSource,
+    sourceW: number,
+    sourceH: number,
+    targetW: number,
+    targetH: number,
+    x: number,
+    y: number
+) => {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = Math.max(1, Math.round(targetW));
+    offscreen.height = Math.max(1, Math.round(targetH));
+    const offscreenCtx = offscreen.getContext('2d', { willReadFrequently: true });
+    if (!offscreenCtx) {
+        drawContain(ctx, source, sourceW, sourceH, targetW, targetH, x, y);
+        return;
+    }
+
+    offscreenCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+    const scale = Math.min(targetW / sourceW, targetH / sourceH);
+    const drawWidth = sourceW * scale;
+    const drawHeight = sourceH * scale;
+    offscreenCtx.drawImage(
+        source,
+        (targetW - drawWidth) / 2,
+        (targetH - drawHeight) / 2,
+        drawWidth,
+        drawHeight
+    );
+    softenWhiteBackgroundInCanvas(offscreenCtx, offscreen.width, offscreen.height);
+    ctx.drawImage(offscreen, x, y, targetW, targetH);
+};
+
 const easeOutCubic = (value: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, value)), 3);
 const easeInOutCubic = (value: number) => {
     const t = Math.max(0, Math.min(1, value));
@@ -767,7 +834,7 @@ const ConfigWorkspace: React.FC = () => {
             cleanup();
         };
 
-        video.src = hoveredPreviewVideoUrl;
+        video.src = resolveApiAssetUrl(hoveredPreviewVideoUrl);
 
         return cleanup;
     }, [hoveredPreviewVideoUrl]);
@@ -2434,6 +2501,35 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
+    const createForegroundVideoAsset = async (
+        videoUrl: string,
+        filename: string,
+        promptText: string,
+        maxWidth: number,
+        maxHeight: number,
+    ) => {
+        const cutoutResult = await cutoutVideoWithAigc({
+            videoUrl,
+            prompt: `${promptText}\n仅保留主体，去除白色或近白背景，输出适合透明前景叠加的视频`,
+            fps: 24,
+            maxDurationSec: 5,
+            maxWidth,
+            maxHeight,
+        });
+        const finalUrl = cutoutResult.resultUrl || videoUrl;
+        const finalFile = await fileFromGeneratedUrl(finalUrl, filename, 'video/webm');
+        return {
+            file: finalFile,
+            url: finalUrl,
+            whiteRemovalMode: (cutoutResult.method === 'provider-cutout'
+                ? 'provider-cutout'
+                : 'local-key') as UploadState['whiteRemovalMode'],
+            messageSuffix: cutoutResult.method === 'provider-cutout'
+                ? '已抠视频去白底'
+                : '已去白底（本地兜底）',
+        };
+    };
+
     const generateBreakFrameByPrompt = async (source: 'text' | 'image', phase: 0 | 1) => {
         const generationKey = `break-${phase}-${source}`;
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
@@ -2492,14 +2588,21 @@ const ConfigWorkspace: React.FC = () => {
                     ratio: videoTarget.ratio,
                     duration: isJumpingFrame ? 3 : 5,
                 });
-            const file = await fileFromGeneratedUrl(result.resultUrl, 'break-frame-ai.mp4', 'video/mp4');
+            const foregroundVideo = await createForegroundVideoAsset(
+                result.resultUrl,
+                'break-frame-ai.webm',
+                promptText,
+                BREAK_FRAME_W,
+                frameHeight,
+            );
             setActiveFrameAsset({
-                file,
-                url: result.resultUrl,
+                file: foregroundVideo.file,
+                url: foregroundVideo.url,
                 status: 'valid',
-                message: `美图${source === 'text' ? '文生视频' : '图生视频'}已生成：${phaseText.slice(0, 10) || '破框素材'}`,
+                whiteRemovalMode: foregroundVideo.whiteRemovalMode,
+                message: `美图${source === 'text' ? '文生视频' : '图生视频'}已生成：${phaseText.slice(0, 10) || '破框素材'}，${foregroundVideo.messageSuffix}`,
             });
-            return result.resultUrl;
+            return foregroundVideo.url;
         } catch (err) {
             setActiveFrameAsset((current) => ({
                 ...current,
@@ -3031,9 +3134,17 @@ const ConfigWorkspace: React.FC = () => {
                     ctx.globalAlpha = entrance;
                     ctx.translate(0, isJumpingFrame ? 0 : (1 - entrance) * 120);
                     if (frameVideo && frameVideo.readyState >= 2) {
-                        drawContain(ctx, frameVideo, frameVideo.videoWidth || BREAK_FRAME_W, frameVideo.videoHeight || frameHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        if (activeFrameAsset.whiteRemovalMode && activeFrameAsset.whiteRemovalMode !== 'none') {
+                            drawContainWithWhiteRemoval(ctx, frameVideo, frameVideo.videoWidth || BREAK_FRAME_W, frameVideo.videoHeight || frameHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        } else {
+                            drawContain(ctx, frameVideo, frameVideo.videoWidth || BREAK_FRAME_W, frameVideo.videoHeight || frameHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        }
                     } else if (frameImage) {
-                        drawContain(ctx, frameImage, frameImage.naturalWidth, frameImage.naturalHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        if (activeFrameAsset.whiteRemovalMode && activeFrameAsset.whiteRemovalMode !== 'none') {
+                            drawContainWithWhiteRemoval(ctx, frameImage, frameImage.naturalWidth, frameImage.naturalHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        } else {
+                            drawContain(ctx, frameImage, frameImage.naturalWidth, frameImage.naturalHeight, BREAK_FRAME_W, frameHeight, frameX, frameY);
+                        }
                     }
                     ctx.restore();
                 }
@@ -5205,7 +5316,7 @@ const ConfigWorkspace: React.FC = () => {
                                         ) : hoveredPreviewVideoUrl ? (
                                             <>
                                                 <video
-                                                    src={hoveredPreviewVideoUrl}
+                                                    src={resolveApiAssetUrl(hoveredPreviewVideoUrl)}
                                                     className="absolute inset-0 w-full h-full object-contain"
                                                     style={hoveredPreviewAspectRatio ? { aspectRatio: hoveredPreviewAspectRatio } : undefined}
                                                     autoPlay

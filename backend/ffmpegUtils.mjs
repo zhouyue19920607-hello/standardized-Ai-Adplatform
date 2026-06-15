@@ -166,3 +166,42 @@ export async function resizeVideoToMaxSide(videoPath, maxSide, outputPath, optio
             .on('error', (err) => reject(err));
     });
 }
+
+export async function removeWhiteBackgroundFromVideo(videoPath, outputPath, options = {}) {
+    const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
+    const similarity = Number.isFinite(Number(options.similarity)) ? Number(options.similarity) : 0.16;
+    const blend = Number.isFinite(Number(options.blend)) ? Number(options.blend) : 0.06;
+    const fps = Number(options.fps) > 0 ? Math.round(Number(options.fps)) : null;
+    const maxWidth = Number(options.maxWidth) > 0 ? Math.round(Number(options.maxWidth)) : null;
+    const maxHeight = Number(options.maxHeight) > 0 ? Math.round(Number(options.maxHeight)) : null;
+
+    return new Promise((resolve, reject) => {
+        let command = ffmpeg(videoPath);
+        if (duration) command = command.duration(duration);
+
+        const filters = [];
+        if (maxWidth || maxHeight) {
+            const scaleWidth = maxWidth || -2;
+            const scaleHeight = maxHeight || -2;
+            filters.push(`scale=${scaleWidth}:${scaleHeight}:force_original_aspect_ratio=decrease`);
+        }
+        if (fps) filters.push(`fps=${fps}`);
+        filters.push(`colorkey=0xFFFFFF:${similarity}:${blend}`);
+        filters.push('format=yuva420p');
+
+        command
+            .videoFilters(filters)
+            .outputOptions([
+                '-c:v libvpx-vp9',
+                '-pix_fmt yuva420p',
+                '-auto-alt-ref 0',
+                '-b:v 0',
+                '-crf 30',
+                '-an',
+                '-movflags +faststart'
+            ])
+            .save(outputPath)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err));
+    });
+}

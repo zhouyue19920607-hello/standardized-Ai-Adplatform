@@ -9,7 +9,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
-import { compressAndCompositeVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
+import { compressAndCompositeVideo, removeWhiteBackgroundFromVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -881,6 +881,7 @@ function getAigcConfig() {
     apiHost,
     mtlabApiHost: (process.env.AIGC_MTLAB_API_HOST || "https://openapi.mtlab.meitu.com").replace(/\/+$/, ""),
     aiApiHost: (process.env.AIGC_AI_API_HOST || apiHost).replace(/\/+$/, ""),
+    videoCutoutTask: (process.env.AIGC_VIDEO_CUTOUT_TASK || "").trim(),
     authMode: (process.env.AIGC_AUTH_MODE || "query").toLowerCase(),
     apiStyle: (process.env.AIGC_PROVIDER_API_STYLE || "").toLowerCase(),
     pollEndpointTemplate: process.env.AIGC_POLL_ENDPOINT_TEMPLATE || "/v2/task/{taskId}",
@@ -1868,6 +1869,105 @@ async function prepareVideoInputForAigcExpand(videoUrl, aigcTarget, options = {}
     url: publicStaticUrl(preprocessed.staticUrl, publicBaseUrl),
     inputMode: "public-static-preprocessed",
     preprocessed
+  };
+}
+
+async function resolveOpenapiAdaptVideoUrl(videoUrl, context = {}) {
+  const config = context.config || getAigcConfig();
+  const publicBaseUrl = context.publicBaseUrl || config.publicBaseUrl || "";
+  if (/^https?:\/\//i.test(videoUrl || "")) return videoUrl;
+  if (!videoUrl?.startsWith("/static/")) {
+    throw new Error("视频输入需要是 http(s) URL 或本站 /static 路径");
+  }
+  if (publicBaseUrl) {
+    return publicStaticUrl(videoUrl, publicBaseUrl);
+  }
+  const observerConfig = getObserverConfig();
+  if (observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
+    return uploadStaticVideoToObserverUrl(videoUrl);
+  }
+  throw new Error("当前未配置 AIGC_PUBLIC_BASE_URL 或 OBSERVER_*，无法将本地视频投递给美图算法");
+}
+
+async function locallyRemoveWhiteBackgroundFromVideo(videoUrl, options = {}) {
+  const sourcePath = await localVideoPathFromUrl(videoUrl, {
+    publicBaseUrl: options.publicBaseUrl,
+    mediaType: "video/mp4"
+  });
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `video_subject_cutout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.webm`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await removeWhiteBackgroundFromVideo(sourcePath, outputPath, {
+    similarity: options.similarity,
+    blend: options.blend,
+    fps: options.fps,
+    maxDurationSec: options.maxDurationSec,
+    maxWidth: options.maxWidth,
+    maxHeight: options.maxHeight
+  });
+  return {
+    resultUrl: `/static/${outputFilename}`,
+    method: "local-white-key"
+  };
+}
+
+async function cutoutVideoForegroundWithAigc(videoUrl, options = {}) {
+  const config = options.config || getAigcConfig();
+  const warnings = [];
+
+  if (config.videoCutoutTask) {
+    try {
+      const inputVideoUrl = await resolveOpenapiAdaptVideoUrl(videoUrl, {
+        config,
+        publicBaseUrl: options.publicBaseUrl
+      });
+      const providerResult = await submitDirectOpenapiMediaTask({
+        task: config.videoCutoutTask,
+        parameter: {
+          rsp_media_type: "url",
+          ...(options.prompt ? { prompt: options.prompt } : {})
+        },
+        mediaInfoList: [mediaInfoFromUrl(inputVideoUrl)],
+        extra: {},
+        initialDelayMs: 3000,
+        pollIntervalMs: 5000,
+        maxPolls: 120,
+        config
+      });
+      if (providerResult?.resultUrl) {
+        return {
+          ok: true,
+          resultUrl: providerResult.resultUrl,
+          remoteResultUrl: providerResult.remoteResultUrl,
+          method: "provider-cutout",
+          warnings,
+          raw: providerResult.raw
+        };
+      }
+      warnings.push("provider-cutout-returned-empty-result");
+    } catch (err) {
+      warnings.push(`provider-cutout-failed: ${err.message}`);
+      console.warn("[AIGC Video Cutout] provider failed, fallback to local white key:", err.message);
+    }
+  } else {
+    warnings.push("provider-cutout-skipped: AIGC_VIDEO_CUTOUT_TASK not configured");
+  }
+
+  const fallback = await locallyRemoveWhiteBackgroundFromVideo(videoUrl, {
+    publicBaseUrl: options.publicBaseUrl,
+    similarity: options.similarity,
+    blend: options.blend,
+    fps: options.fps,
+    maxDurationSec: options.maxDurationSec,
+    maxWidth: options.maxWidth,
+    maxHeight: options.maxHeight
+  });
+  return {
+    ok: true,
+    resultUrl: fallback.resultUrl,
+    remoteResultUrl: "",
+    method: fallback.method,
+    warnings
   };
 }
 
@@ -5215,6 +5315,45 @@ app.post("/api/aigc/image-to-video", async (req, res) => {
   } catch (err) {
     console.error("[AIGC Image To Video] failed:", err.message);
     res.status(500).json({ error: "AI 图生视频失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/video-cutout", async (req, res) => {
+  try {
+    const {
+      videoUrl,
+      prompt = "保留主体，去除纯白或近白背景，边缘干净，适合透明前景合成",
+      similarity = 0.16,
+      blend = 0.06,
+      fps = 24,
+      maxDurationSec = 5,
+      maxWidth,
+      maxHeight
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(videoUrl, "videoUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const config = getAigcConfig();
+    const result = await cutoutVideoForegroundWithAigc(videoUrl, {
+      prompt,
+      similarity,
+      blend,
+      fps,
+      maxDurationSec,
+      maxWidth,
+      maxHeight,
+      publicBaseUrl,
+      config
+    });
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      task: config.videoCutoutTask || "local-white-key",
+      ...result
+    });
+  } catch (err) {
+    console.error("[AIGC Video Cutout] failed:", err.message);
+    res.status(500).json({ error: "AI 抠视频失败", details: err.message });
   }
 });
 
