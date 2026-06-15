@@ -2516,7 +2516,14 @@ const ConfigWorkspace: React.FC = () => {
             maxWidth,
             maxHeight,
         });
-        const finalUrl = cutoutResult.resultUrl || videoUrl;
+        const cutoutUrl = cutoutResult.resultUrl || videoUrl;
+        const sizedResult = await exportVideoWithSize({
+            url: cutoutUrl,
+            width: maxWidth,
+            height: maxHeight,
+            maxDurationSec: 5,
+        });
+        const finalUrl = sizedResult.url || cutoutUrl;
         const finalFile = await fileFromGeneratedUrl(finalUrl, filename, 'video/webm');
         return {
             file: finalFile,
@@ -5294,7 +5301,22 @@ const ConfigWorkspace: React.FC = () => {
                                             if (isMagazineDragging) finishMagazineDrag();
                                         }}
                                     >
-                                        {generatedVideoUrl ? (
+                                        {hoveredPreviewVideoUrl ? (
+                                            <>
+                                                <video
+                                                    src={resolveApiAssetUrl(hoveredPreviewVideoUrl)}
+                                                    className="absolute inset-0 w-full h-full object-contain"
+                                                    style={hoveredPreviewAspectRatio ? { aspectRatio: hoveredPreviewAspectRatio } : undefined}
+                                                    autoPlay
+                                                    loop
+                                                    muted
+                                                    playsInline
+                                                />
+                                                <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black text-white/85 backdrop-blur-md">
+                                                    {hoveredPreviewTemplate?.name} 效果预览
+                                                </div>
+                                            </>
+                                        ) : generatedVideoUrl ? (
                                             <>
                                                 <video
                                                     ref={previewVideoRef}
@@ -5312,21 +5334,6 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
                                                 </button>
-                                            </>
-                                        ) : hoveredPreviewVideoUrl ? (
-                                            <>
-                                                <video
-                                                    src={resolveApiAssetUrl(hoveredPreviewVideoUrl)}
-                                                    className="absolute inset-0 w-full h-full object-contain"
-                                                    style={hoveredPreviewAspectRatio ? { aspectRatio: hoveredPreviewAspectRatio } : undefined}
-                                                    autoPlay
-                                                    loop
-                                                    muted
-                                                    playsInline
-                                                />
-                                                <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black text-white/85 backdrop-blur-md">
-                                                    {hoveredPreviewTemplate?.name} 效果预览
-                                                </div>
                                             </>
                                         ) : (
                                             <>
@@ -5631,7 +5638,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                         key={`${activeBreakFrameAsset.url}-${breakPreviewPhase}-${isJumpingFocalTemplate ? 0 : breakFirstTriggerSecond}-${breakSecondTriggerSecond}`}
                                                                         ref={breakFramePreviewVideoRef}
                                                                         src={activeBreakFrameAsset.url}
-                                                                        className="w-full h-full object-contain drop-shadow-2xl"
+                                                                        className="w-full h-full object-fill drop-shadow-2xl"
                                                                         muted
                                                                         loop
                                                                         playsInline
@@ -5642,7 +5649,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                         }}
                                                                     />
                                                                 ) : (
-                                                                    <img src={activeBreakFrameAsset.url} alt="破框素材预览" className="w-full h-full object-contain drop-shadow-2xl" />
+                                                                    <img src={activeBreakFrameAsset.url} alt="破框素材预览" className="w-full h-full object-fill drop-shadow-2xl" />
                                                                 )
                                                             ) : !activeBreakFrameAsset.url ? (
                                                                 <div className="w-full h-full border border-dashed border-fuchsia-300/60 bg-fuchsia-300/5 flex items-center justify-center">
