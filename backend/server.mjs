@@ -1213,9 +1213,18 @@ function extractAigcDirectResultUrl(data) {
   return data?.data?.url || data?.data?.result_url || data?.url || data?.result_url || "";
 }
 
+function normalizeMediaUrlString(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  const markdownMatch = trimmed.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)$/i);
+  if (markdownMatch) return markdownMatch[1].trim();
+  return trimmed;
+}
+
 function mediaInfoFromUrl(url) {
+  const normalizedUrl = normalizeMediaUrlString(url);
   return {
-    media_data: url,
+    media_data: normalizedUrl,
     media_extra: {},
     media_profiles: { media_data_type: "url" }
   };
@@ -1257,14 +1266,16 @@ function hasAigcStandardVideoExt(value = "") {
 }
 
 function publicStaticUrl(staticUrl, publicBaseUrl = "") {
-  if (!publicBaseUrl || typeof staticUrl !== "string" || !staticUrl.startsWith("/static/")) return staticUrl;
-  return `${publicBaseUrl}${staticUrl}`;
+  const normalizedUrl = normalizeMediaUrlString(staticUrl);
+  if (!publicBaseUrl || typeof normalizedUrl !== "string" || !normalizedUrl.startsWith("/static/")) return normalizedUrl;
+  return `${publicBaseUrl}${normalizedUrl}`;
 }
 
 function publicUrlToStaticUrl(publicUrl, publicBaseUrl = "") {
-  if (!publicBaseUrl || !/^https?:\/\//i.test(publicUrl)) return "";
+  const normalizedUrl = normalizeMediaUrlString(publicUrl);
+  if (!publicBaseUrl || !/^https?:\/\//i.test(normalizedUrl)) return "";
   try {
-    const media = new URL(publicUrl);
+    const media = new URL(normalizedUrl);
     const base = new URL(publicBaseUrl);
     if (media.origin !== base.origin || !media.pathname.startsWith("/static/")) return "";
     return decodeURIComponent(media.pathname);
@@ -1365,6 +1376,11 @@ async function uploadStaticVideoToObserverUrl(staticUrl) {
 
 async function uploadStaticImageToObserverUrl(staticUrl) {
   return uploadLocalImageToObserverUrl(staticUrlToLocalPath(staticUrl));
+}
+
+function hasObserverUploadConfig() {
+  const observerConfig = getObserverConfig();
+  return Boolean(observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain);
 }
 
 async function writeStandardizedAigcImage(input) {
@@ -1505,7 +1521,7 @@ function mediaInfoWithUrl(item, url) {
 async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options = {}) {
   const normalized = [];
   for (const item of mediaInfoList) {
-    const mediaData = item?.media_data;
+    const mediaData = normalizeMediaUrlString(item?.media_data);
     if (typeof mediaData === "string" && mediaData.startsWith("/static/")) {
       if (hasAigcStandardVideoExt(mediaData)) {
         const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
@@ -1516,6 +1532,12 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
         continue;
       }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
+        if (hasObserverUploadConfig()) {
+          const standardizedStaticUrl = await standardizeStaticImageForAigc(mediaData);
+          const observerUrl = await uploadStaticImageToObserverUrl(standardizedStaticUrl);
+          normalized.push(mediaInfoWithUrl(item, observerUrl));
+          continue;
+        }
         const publicUrl = publicStaticUrl(mediaData, config.publicBaseUrl);
         if (/^https?:\/\//i.test(publicUrl)) {
           normalized.push(mediaInfoWithUrl(item, publicUrl));
@@ -1544,6 +1566,12 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
       }
       const localStaticUrl = publicUrlToStaticUrl(mediaData, config.publicBaseUrl);
       if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
+        if (hasObserverUploadConfig() && options.preferPublicImageUrl) {
+          const standardizedStaticUrl = await standardizeStaticImageForAigc(localStaticUrl);
+          const observerUrl = await uploadStaticImageToObserverUrl(standardizedStaticUrl);
+          normalized.push(mediaInfoWithUrl(item, observerUrl));
+          continue;
+        }
         const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
         normalized.push(mediaInfoWithBase64(item, imageBase64));
         continue;
@@ -2154,7 +2182,15 @@ async function submitAigcDirectRequest(endpoint, payload) {
   return { resultUrl, remoteResultUrl, raw };
 }
 
-async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, seed = -1 }) {
+async function submitAigcExpandTask({
+  imageUrl,
+  targetRatio = "16:9",
+  prompt,
+  seed = -1,
+  publicBaseUrl,
+  mediaOptions,
+  persistOptions
+}) {
   const conservativePrompt = [
     AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
     "This is not an image generation task. It is background-only outpainting for an existing poster.",
@@ -2177,7 +2213,10 @@ async function submitAigcExpandTask({ imageUrl, targetRatio = "16:9", prompt, se
   return submitAigcTask({
     task: AIGC_TASKS.dispatcher,
     params,
-    mediaInfoList: [mediaInfoFromUrl(imageUrl)]
+    mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+    publicBaseUrl,
+    mediaOptions,
+    persistOptions
   });
 }
 
@@ -3164,65 +3203,57 @@ async function submitDirectOpenapiMediaTask({
 }
 
 function publicAigcImageUrl(imageUrl, config, publicBaseUrl = "") {
+  const normalizedImageUrl = normalizeMediaUrlString(imageUrl);
   const baseUrl = publicBaseUrl || config.publicBaseUrl;
-  if (typeof imageUrl === "string" && imageUrl.startsWith("/static/")) {
-    return publicStaticUrl(imageUrl, baseUrl);
+  if (typeof normalizedImageUrl === "string" && normalizedImageUrl.startsWith("/static/")) {
+    return publicStaticUrl(normalizedImageUrl, baseUrl);
   }
-  return imageUrl;
+  return normalizedImageUrl;
 }
 
 async function mediaInfoForOpenapiAdaptImage(imageUrl, context = {}) {
   const config = context.config || getAigcConfig();
   const publicBaseUrl = context.publicBaseUrl || config.publicBaseUrl || "";
-  const localStaticUrl = imageUrl?.startsWith("/static/")
-    ? imageUrl
-    : publicUrlToStaticUrl(imageUrl || "", publicBaseUrl);
+  const normalizedImageUrl = normalizeMediaUrlString(imageUrl);
+  const localStaticUrl = normalizedImageUrl?.startsWith("/static/")
+    ? normalizedImageUrl
+    : publicUrlToStaticUrl(normalizedImageUrl || "", publicBaseUrl);
 
   if (localStaticUrl && hasAigcStandardImageExt(localStaticUrl)) {
-    const publicUrl = publicStaticUrl(localStaticUrl, publicBaseUrl);
-    if (/^https?:\/\//i.test(publicUrl)) {
-      return mediaInfoFromUrl(publicUrl);
+    const standardizedStaticUrl = await standardizeStaticImageForAigc(localStaticUrl);
+    if (hasObserverUploadConfig()) {
+      const observerUrl = await uploadStaticImageToObserverUrl(standardizedStaticUrl);
+      return mediaInfoFromUrl(observerUrl);
     }
-    const imageBase64 = await standardizeStaticImageToBase64ForAigc(localStaticUrl);
-    return mediaInfoWithBase64(mediaInfoFromUrl(localStaticUrl), imageBase64);
+    const imageBase64 = await standardizeStaticImageToBase64ForAigc(standardizedStaticUrl);
+    return mediaInfoWithBase64(mediaInfoFromUrl(standardizedStaticUrl), imageBase64);
   }
 
-  return mediaInfoFromUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
+  return mediaInfoFromUrl(publicAigcImageUrl(normalizedImageUrl, config, publicBaseUrl));
 }
 
 async function resolveOpenapiAdaptImageUrl(imageUrl, context = {}) {
   const config = context.config || getAigcConfig();
   const publicBaseUrl = context.publicBaseUrl || config.publicBaseUrl || "";
-  const observerConfig = getObserverConfig();
-  const localStaticUrl = imageUrl?.startsWith("/static/")
-    ? imageUrl
-    : publicUrlToStaticUrl(imageUrl || "", publicBaseUrl);
+  const normalizedImageUrl = normalizeMediaUrlString(imageUrl);
+  const localStaticUrl = normalizedImageUrl?.startsWith("/static/")
+    ? normalizedImageUrl
+    : publicUrlToStaticUrl(normalizedImageUrl || "", publicBaseUrl);
 
-  if (/^https?:\/\//i.test(imageUrl || "")) {
-    try {
-      const parsed = new URL(imageUrl);
-      if (!/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(parsed.hostname)) {
-        return imageUrl;
-      }
-    } catch (err) {
-      // ignore parse failure and continue with fallbacks
+  if (localStaticUrl) {
+    const standardizedStaticUrl = await standardizeStaticImageForAigc(localStaticUrl);
+
+    if (hasObserverUploadConfig()) {
+      return uploadStaticImageToObserverUrl(standardizedStaticUrl);
+    }
+
+    const publicUrl = publicStaticUrl(standardizedStaticUrl, publicBaseUrl);
+    if (/^https?:\/\//i.test(publicUrl || "")) {
+      return publicUrl;
     }
   }
 
-  if (!localStaticUrl) return imageUrl;
-
-  const standardizedStaticUrl = await standardizeStaticImageForAigc(localStaticUrl);
-
-  if (observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain) {
-    return uploadStaticImageToObserverUrl(standardizedStaticUrl);
-  }
-
-  const publicUrl = publicStaticUrl(standardizedStaticUrl, publicBaseUrl);
-  if (/^https?:\/\//i.test(publicUrl || "")) {
-    return publicUrl;
-  }
-
-  return imageUrl;
+  return normalizedImageUrl;
 }
 
 function boxFromProvider(value, width, height) {
@@ -4524,12 +4555,17 @@ async function inpaintImageForAdapt(imageUrl, maskUrl, context, prompt = "") {
 
 async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, context, prompt = "") {
   const config = context.config;
-  const publicImageUrl = publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const ratio = normalizeOpenapiAspectRatio(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
+  const openapiImageUrl = apiStyle === ADAPT_API_STYLES.openapi
+    ? await resolveOpenapiAdaptImageUrl(imageUrl, context)
+    : "";
+  const publicImageUrl = apiStyle === ADAPT_API_STYLES.openapi
+    ? openapiImageUrl
+    : publicAigcImageUrl(imageUrl, config, context.publicBaseUrl);
   const mediaInfo = apiStyle === ADAPT_API_STYLES.openapi
-    ? /^https?:\/\//i.test(publicImageUrl)
-      ? mediaInfoFromUrl(publicImageUrl)
+    ? /^https?:\/\//i.test(openapiImageUrl || "")
+      ? mediaInfoFromUrl(openapiImageUrl)
       : await mediaInfoForOpenapiAdaptImage(imageUrl, context)
     : null;
   if (apiStyle === ADAPT_API_STYLES.openapi) {
@@ -4564,7 +4600,9 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
         imageUrl: publicImageUrl,
         targetRatio: ratio,
         prompt,
-        seed: -1
+        seed: -1,
+        publicBaseUrl: context.publicBaseUrl,
+        mediaOptions: { preferPublicImageUrl: true }
       });
       resultUrl = fallback.resultUrl || "";
     } catch (err) {
@@ -4900,7 +4938,9 @@ app.post("/api/aigc/image-expand", async (req, res) => {
       imageUrl,
       targetRatio: targetRatio || (targetWidth && targetHeight ? `${targetWidth}:${targetHeight}` : "16:9"),
       prompt,
-      seed
+      seed,
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true }
     });
 
     res.json({
@@ -4957,7 +4997,8 @@ app.post("/api/aigc/image-outpaint", async (req, res) => {
         }
       },
       mediaInfoList: [mediaInfoFromUrl(imageUrl)],
-      publicBaseUrl: getRequestPublicBaseUrl(req)
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true }
     });
     res.json({ ok: true, provider: "meitu-open-platform", task: AIGC_TASKS.dispatcher, ...result });
   } catch (err) {
@@ -4986,6 +5027,8 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
         }
       },
       mediaInfoList: [mediaInfoFromUrl(imageUrl)],
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true },
       persistOptions: transparentWhite
         ? { transparentWhite: true, resize: { width: 450, height: 450, fit: "contain" } }
         : undefined
@@ -4994,6 +5037,54 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
   } catch (err) {
     console.error("[AIGC Image To Image] failed:", err.message);
     res.status(500).json({ error: "AI 图生图失败", details: err.message });
+  }
+});
+
+app.post("/api/aigc/image-cutout", async (req, res) => {
+  try {
+    const { imageUrl, width, height, fit = "contain" } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    let inputBuffer;
+    if (imageUrl.startsWith("/static/")) {
+      const sourcePath = staticUrlToLocalPath(imageUrl);
+      await fs.access(sourcePath);
+      inputBuffer = await fs.readFile(sourcePath);
+    } else {
+      const response = await axios.get(imageUrl, {
+        responseType: "arraybuffer",
+        timeout: 120000,
+        maxContentLength: 80 * 1024 * 1024,
+        maxBodyLength: 80 * 1024 * 1024
+      });
+      inputBuffer = Buffer.from(response.data);
+    }
+
+    const targetWidth = toPositiveInt(width);
+    const targetHeight = toPositiveInt(height);
+    const resize = targetWidth && targetHeight
+      ? { width: targetWidth, height: targetHeight, fit }
+      : null;
+    const outputBuffer = await imageBufferWithTransparentWhiteBackground(inputBuffer, resize);
+    const metadata = await sharp(outputBuffer).metadata();
+    const outputFilename = `image_subject_cutout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+    const outputPath = path.join(STORAGE_DIR, outputFilename);
+    await fs.writeFile(outputPath, outputBuffer);
+
+    res.json({
+      ok: true,
+      provider: "local-transparent-cutout",
+      method: "local-white-key",
+      resultUrl: `/static/${outputFilename}`,
+      url: `/static/${outputFilename}`,
+      mediaType: "image",
+      width: metadata.width,
+      height: metadata.height
+    });
+  } catch (err) {
+    console.error("[AIGC Image Cutout] failed:", err.message);
+    res.status(500).json({ error: "图片抠图失败", details: err.message });
   }
 });
 
@@ -5200,7 +5291,9 @@ app.post("/api/aigc/smart-crop", async (req, res) => {
         "重要信息应避开边缘安全区。"
         ].join("")
       ].join(""),
-      seed: -1
+      seed: -1,
+      publicBaseUrl: getRequestPublicBaseUrl(req),
+      mediaOptions: { preferPublicImageUrl: true }
     });
     const finalUrl = result.resultUrl?.startsWith("/static/")
       ? await resizeStaticImageToTarget(result.resultUrl, width, height)
@@ -5239,9 +5332,10 @@ app.post("/api/aigc/text-to-video", async (req, res) => {
     if (!firstFrame.resultUrl) {
       throw new Error("文生视频首帧图生成失败，未返回图片 URL");
     }
-    const firstFrameInputUrl =
-      firstFrame.remoteResultUrl ||
-      publicAigcImageUrl(firstFrame.resultUrl, config, publicBaseUrl);
+    const firstFrameInputUrl = firstFrame.remoteResultUrl || await resolveOpenapiAdaptImageUrl(firstFrame.resultUrl, {
+      config,
+      publicBaseUrl
+    });
     if (!/^https?:\/\//i.test(firstFrameInputUrl || "")) {
       throw new Error("文生视频首帧图需要可被美图算法访问的 URL，请配置 AIGC_PUBLIC_BASE_URL 或使用远程结果 URL");
     }

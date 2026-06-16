@@ -339,6 +339,16 @@ export const cutoutVideoWithAigc = async (payload: {
     return response.data;
 };
 
+export const cutoutImageWithAigc = async (payload: {
+    imageUrl: string;
+    width?: number;
+    height?: number;
+    fit?: 'contain' | 'cover' | 'fill' | 'inside' | 'outside';
+}): Promise<AigcTaskResponse & { method?: string }> => {
+    const response = await api.post<AigcTaskResponse & { method?: string }>('/aigc/image-cutout', payload);
+    return response.data;
+};
+
 export const expandVideoWithAigc = async (payload: {
     videoUrl: string;
     targetWidth?: number;

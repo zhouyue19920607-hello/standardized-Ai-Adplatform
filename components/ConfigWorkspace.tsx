@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ASSETS_URL,
+    cutoutImageWithAigc,
     cutoutVideoWithAigc,
     CreativeTemplateItem,
     CreativeTemplateSettings,
@@ -430,9 +431,9 @@ const getApproxAigcVideoTarget = (targetWidth: number, targetHeight: number) => 
 };
 
 const isPngFile = (file: File) => file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
-const isPngOrWebpFile = (file: File) => {
+const isCutoutSourceImageFile = (file: File) => {
     const fileName = file.name.toLowerCase();
-    return file.type === 'image/png' || file.type === 'image/webp' || fileName.endsWith('.png') || fileName.endsWith('.webp');
+    return file.type.startsWith('image/') || /\.(png|webp|jpe?g)$/i.test(fileName);
 };
 
 interface PendantFrame {
@@ -1199,11 +1200,64 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const cutoutUploadStateAsPng = async (
+        state: UploadState,
+        setState: React.Dispatch<React.SetStateAction<UploadState>>,
+        key: string,
+        options: { width?: number; height?: number; filename?: string } = {},
+    ) => {
+        if (!state.url || state.file?.type.startsWith('video/')) return;
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(key);
+
+        try {
+            const sourceUrl = state.url.startsWith('/static')
+                ? state.url
+                : state.file
+                    ? (await uploadRawAsset(state.file)).url
+                    : '';
+            if (!sourceUrl) throw new Error('素材未上传，无法抠图');
+
+            const result = await cutoutImageWithAigc({
+                imageUrl: sourceUrl,
+                width: options.width,
+                height: options.height,
+                fit: options.width && options.height ? 'contain' : undefined,
+            });
+            const filename = options.filename || `${state.file?.name?.replace(/\.[^.]+$/, '') || 'creative-asset'}-cutout.png`;
+            const nextFile = await fileFromGeneratedUrl(result.resultUrl, filename, 'image/png');
+            const nextUrl = URL.createObjectURL(nextFile);
+            setState((current) => {
+                if (current.url && current.url.startsWith('blob:')) URL.revokeObjectURL(current.url);
+                return {
+                    ...current,
+                    file: nextFile,
+                    url: nextUrl,
+                    status: current.status === 'invalid' ? 'adapted' : current.status,
+                    message: `${current.message || '图片素材'} / 已抠成透明 PNG`,
+                    whiteRemovalMode: 'local-key',
+                };
+            });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '图片抠图失败');
+        } finally {
+            setAiGeneratingKey((current) => current === key ? null : current);
+        }
+    };
+
     const uploadRemoveButton = (
         state: UploadState,
         onRemove: () => void,
         title = '删除素材',
         downloadOptions: { width?: number; height?: number; filename?: string } = {},
+        cutoutOptions?: {
+            key: string;
+            setState: React.Dispatch<React.SetStateAction<UploadState>>;
+            width?: number;
+            height?: number;
+            filename?: string;
+        },
     ) => state.url ? (
         <div className="absolute right-3 top-3 z-20 flex flex-col gap-2">
             <button
@@ -1230,6 +1284,27 @@ const ConfigWorkspace: React.FC = () => {
             >
                 <span className="material-symbols-outlined text-[15px]">download</span>
             </button>
+            {cutoutOptions && !state.file?.type.startsWith('video/') && (
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        void cutoutUploadStateAsPng(state, cutoutOptions.setState, cutoutOptions.key, {
+                            width: cutoutOptions.width,
+                            height: cutoutOptions.height,
+                            filename: cutoutOptions.filename,
+                        });
+                    }}
+                    disabled={aiGeneratingKey === cutoutOptions.key}
+                    className="h-7 w-7 rounded-full bg-black/75 text-white/85 shadow-lg shadow-black/30 border border-white/10 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all disabled:cursor-wait disabled:opacity-60"
+                    title="抠成透明 PNG"
+                    aria-label="抠成透明 PNG"
+                >
+                    <span className={`material-symbols-outlined text-[15px] ${aiGeneratingKey === cutoutOptions.key ? 'animate-spin' : ''}`}>
+                        {aiGeneratingKey === cutoutOptions.key ? 'progress_activity' : 'auto_fix_high'}
+                    </span>
+                </button>
+            )}
         </div>
     ) : null;
 
@@ -1243,20 +1318,23 @@ const ConfigWorkspace: React.FC = () => {
     const updateAsset = async (file: File) => {
         setError('');
         resetOutput();
-        if (file.type !== 'image/png') {
-            setAsset({ file: null, url: null, status: 'invalid', message: '挂件素材仅支持 PNG' });
+        if (!isCutoutSourceImageFile(file)) {
+            setAsset({ file: null, url: null, status: 'invalid', message: '挂件素材仅支持图片' });
             return;
         }
 
         try {
             const size = await getImageSize(file);
             const url = URL.createObjectURL(file);
-            const isValid = size.width === 450 && size.height === 450;
+            const isTransparentReady = isPngFile(file);
+            const isValid = isTransparentReady && size.width === 450 && size.height === 450;
             setAsset({
                 file,
                 url,
-                status: isValid ? 'valid' : 'invalid',
-                message: isValid ? 'PNG 450 x 450，符合 MR 标准' : `当前 ${size.width} x ${size.height}，需上传 450 x 450 PNG`,
+                status: isValid ? 'valid' : 'adapted',
+                message: isValid
+                    ? 'PNG 450 x 450，符合 MR 标准'
+                    : `当前 ${size.width} x ${size.height}，可点击抠成透明 PNG 并适配 450 x 450`,
             });
         } catch (err) {
             setAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '图片读取失败' });
@@ -1609,8 +1687,8 @@ const ConfigWorkspace: React.FC = () => {
         const isJumpingFrame = expandedTemplate === 'jumping-focal-window';
         const frameHeight = isJumpingFrame ? JUMPING_FRAME_H : BREAK_FRAME_H;
         const setFrameAsset = isJumpingFrame ? setJumpingFrameAsset : setBreakFrameAsset;
-        if (!isPngOrWebpFile(file)) {
-            setFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材仅支持 PNG / WEBP' });
+        if (!isCutoutSourceImageFile(file)) {
+            setFrameAsset({ file: null, url: null, status: 'invalid', message: '破框素材仅支持图片' });
             return;
         }
 
@@ -1624,7 +1702,7 @@ const ConfigWorkspace: React.FC = () => {
                 status: isValid ? 'valid' : 'adapted',
                 message: isValid
                     ? `PNG/WEBP 1126 x ${frameHeight}，符合规范`
-                    : `当前 ${size.width} x ${size.height}，生成时放入 1126 x ${frameHeight} 透明底容器`,
+                    : `当前 ${size.width} x ${size.height}，可点击抠成透明 PNG 并放入 1126 x ${frameHeight} 容器`,
             });
         } catch (err) {
             URL.revokeObjectURL(url);
@@ -4242,7 +4320,10 @@ const ConfigWorkspace: React.FC = () => {
                                                                 input.value = '';
                                                             }}
                                                         />
-                                                        {uploadRemoveButton(spotlightAiReference, removeSpotlightAiReference, '删除聚光开屏参考图')}
+                                                        {uploadRemoveButton(spotlightAiReference, removeSpotlightAiReference, '删除聚光开屏参考图', {}, {
+                                                            key: 'cutout-spotlight-reference',
+                                                            setState: setSpotlightAiReference,
+                                                        })}
                                                     </div>
                                                 </div>
                                                 <button
@@ -4296,7 +4377,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(spotlightSplash, () => clearUploadState(spotlightSplash, setSpotlightSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `splash-${CANVAS_W}x${CANVAS_H}.png` })}
+                                                {uploadRemoveButton(spotlightSplash, () => clearUploadState(spotlightSplash, setSpotlightSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `splash-${CANVAS_W}x${CANVAS_H}.png` }, {
+                                                    key: 'cutout-spotlight-splash',
+                                                    setState: setSpotlightSplash,
+                                                    width: CANVAS_W,
+                                                    height: CANVAS_H,
+                                                    filename: `splash-${CANVAS_W}x${CANVAS_H}.png`,
+                                                })}
                                             </div>
                                         </div>
                                     </>
@@ -4527,7 +4614,10 @@ const ConfigWorkspace: React.FC = () => {
                                                                 input.value = '';
                                                             }}
                                                         />
-                                                        {uploadRemoveButton(polyAiReference, removePolyAiReference, '删除多态翻卡参考图')}
+                                                        {uploadRemoveButton(polyAiReference, removePolyAiReference, '删除多态翻卡参考图', {}, {
+                                                            key: 'cutout-poly-reference',
+                                                            setState: setPolyAiReference,
+                                                        })}
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-1 gap-3">
@@ -4582,7 +4672,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(polyFocal, () => clearUploadState(polyFocal, setPolyFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-focal-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
+                                                {uploadRemoveButton(polyFocal, () => clearUploadState(polyFocal, setPolyFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `poly-focal-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` }, {
+                                                    key: 'cutout-poly-focal',
+                                                    setState: setPolyFocal,
+                                                    width: BREAK_FOCAL_W,
+                                                    height: BREAK_FOCAL_H,
+                                                    filename: `poly-focal-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png`,
+                                                })}
                                             </div>
                                         </div>
                                     </>
@@ -4628,7 +4724,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` }, {
+                                                    key: `cutout-${isJumpingFocalTemplate ? 'jumping' : 'break'}-focal`,
+                                                    setState: isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal,
+                                                    width: BREAK_FOCAL_W,
+                                                    height: BREAK_FOCAL_H,
+                                                    filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png`,
+                                                })}
                                             </div>
                                         </div>
 
@@ -4741,7 +4843,10 @@ const ConfigWorkspace: React.FC = () => {
                                                                 input.value = '';
                                                             }}
                                                         />
-                                                        {uploadRemoveButton(refreshAiReference, removeRefreshAiReference, '删除 icon 参考图')}
+                                                        {uploadRemoveButton(refreshAiReference, removeRefreshAiReference, '删除 icon 参考图', {}, {
+                                                            key: 'cutout-refresh-icon-reference',
+                                                            setState: setRefreshAiReference,
+                                                        })}
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -4877,7 +4982,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` })}
+                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` }, {
+                                                    key: 'cutout-refresh-bottom-nav',
+                                                    setState: setRefreshBottomNav,
+                                                    width: REFRESH_BOTTOM_NAV_W,
+                                                    height: REFRESH_BOTTOM_NAV_H,
+                                                    filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png`,
+                                                })}
                                             </div>
                                             <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
                                                 <div className="flex items-center justify-between gap-3">
@@ -4920,7 +5031,10 @@ const ConfigWorkspace: React.FC = () => {
                                                                 input.value = '';
                                                             }}
                                                         />
-                                                        {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图')}
+                                                        {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图', {}, {
+                                                            key: 'cutout-refresh-bottom-reference',
+                                                            setState: setRefreshBottomNavAiReference,
+                                                        })}
                                                     </div>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -4986,7 +5100,13 @@ const ConfigWorkspace: React.FC = () => {
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFocal, () => clearUploadState(activeBreakFocal, isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal), '删除焦点视窗素材', { width: BREAK_FOCAL_W, height: BREAK_FOCAL_H, filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png` }, {
+                                                    key: `cutout-${isJumpingFocalTemplate ? 'jumping' : 'break'}-focal-panel`,
+                                                    setState: isJumpingFocalTemplate ? setJumpingFocal : setBreakFocal,
+                                                    width: BREAK_FOCAL_W,
+                                                    height: BREAK_FOCAL_H,
+                                                    filename: `focal-window-${BREAK_FOCAL_W}x${BREAK_FOCAL_H}.png`,
+                                                })}
                                             </div>
                                         </div>
 
@@ -4995,7 +5115,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 <div>
                                                     <h2 className="text-white text-sm font-black">破框素材</h2>
                                                     <p className="text-[10px] text-zinc-600 font-bold mt-1">
-                                                        {isJumpingFocalTemplate ? 'PNG / WEBP / 1126 x 906px；第 0 秒开始播放' : 'PNG / WEBP / 1126 x 1890px；AI可协助生成破框素材'}
+                                                        {isJumpingFocalTemplate ? 'PNG / WEBP / JPG / 1126 x 906px；第 0 秒开始播放' : 'PNG / WEBP / JPG / 1126 x 1890px；可抠成透明 PNG'}
                                                     </p>
                                                 </div>
                                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(activeBreakFrameAsset.status)}`}>{activeBreakFrameAsset.message}</span>
@@ -5003,7 +5123,7 @@ const ConfigWorkspace: React.FC = () => {
                                             <input
                                                 ref={breakFrameInputRef}
                                                 type="file"
-                                                accept="image/png,image/webp,.png,.webp"
+                                                accept="image/png,image/webp,image/jpeg,.png,.webp,.jpg,.jpeg"
                                                 className="hidden"
                                                 onChange={async (e) => {
                                                     const input = e.currentTarget;
@@ -5029,11 +5149,17 @@ const ConfigWorkspace: React.FC = () => {
                                                         <div className="text-center">
                                                             <span className="material-symbols-outlined text-3xl text-zinc-600">view_in_ar</span>
                                                             <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'break-frame' ? '松开上传破框素材' : '点击或拖入破框素材'}</p>
-                                                            <p className="text-[9px] text-zinc-700 font-bold mt-1">AI可协助生成破框素材</p>
+                                                            <p className="text-[9px] text-zinc-700 font-bold mt-1">上传白底图后可一键抠成透明 PNG</p>
                                                         </div>
                                                     )}
                                                 </button>
-                                                {uploadRemoveButton(activeBreakFrameAsset, () => clearUploadState(activeBreakFrameAsset, isJumpingFocalTemplate ? setJumpingFrameAsset : setBreakFrameAsset), '删除破框素材', { width: BREAK_FRAME_W, height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H, filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png` })}
+                                                {uploadRemoveButton(activeBreakFrameAsset, () => clearUploadState(activeBreakFrameAsset, isJumpingFocalTemplate ? setJumpingFrameAsset : setBreakFrameAsset), '删除破框素材', { width: BREAK_FRAME_W, height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H, filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png` }, {
+                                                    key: `cutout-${isJumpingFocalTemplate ? 'jumping' : 'break'}-frame`,
+                                                    setState: isJumpingFocalTemplate ? setJumpingFrameAsset : setBreakFrameAsset,
+                                                    width: BREAK_FRAME_W,
+                                                    height: isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H,
+                                                    filename: `break-frame-${BREAK_FRAME_W}x${isJumpingFocalTemplate ? JUMPING_FRAME_H : BREAK_FRAME_H}.png`,
+                                                })}
                                             </div>
                                             <div className="grid gap-3">
                                                 {(isJumpingFocalTemplate ? [
@@ -5174,7 +5300,10 @@ const ConfigWorkspace: React.FC = () => {
                                                                         title={`上传${item.title}参考图`}
                                                                     />
                                                                 </label>
-                                                                {uploadRemoveButton(item.reference, () => removeBreakReference(item.phase), `删除${item.title}参考图`)}
+                                                                {uploadRemoveButton(item.reference, () => removeBreakReference(item.phase), `删除${item.title}参考图`, {}, {
+                                                                    key: `cutout-break-reference-${item.phase}`,
+                                                                    setState: item.phase === 0 ? setBreakFirstReference : setBreakSecondReference,
+                                                                })}
                                                             </div>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-3">
@@ -5224,7 +5353,7 @@ const ConfigWorkspace: React.FC = () => {
                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(asset.status)}`}>{asset.message}</span>
                                     </div>
 
-                                    <input ref={assetInputRef} type="file" accept="image/png" className="hidden" onChange={(e) => {
+                                    <input ref={assetInputRef} type="file" accept="image/*,.png,.jpg,.jpeg,.webp" className="hidden" onChange={(e) => {
                                         const input = e.currentTarget;
                                         if (input.files?.[0]) updateAsset(input.files[0]);
                                         input.value = '';
@@ -5242,11 +5371,17 @@ const ConfigWorkspace: React.FC = () => {
                                             ) : (
                                                 <div className="text-center">
                                                     <span className="material-symbols-outlined text-3xl text-zinc-600">add_photo_alternate</span>
-                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'asset' ? '松开上传 PNG 素材' : '点击或拖入 PNG 素材'}</p>
+                                                    <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'asset' ? '松开上传图片素材' : '点击或拖入图片素材'}</p>
                                                 </div>
                                             )}
                                         </button>
-                                        {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材', { width: PENDANT_SIZE, height: PENDANT_SIZE, filename: `pendant-${PENDANT_SIZE}x${PENDANT_SIZE}.png` })}
+                                        {uploadRemoveButton(asset, () => clearUploadState(asset, setAsset), '删除挂件素材', { width: PENDANT_SIZE, height: PENDANT_SIZE, filename: `pendant-${PENDANT_SIZE}x${PENDANT_SIZE}.png` }, {
+                                            key: 'cutout-pendant',
+                                            setState: setAsset,
+                                            width: PENDANT_SIZE,
+                                            height: PENDANT_SIZE,
+                                            filename: `pendant-${PENDANT_SIZE}x${PENDANT_SIZE}.png`,
+                                        })}
                                     </div>
 
                                     <div className="grid grid-cols-[1fr_96px] gap-3">
@@ -5284,7 +5419,10 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            {uploadRemoveButton(pendantReference, removePendantReference, '删除挂件参考图')}
+                                            {uploadRemoveButton(pendantReference, removePendantReference, '删除挂件参考图', {}, {
+                                                key: 'cutout-pendant-reference',
+                                                setState: setPendantReference,
+                                            })}
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between rounded-[16px] border border-white/5 bg-white/[0.03] px-4 py-2">
@@ -5337,7 +5475,13 @@ const ConfigWorkspace: React.FC = () => {
                                                 </div>
                                             )}
                                         </button>
-                                            {uploadRemoveButton(splash, () => clearUploadState(splash, setSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `dynamic-splash-${CANVAS_W}x${CANVAS_H}.png` })}
+                                            {uploadRemoveButton(splash, () => clearUploadState(splash, setSplash), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `dynamic-splash-${CANVAS_W}x${CANVAS_H}.png` }, {
+                                                key: 'cutout-dynamic-splash',
+                                                setState: setSplash,
+                                                width: CANVAS_W,
+                                                height: CANVAS_H,
+                                                filename: `dynamic-splash-${CANVAS_W}x${CANVAS_H}.png`,
+                                            })}
                                     </div>
                                 </div>
                                     </>
