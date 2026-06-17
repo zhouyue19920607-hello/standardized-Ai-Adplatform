@@ -3897,26 +3897,6 @@ async function buildProtectedMaskForAdapt(analysis, width, height) {
   };
 }
 
-async function expandMaskForAdapt(maskUrl, radius = 18) {
-  if (!maskUrl?.startsWith("/static/")) return maskUrl || "";
-  try {
-    const localPath = staticUrlToLocalPath(maskUrl);
-    const outputFilename = `expanded_mask_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
-    const outputPath = path.join(STORAGE_DIR, outputFilename);
-    await sharp(localPath)
-      .greyscale()
-      .threshold(24)
-      .blur(Math.max(1, radius / 3))
-      .threshold(8)
-      .png()
-      .toFile(outputPath);
-    return `/static/${outputFilename}`;
-  } catch (err) {
-    console.warn("[AdaptImage] mask expand skipped:", err.message);
-    return maskUrl || "";
-  }
-}
-
 async function maskIouFromUrls(beforeMaskUrl, afterMaskUrl, width, height, threshold = 24) {
   if (!beforeMaskUrl || !afterMaskUrl || !width || !height) return null;
   const beforeRaw = await maskUrlToGrayRaw(beforeMaskUrl, width, height);
@@ -4563,31 +4543,13 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   let backgroundUrl = split.background.url;
   let expandedBackgroundUrl = "";
   try {
-    if (masks?.removableMaskUrl) {
-      const expandedMaskUrl = await expandMaskForAdapt(masks.removableMaskUrl, 24);
-      const cleanedBackgroundUrl = await inpaintImageForAdapt(
-        split.background.url,
-        expandedMaskUrl,
-        context,
-        [
-          "清除残留文字、Logo、slogan 和图层边缘痕迹，只修补为连续自然的原背景。",
-          "不要生成新的文字、Logo、主体物、商品、人物或装饰元素。",
-          "修补区域要与周围背景的纹理、光影、色彩、透视自然融合，不能有涂抹感、残影或拼接边界。"
-        ].join("")
-      );
-      if (cleanedBackgroundUrl) backgroundUrl = cleanedBackgroundUrl;
-      console.log("[AdaptImage] relayout background cleaned", JSON.stringify({
-        source: split.background.url,
-        mask: expandedMaskUrl,
-        result: backgroundUrl
-      }));
-    }
     const backgroundPrompt = [
-      "只修补和延展当前海报的背景，保持原背景的色彩、光影、材质、透视和空间关系自然连续。",
-      "画面里只允许出现原图已经存在的文案和 Logo，不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
-      "输入图只作为背景参考，不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
+      "只延展当前海报背景的画布外缺失区域，尽量不要修改输入图中已经存在的背景区域。",
+      "延展区域必须沿着原背景的色彩、光影、材质、纹理、透视和空间关系自然连续。",
+      "画面里只允许保留原图已经存在的文案和 Logo，不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
+      "不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
       "主体物、原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
-      "背景修补必须自然干净，不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
+      "不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
     ].filter(Boolean).join(" ");
     expandedBackgroundUrl = await expandImageV4ForAdapt(backgroundUrl, targetWidth, targetHeight, context, backgroundPrompt);
     if (expandedBackgroundUrl) backgroundUrl = expandedBackgroundUrl;
