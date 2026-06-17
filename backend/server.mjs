@@ -901,6 +901,22 @@ function getObserverConfig() {
   };
 }
 
+function observerHostCandidates(primaryHost = "") {
+  const candidates = [];
+  const add = value => {
+    const normalized = String(value || "").trim().replace(/\/+$/, "");
+    if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
+  };
+  add(primaryHost);
+  if (primaryHost.includes("ali-observer.cloud.m.com")) {
+    add(primaryHost.replace("ali-observer.cloud.m.com", "ali-observer.meitu-int.com"));
+  }
+  if (primaryHost.includes("ali-observer.meitu-int.com")) {
+    add(primaryHost.replace("ali-observer.meitu-int.com", "ali-observer.cloud.m.com"));
+  }
+  return candidates;
+}
+
 function getRequestPublicBaseUrl(req) {
   const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
@@ -1329,19 +1345,40 @@ function staticUrlToLocalPath(staticUrl) {
 }
 
 async function getObserverSecurityToken(config) {
-  const tokenUrl = `${config.host}/api/v1/security_token`;
-  const response = await axiosRequestWithRetry({
-    url: tokenUrl,
-    method: "GET",
-    params: { biz: config.biz },
-    headers: { "Access-ID": config.accessId },
-    timeout: 30000
-  }, { label: "observer-token", retries: 3 });
-  const token = Array.isArray(response.data) ? response.data[0] : response.data?.data?.[0] || response.data;
-  if (!token?.access_key || !token?.secret_key || !token?.security_token || !token?.end_point || !token?.bucket) {
-    throw new Error("Observer 未返回完整临时上传凭证");
+  const hosts = observerHostCandidates(config.host);
+  let lastError;
+  for (const host of hosts) {
+    const tokenUrl = `${host}/api/v1/security_token`;
+    try {
+      const response = await axiosRequestWithRetry({
+        url: tokenUrl,
+        method: "GET",
+        params: { biz: config.biz },
+        headers: { "Access-ID": config.accessId },
+        timeout: 30000
+      }, { label: `observer-token:${new URL(host).host}`, retries: 3 });
+      const token = Array.isArray(response.data) ? response.data[0] : response.data?.data?.[0] || response.data;
+      if (!token?.access_key || !token?.secret_key || !token?.security_token || !token?.end_point || !token?.bucket) {
+        throw new Error("Observer 未返回完整临时上传凭证");
+      }
+      if (host !== config.host) {
+        console.warn("[Observer] token host fallback used", JSON.stringify({
+          configuredHost: config.host,
+          usedHost: host
+        }));
+      }
+      return token;
+    } catch (err) {
+      lastError = err;
+      console.warn("[Observer] token host failed", JSON.stringify({
+        host,
+        code: err?.code || "",
+        status: err?.response?.status || "",
+        message: err?.message || String(err)
+      }));
+    }
   }
-  return token;
+  throw new Error(`Observer 获取上传凭证失败: ${lastError?.message || String(lastError)}`);
 }
 
 function objectKeyForAigcVideo(sourcePath) {
