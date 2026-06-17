@@ -4427,10 +4427,10 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
     maxWidth = targetWidth * 0.84;
     maxHeight = targetHeight * 0.64;
     if (isLandscapeToPortrait) {
-      maxWidth = targetWidth * 0.86;
-      maxHeight = targetHeight * 0.54;
+      maxWidth = targetWidth * 0.92;
+      maxHeight = targetHeight * 0.66;
       centerX = targetWidth / 2;
-      centerY = targetHeight * 0.64;
+      centerY = targetHeight * 0.74;
     } else {
       centerX = clampNumber(centerX, targetWidth * 0.25, targetWidth * 0.75);
       centerY = clampNumber(centerY, targetHeight * 0.28, targetHeight * 0.66);
@@ -4444,9 +4444,14 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const itemMarginX = zone.type === "subject" ? 0 : marginX;
   const itemMarginTop = zone.type === "subject" ? 0 : marginY;
   const itemMarginBottom = zone.type === "subject" ? 0 : marginY;
+  const x = Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width));
+  let y = Math.round(clampNumber(centerY - height / 2, itemMarginTop, targetHeight - itemMarginBottom - height));
+  if (zone.type === "subject" && isLandscapeToPortrait) {
+    y = Math.round(clampNumber(targetHeight - height, 0, targetHeight - height));
+  }
   return {
-    x: Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width)),
-    y: Math.round(clampNumber(centerY - height / 2, itemMarginTop, targetHeight - itemMarginBottom - height)),
+    x,
+    y,
     width,
     height,
     scale
