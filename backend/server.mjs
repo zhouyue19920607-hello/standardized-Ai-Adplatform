@@ -1095,6 +1095,25 @@ function isRetriableHttpError(err) {
   return [408, 425, 429, 500, 502, 503, 504].includes(status);
 }
 
+function summarizeHttpErrorData(data) {
+  if (data === undefined || data === null) return "";
+  if (typeof data === "string") return data.slice(0, 500);
+  try {
+    return JSON.stringify(data).slice(0, 500);
+  } catch (err) {
+    return String(data).slice(0, 500);
+  }
+}
+
+function enrichHttpError(err, label = "http-request") {
+  const status = err?.response?.status;
+  const dataSummary = summarizeHttpErrorData(err?.response?.data);
+  if (status || dataSummary) {
+    err.message = `${label}: ${status ? `HTTP ${status}` : err.message}${dataSummary ? ` - ${dataSummary}` : ""}`;
+  }
+  return err;
+}
+
 async function axiosRequestWithRetry(requestConfig, options = {}) {
   const retries = Math.max(0, Number(options.retries ?? 2));
   const label = options.label || requestConfig.url || "http-request";
@@ -1104,7 +1123,7 @@ async function axiosRequestWithRetry(requestConfig, options = {}) {
       return await axios.request(requestConfig);
     } catch (err) {
       lastError = err;
-      if (attempt >= retries || !isRetriableHttpError(err)) throw err;
+      if (attempt >= retries || !isRetriableHttpError(err)) throw enrichHttpError(err, label);
       const delayMs = Math.min(3000, 500 * (2 ** attempt));
       console.warn("[HTTP] retry", JSON.stringify({
         label,
@@ -1117,7 +1136,7 @@ async function axiosRequestWithRetry(requestConfig, options = {}) {
       await sleep(delayMs);
     }
   }
-  throw lastError;
+  throw enrichHttpError(lastError, label);
 }
 
 function toPositiveInt(value) {
@@ -1380,7 +1399,8 @@ async function getObserverSecurityToken(config) {
         host,
         code: err?.code || "",
         status: err?.response?.status || "",
-        message: err?.message || String(err)
+        message: err?.message || String(err),
+        response: summarizeHttpErrorData(err?.response?.data)
       }));
     }
   }
