@@ -4313,6 +4313,17 @@ function boxIou(a, b) {
   return union > 0 ? intersection / union : 0;
 }
 
+function boxIntersectionCoverage(a, b) {
+  if (!a || !b) return 0;
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.width, b.x + b.width);
+  const y2 = Math.min(a.y + a.height, b.y + b.height);
+  const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  const smallerArea = Math.max(1, Math.min(a.width * a.height, b.width * b.height));
+  return intersection / smallerArea;
+}
+
 async function trimForegroundLayerForAdapt(foregroundUrl) {
   if (!foregroundUrl?.startsWith("/static/")) return { url: foregroundUrl, meta: null };
   const sourcePath = staticUrlToLocalPath(foregroundUrl);
@@ -4387,6 +4398,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const sourceAspect = canvasWidth / canvasHeight;
   const targetAspect = targetWidth / targetHeight;
   const isLandscapeToPortrait = sourceAspect > 1.12 && targetAspect < 0.78;
+  const isPortraitToLandscape = sourceAspect < 0.78 && targetAspect > 1.12;
   const marginX = targetWidth * 0.08;
   const marginY = targetHeight * 0.07;
   const normalizedCenterX = zone.box ? (zone.box.x + zone.box.width / 2) / canvasWidth : 0.5;
@@ -4400,7 +4412,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   if (zone.type === "logo") {
     maxWidth = targetWidth * 0.30;
     maxHeight = targetHeight * 0.13;
-    if (isLandscapeToPortrait) {
+    if (isPortraitToLandscape) {
+      maxWidth = targetWidth * 0.34;
+      maxHeight = targetHeight * 0.13;
+      centerX = targetWidth * 0.28;
+      centerY = targetHeight * (0.24 + indexByType * 0.07);
+    } else if (isLandscapeToPortrait) {
       maxWidth = targetWidth * 0.38;
       maxHeight = targetHeight * 0.10;
       centerX = targetWidth / 2;
@@ -4413,7 +4430,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   } else if (zone.type === "text") {
     maxWidth = targetWidth * 0.82;
     maxHeight = targetHeight * 0.20;
-    if (isLandscapeToPortrait) {
+    if (isPortraitToLandscape) {
+      maxWidth = targetWidth * 0.40;
+      maxHeight = targetHeight * 0.24;
+      centerX = targetWidth * 0.29;
+      centerY = targetHeight * (0.43 + indexByType * 0.14);
+    } else if (isLandscapeToPortrait) {
       maxWidth = targetWidth * 0.84;
       maxHeight = targetHeight * 0.16;
       centerX = targetWidth / 2;
@@ -4426,7 +4448,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   } else if (zone.type === "subject") {
     maxWidth = targetWidth * 0.84;
     maxHeight = targetHeight * 0.64;
-    if (isLandscapeToPortrait) {
+    if (isPortraitToLandscape) {
+      maxWidth = targetWidth * 0.54;
+      maxHeight = targetHeight * 0.92;
+      centerX = targetWidth * 0.73;
+      centerY = targetHeight * 0.52;
+    } else if (isLandscapeToPortrait) {
       maxWidth = targetWidth * 0.92;
       maxHeight = targetHeight * 0.66;
       centerX = targetWidth / 2;
@@ -4444,10 +4471,13 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const itemMarginX = zone.type === "subject" ? 0 : marginX;
   const itemMarginTop = zone.type === "subject" ? 0 : marginY;
   const itemMarginBottom = zone.type === "subject" ? 0 : marginY;
-  const x = Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width));
+  let x = Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width));
   let y = Math.round(clampNumber(centerY - height / 2, itemMarginTop, targetHeight - itemMarginBottom - height));
   if (zone.type === "subject" && isLandscapeToPortrait) {
     y = Math.round(clampNumber(targetHeight - height, 0, targetHeight - height));
+  }
+  if (zone.type === "subject" && isPortraitToLandscape) {
+    x = Math.round(clampNumber(targetWidth - width, 0, targetWidth - width));
   }
   return {
     x,
@@ -4569,9 +4599,27 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   }
 
   const zones = buildRelayoutZonesForAdapt(analysis, designAnalysis, context.sourceWidth, context.sourceHeight);
+  const sourceAspect = context.sourceWidth / Math.max(1, context.sourceHeight);
+  const targetAspect = targetWidth / Math.max(1, targetHeight);
+  const isPortraitToLandscape = sourceAspect < 0.78 && targetAspect > 1.12;
+  const primarySubjectZone = zones.find(zone => zone.type === "subject");
   const selectedZones = [];
   const selectedCounts = {};
   for (const zone of zones) {
+    if (
+      isPortraitToLandscape &&
+      primarySubjectZone &&
+      zone.type !== "subject" &&
+      boxIntersectionCoverage(zone.box, primarySubjectZone.box) > 0.42
+    ) {
+      console.log("[AdaptImage] skip overlapping zone for portrait-to-landscape", JSON.stringify({
+        id: zone.id,
+        type: zone.type,
+        source: zone.source,
+        overlapWithSubject: Number(boxIntersectionCoverage(zone.box, primarySubjectZone.box).toFixed(3))
+      }));
+      continue;
+    }
     selectedCounts[zone.type] = selectedCounts[zone.type] || 0;
     const limit = zone.type === "text" ? 2 : 1;
     if (selectedCounts[zone.type] >= limit) continue;
