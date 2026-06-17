@@ -4441,9 +4441,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale);
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
+  const itemMarginX = zone.type === "subject" ? targetWidth * 0.035 : marginX;
+  const itemMarginTop = zone.type === "subject" ? targetHeight * 0.035 : marginY;
+  const itemMarginBottom = zone.type === "subject" ? targetHeight * 0.015 : marginY;
   return {
-    x: Math.round(clampNumber(centerX - width / 2, marginX, targetWidth - marginX - width)),
-    y: Math.round(clampNumber(centerY - height / 2, marginY, targetHeight - marginY - height)),
+    x: Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width)),
+    y: Math.round(clampNumber(centerY - height / 2, itemMarginTop, targetHeight - itemMarginBottom - height)),
     width,
     height,
     scale
@@ -4537,10 +4540,10 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   try {
     const backgroundPrompt = [
       "只延展当前海报的干净背景层，保持原背景的色彩、光影、材质、透视和空间关系自然连续。",
-      "不要生成新的文字、Logo、主体物、商品、人物、装饰、图标、按钮或任何额外视觉元素。",
-      "不要改变原有主体、文案和 slogan 的设计样式；这些前景图层会由后续排版合成。",
-      "背景需要像一张完整自然的广告背景，不要出现拼接边界、分层边界、模糊框或重复纹理。",
-      prompt || ""
+      "输入图只作为背景参考，不要补出任何前景主体。",
+      "画面中不要出现新的文字、Logo、slogan、商品、人物、主体物、装饰、图标、按钮、包装、标签、水印或任何额外视觉元素。",
+      "不要复制、重画、补全、生成或改变文案和 slogan；前景图层会由后续排版合成。",
+      "背景需要像一张完整自然的广告背景，不要出现拼接边界、分层边界、模糊框、重复纹理或明显 AI 生成物。"
     ].filter(Boolean).join(" ");
     expandedBackgroundUrl = await expandImageV4ForAdapt(split.background.url, targetWidth, targetHeight, context, backgroundPrompt);
     if (expandedBackgroundUrl) backgroundUrl = expandedBackgroundUrl;
@@ -4799,7 +4802,13 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
           guidance_scale: 1,
           height: extensionSize.height,
           input_image_index: "all",
-          negative_prompt: "新增文字，重复文字，错误文字，新增 logo，新增商品，新增人物，额外装饰，水印，变形主体，扭曲边缘",
+          negative_prompt: [
+            "新增文字", "重复文字", "错误文字", "伪文字", "乱码文字", "新增 slogan",
+            "新增 logo", "新增品牌标识", "新增商品", "新增主体物", "新增人物",
+            "额外装饰", "图标", "按钮", "包装", "标签", "贴纸", "水印",
+            "重复主体", "多余元素", "AI 生成物", "视觉噪点", "拼接边界",
+            "分层边界", "重复纹理", "变形主体", "扭曲边缘"
+          ].join("，"),
           num_inference_steps: 16,
           prompt: prompt || "保持画面内容不变，进行延展。不要出现原图之外多余元素，不要出现原图之外多余文字，不要出现重复文字。",
           remove_prompt_line_breaks: true,
