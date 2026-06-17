@@ -4366,7 +4366,7 @@ function fitSizeWithinLimit(width, height, maxSide = 2048, minSide = 64) {
 }
 
 async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight) {
-  const ambient = await sharp(backgroundPath)
+  return sharp(backgroundPath)
     .rotate()
     .resize({
       width: targetWidth,
@@ -4375,23 +4375,6 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
       position: "center",
       kernel: sharp.kernel.lanczos3
     })
-    .blur(18)
-    .modulate({ saturation: 0.92, brightness: 0.96 })
-    .jpeg({ quality: 90, mozjpeg: true })
-    .toBuffer();
-  const fitted = await sharp(backgroundPath)
-    .rotate()
-    .resize({
-      width: targetWidth,
-      height: targetHeight,
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255, alpha: 0 },
-      kernel: sharp.kernel.lanczos3
-    })
-    .png()
-    .toBuffer();
-  return sharp(ambient)
-    .composite([{ input: fitted, left: 0, top: 0, blend: "over" }])
     .jpeg({ quality: 91, mozjpeg: true })
     .toBuffer();
 }
@@ -4549,9 +4532,25 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
   const split = await splitPosterLayersForAdapt(imageUrl, layerBox, context);
-  // Keep relayout deterministic: model-based background expansion can hallucinate
-  // unrelated objects/text. The clean background layer is resized during compose.
-  const backgroundUrl = split.background.url;
+  let backgroundUrl = split.background.url;
+  let expandedBackgroundUrl = "";
+  try {
+    const backgroundPrompt = [
+      "只延展当前海报的干净背景层，保持原背景的色彩、光影、材质、透视和空间关系自然连续。",
+      "不要生成新的文字、Logo、主体物、商品、人物、装饰、图标、按钮或任何额外视觉元素。",
+      "不要改变原有主体、文案和 slogan 的设计样式；这些前景图层会由后续排版合成。",
+      "背景需要像一张完整自然的广告背景，不要出现拼接边界、分层边界、模糊框或重复纹理。",
+      prompt || ""
+    ].filter(Boolean).join(" ");
+    expandedBackgroundUrl = await expandImageV4ForAdapt(split.background.url, targetWidth, targetHeight, context, backgroundPrompt);
+    if (expandedBackgroundUrl) backgroundUrl = expandedBackgroundUrl;
+    console.log("[AdaptImage] relayout background extended", JSON.stringify({
+      source: split.background.url,
+      result: backgroundUrl
+    }));
+  } catch (err) {
+    console.warn("[AdaptImage] relayout background extension skipped:", err.message);
+  }
   let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
   try {
     designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
@@ -4625,8 +4624,8 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
         foregroundUrl: "",
         rawForegroundUrl: "",
         backgroundUrl: split.background.url,
-        expandedBackgroundUrl: "",
-        backgroundMode: "deterministic-cover",
+        expandedBackgroundUrl,
+        backgroundMode: expandedBackgroundUrl ? "ai-extension" : "cover-resize",
         items: multiLayerItems.map(item => ({
           id: item.id,
           type: item.type,
@@ -4667,8 +4666,8 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       foregroundUrl: trimmedForeground.url,
       rawForegroundUrl: split.foreground.url,
       backgroundUrl: split.background.url,
-      expandedBackgroundUrl: "",
-      backgroundMode: "deterministic-cover",
+      expandedBackgroundUrl,
+      backgroundMode: expandedBackgroundUrl ? "ai-extension" : "cover-resize",
       all: split.layers.map(layer => ({
         url: layer.url,
         roleHint: layer.roleHint,
