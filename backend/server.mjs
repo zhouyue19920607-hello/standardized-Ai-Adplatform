@@ -1417,6 +1417,18 @@ function objectKeyForAigcImage(sourcePath) {
   return `images/${new Date().toISOString().slice(0, 10).replace(/-/g, "")}/${crypto.randomUUID()}${ext}`;
 }
 
+function observerUploadUrl(endpointUrl, bucket, objectName) {
+  const normalizedEndpoint = endpointUrl.toString().replace(/\/+$/, "");
+  const endpointHost = endpointUrl.host;
+  if (endpointHost.startsWith(`${bucket}.`)) {
+    return `${normalizedEndpoint}/${objectName}`;
+  }
+  if (/oss-[^.]+\.aliyuncs\.com$/i.test(endpointHost)) {
+    return `${endpointUrl.protocol}//${bucket}.${endpointHost}/${objectName}`;
+  }
+  return `${normalizedEndpoint}/${bucket}/${objectName}`;
+}
+
 async function uploadBufferToObserverOss(buffer, objectName, contentType = "video/mp4") {
   const config = getObserverConfig();
   if (!config.accessId || !config.biz || !config.cdnDomain) {
@@ -1436,7 +1448,6 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
   } catch (err) {
     throw new Error(`OBSERVER_CDN_DOMAIN 不是合法 URL: ${config.cdnDomain}`);
   }
-  const endpointHost = endpointUrl.host;
   const date = new Date().toUTCString();
   const resource = `/${bucket}/${objectName}`;
   const stringToSign = [
@@ -1448,9 +1459,7 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
     resource
   ].join("\n");
   const signature = hmacSha1Base64(creds.secret_key, stringToSign);
-  const uploadUrl = endpointHost.startsWith(`${bucket}.`)
-    ? `${endpointUrl.toString().replace(/\/+$/, "")}/${objectName}`
-    : `${endpointUrl.toString().replace(/\/+$/, "")}/${bucket}/${objectName}`;
+  const uploadUrl = observerUploadUrl(endpointUrl, bucket, objectName);
   await axiosRequestWithRetry({
     url: uploadUrl,
     method: "PUT",
