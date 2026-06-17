@@ -1261,6 +1261,21 @@ function extractAigcResultMedia(statusData) {
   if (Array.isArray(result.urls)) {
     return result.urls.map(url => ({ media_data: url, media_url: url }));
   }
+  if (Array.isArray(result.images)) {
+    return result.images.map(url => ({ media_data: url, media_url: url }));
+  }
+  if (Array.isArray(result.parameter?.data)) {
+    return result.parameter.data
+      .map(item => item?.url || item?.media_data || item?.media_url)
+      .filter(Boolean)
+      .map(url => ({ media_data: url, media_url: url }));
+  }
+  if (Array.isArray(result.parameters?.data)) {
+    return result.parameters.data
+      .map(item => item?.url || item?.media_data || item?.media_url)
+      .filter(Boolean)
+      .map(url => ({ media_data: url, media_url: url }));
+  }
   if (statusData?.data?.media_url) {
     return [{
       media_data: statusData.data.media_url,
@@ -1716,6 +1731,7 @@ function getAigcTaskState(statusData) {
   if (statusData?.error_code === 29901) return "processing";
   if (statusData?.error_code === 0 && extractAigcResultMedia(statusData).length > 0) return "success";
   if (typeof taskData.status === "number") {
+    if (taskData.status === 9) return "success";
     if (taskData.status === 10) return "success";
     if (taskData.status === 2) return "failed";
     return "processing";
@@ -5374,6 +5390,190 @@ app.post("/api/aigc/image-cutout", async (req, res) => {
   } catch (err) {
     console.error("[AIGC Image Cutout] failed:", err.message);
     res.status(500).json({ error: "图片抠图失败", details: err.message });
+  }
+});
+
+function buildImageEditAgentRelayoutInstruction({
+  targetWidth,
+  targetHeight,
+  templateName,
+  appName,
+  sourceWidth,
+  sourceHeight,
+  userInstruction
+}) {
+  const sourceAspect = Number(sourceWidth || 0) / Math.max(1, Number(sourceHeight || 1));
+  const targetAspect = Number(targetWidth || 0) / Math.max(1, Number(targetHeight || 1));
+  const directionRule = sourceAspect < 0.78 && targetAspect > 1.12
+    ? "目标是横构图，请采用左右排版：文案和 Logo 放在左侧安全区域，主体物/产品/人物放在右侧，主体可以贴近右侧画面边缘，但不要被裁切。"
+    : sourceAspect > 1.12 && targetAspect < 0.78
+      ? "目标是竖构图，请采用上下排版：文案和 Logo 放在上方安全区域，主体物/产品/人物放在下方，主体可以贴近下方画面边缘，但不要被裁切。"
+      : "请在目标画幅内保持原图主要构图关系，必要时只做轻微位置调整，让主体和信息层级更清晰。";
+  return [
+    `请将这张广告图智能改为目标广告尺寸构图：${targetWidth} x ${targetHeight}。`,
+    templateName ? `广告模板：${[appName, templateName].filter(Boolean).join(" ")}` : "",
+    "最高优先级：必须完整保留原图中的主体物、产品、人物、文案、slogan、Logo 和品牌标识。",
+    "禁止改写、翻译、补全、复制、重绘、扭曲或替换任何文字、Logo、品牌标识和包装文字。",
+    "禁止新增任何文字、Logo、商品、人物、装饰元素、贴纸、标签、水印、按钮、图标或无关物体。",
+    directionRule,
+    "只允许对背景做自然延展和必要修复，背景必须延续原图的光影、材质、颜色、纹理、景深和透视关系。",
+    "背景不能出现拼接边界、分层边界、涂抹感、重复纹理、残影、模糊框或明显 AI 生成痕迹。",
+    "最终画面需要美观、平衡、主体突出，像一张完整的商业广告设计稿。",
+    userInstruction ? `补充要求：${userInstruction}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+async function submitImageEditAgentRelayoutTask({
+  imageUrl,
+  targetWidth,
+  targetHeight,
+  templateName,
+  appName,
+  userInstruction,
+  sourceWidth,
+  sourceHeight,
+  publicBaseUrl
+}) {
+  const config = getAigcConfig();
+  if (!config.publicBaseUrl && publicBaseUrl) {
+    config.publicBaseUrl = publicBaseUrl.replace(/\/+$/, "");
+  }
+  if (!config.ak || !config.sk) {
+    throw new Error("后端缺少 AIGC_AK / AIGC_SK 环境变量");
+  }
+  const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(
+    [mediaInfoFromUrl(imageUrl)],
+    config,
+    { preferPublicImageUrl: true }
+  );
+  const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
+  if (!initImages.length) {
+    throw new Error("改图 Agent 需要可访问的图片 URL，请配置 AIGC_PUBLIC_BASE_URL 或 OBSERVER_* 上传中转");
+  }
+  const instruction = buildImageEditAgentRelayoutInstruction({
+    targetWidth,
+    targetHeight,
+    templateName,
+    appName,
+    sourceWidth,
+    sourceHeight,
+    userInstruction
+  });
+  const agentParams = {
+    executor: "auto",
+    user_instruction: instruction
+  };
+  const payload = {
+    task: "image_edit_agent_all",
+    task_type: "cozeflow",
+    biz: config.biz,
+    init_images: initImages,
+    media_info_list: normalizedMediaInfoList,
+    params: agentParams,
+    parameter: agentParams,
+    sync_timeout: -1,
+    rsp_media_type: "url"
+  };
+  const pushUrl = `${config.apiHost}/api/v1/push`;
+  console.log("[AIGC Image Edit Agent] push start", JSON.stringify({
+    task: payload.task,
+    taskType: payload.task_type,
+    mediaCount: normalizedMediaInfoList.length,
+    targetWidth,
+    targetHeight,
+    instructionLength: instruction.length
+  }));
+  const pushed = await aigcJsonRequest(pushUrl, "POST", payload, config);
+  if (pushed?.code !== 0 && pushed?.error_code !== 0) {
+    throw new Error(pushed?.message || pushed?.error_msg || `改图 Agent 投递失败: ${JSON.stringify(pushed)}`);
+  }
+  const immediateMedia = extractAigcResultMedia(pushed);
+  if (immediateMedia.length > 0) {
+    const remoteResultUrl = immediateMedia[0].media_data || immediateMedia[0].media_url || "";
+    const resultUrl = await persistAigcResult(remoteResultUrl, immediateMedia[0].media_type);
+    return {
+      status: "success",
+      taskId: pushed?.data?.task_id || pushed?.task_id || "",
+      resultUrl: resultUrl || remoteResultUrl,
+      remoteResultUrl,
+      instruction,
+      inputImageUrl: initImages[0].url,
+      raw: pushed
+    };
+  }
+  const taskId = pushed?.data?.task_id || pushed?.task_id;
+  if (!taskId) {
+    throw new Error("改图 Agent 投递成功但未返回 task_id");
+  }
+  await sleep(2500);
+  const pollingInterval = Math.max(1000, Number(config.pollIntervalMs || 2000));
+  const pollingMax = Math.max(1, Math.min(180, Number(config.maxPolls || 90)));
+  for (let index = 0; index < pollingMax; index += 1) {
+    const result = await getAigcTaskResultOnce(taskId, { config });
+    if (result.status === "success") {
+      return {
+        ...result,
+        instruction,
+        inputImageUrl: initImages[0].url
+      };
+    }
+    if (result.status === "failed") throw createAigcTaskFailureError(result.raw, taskId);
+    await sleep(pollingInterval);
+  }
+  throw new Error(`改图 Agent 任务超时未完成: ${taskId}`);
+}
+
+app.post("/api/aigc/adapt-image-agent", async (req, res) => {
+  try {
+    const {
+      imageUrl,
+      targetWidth,
+      targetHeight,
+      templateName,
+      app: appName,
+      userInstruction = ""
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ ok: false, error: validationError });
+    const width = toPositiveInt(targetWidth);
+    const height = toPositiveInt(targetHeight);
+    if (!width || !height) {
+      return res.status(400).json({ ok: false, error: "targetWidth / targetHeight 必须是正整数" });
+    }
+    const config = getAigcConfig();
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    const sourceMeta = await getImageMetadataForUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
+    const result = await submitImageEditAgentRelayoutTask({
+      imageUrl,
+      targetWidth: width,
+      targetHeight: height,
+      templateName,
+      appName,
+      userInstruction,
+      sourceWidth: sourceMeta.width || width,
+      sourceHeight: sourceMeta.height || height,
+      publicBaseUrl
+    });
+    const finalUrl = result.resultUrl?.startsWith("/static/")
+      ? await ensureFinalAdaptSize(result.resultUrl, width, height)
+      : result.resultUrl;
+    res.json({
+      ok: true,
+      provider: "meitu-open-platform",
+      endpoint: "/api/aigc/adapt-image-agent",
+      task: "image_edit_agent_all",
+      strategy: "image_edit_agent_relayout",
+      resultUrl: finalUrl,
+      remoteResultUrl: result.remoteResultUrl,
+      inputImageUrl: result.inputImageUrl,
+      instruction: result.instruction,
+      target: { width, height },
+      template: { name: templateName, app: appName },
+      raw: result.raw
+    });
+  } catch (err) {
+    console.error("[AIGC Image Edit Agent] failed:", err.message);
+    res.status(500).json({ ok: false, error: "改图 Agent 智能排版失败", details: err.message });
   }
 });
 
