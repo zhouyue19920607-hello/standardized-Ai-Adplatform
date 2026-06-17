@@ -5469,7 +5469,7 @@ async function submitImageEditAgentRelayoutTask({
     biz: config.biz,
     init_images: initImages,
     media_info_list: normalizedMediaInfoList,
-    params: agentParams,
+    params: JSON.stringify(agentParams),
     parameter: agentParams,
     sync_timeout: -1,
     rsp_media_type: "url"
