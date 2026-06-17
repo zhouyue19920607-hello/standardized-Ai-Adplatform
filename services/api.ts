@@ -296,7 +296,10 @@ export const adaptImageWithAigc = async (payload: {
     prompt?: string;
     allowRelayout?: boolean;
 }): Promise<AdaptImageWithAigcResponse> => {
-    const response = await api.post<AdaptImageWithAigcResponse>('/aigc/adapt-image', payload);
+    const response = await api.post<AdaptImageWithAigcResponse>('/aigc/adapt-image-agent', {
+        ...payload,
+        userInstruction: payload.prompt
+    });
     return response.data;
 };
 
