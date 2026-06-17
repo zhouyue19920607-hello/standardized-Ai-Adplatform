@@ -2480,7 +2480,7 @@ const ADAPT_ENDPOINTS = {
     text: "textdetect_img",
     posterLayer: "poster_edit_layer_async",
     posterDesign: "poster_trans_design_async",
-    expand: "mtimage_expand_v4_async",
+    expand: "image_extension_async",
     inpaint: "image_manipulation_fl_async",
     crop: "image_cropping_async"
   },
@@ -2496,6 +2496,7 @@ const ADAPT_ENDPOINTS = {
 
 const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "mtimage_expand_v4_async",
+  "image_extension_async",
   "image_manipulation_fl_async",
   "image_cropping_async",
   "ltx_2_async",
@@ -2506,6 +2507,9 @@ const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
 function resolveOpenapiEndpointUrl(apiName, config) {
   if (/^https?:\/\//i.test(apiName)) return apiName;
   if (apiName === "mtimage_expand_v4_async") {
+    return `${config.mtlabApiHost}/v1/${apiName}`;
+  }
+  if (apiName === "image_extension_async") {
     return `${config.mtlabApiHost}/v1/${apiName}`;
   }
   if (apiName === "ltx_2_async") {
@@ -4347,39 +4351,116 @@ function planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight) {
   };
 }
 
-function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0) {
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function fitSizeWithinLimit(width, height, maxSide = 2048, minSide = 64) {
+  const safeWidth = Math.max(1, Number(width) || 1);
+  const safeHeight = Math.max(1, Number(height) || 1);
+  const scale = Math.min(1, maxSide / Math.max(safeWidth, safeHeight));
+  return {
+    width: Math.max(minSide, Math.round(safeWidth * scale)),
+    height: Math.max(minSide, Math.round(safeHeight * scale))
+  };
+}
+
+async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight) {
+  const ambient = await sharp(backgroundPath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .blur(18)
+    .modulate({ saturation: 0.92, brightness: 0.96 })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+  const fitted = await sharp(backgroundPath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255, alpha: 0 },
+      kernel: sharp.kernel.lanczos3
+    })
+    .png()
+    .toBuffer();
+  return sharp(ambient)
+    .composite([{ input: fitted, left: 0, top: 0, blend: "over" }])
+    .jpeg({ quality: 91, mozjpeg: true })
+    .toBuffer();
+}
+
+function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0, sourceCanvasWidth = 0, sourceCanvasHeight = 0) {
   const sourceWidth = Math.max(1, sourceMeta?.width || zone.box?.width || targetWidth);
   const sourceHeight = Math.max(1, sourceMeta?.height || zone.box?.height || targetHeight);
-  const marginX = targetWidth * 0.07;
-  const marginY = targetHeight * 0.06;
+  const canvasWidth = Math.max(1, sourceCanvasWidth || targetWidth);
+  const canvasHeight = Math.max(1, sourceCanvasHeight || targetHeight);
+  const sourceAspect = canvasWidth / canvasHeight;
+  const targetAspect = targetWidth / targetHeight;
+  const isLandscapeToPortrait = sourceAspect > 1.12 && targetAspect < 0.78;
+  const marginX = targetWidth * 0.08;
+  const marginY = targetHeight * 0.07;
+  const normalizedCenterX = zone.box ? (zone.box.x + zone.box.width / 2) / canvasWidth : 0.5;
+  const normalizedCenterY = zone.box ? (zone.box.y + zone.box.height / 2) / canvasHeight : 0.5;
   let maxWidth = targetWidth * 0.78;
   let maxHeight = targetHeight * 0.58;
-  let anchorX = (targetWidth - maxWidth) / 2;
-  let anchorY = targetHeight * 0.22;
+  let centerX = normalizedCenterX * targetWidth;
+  let centerY = normalizedCenterY * targetHeight;
+  let maxScale = 1.08;
 
   if (zone.type === "logo") {
-    maxWidth = targetWidth * 0.24;
-    maxHeight = targetHeight * 0.12;
-    anchorX = marginX;
-    anchorY = marginY + indexByType * targetHeight * 0.075;
+    maxWidth = targetWidth * 0.30;
+    maxHeight = targetHeight * 0.13;
+    if (isLandscapeToPortrait) {
+      maxWidth = targetWidth * 0.38;
+      maxHeight = targetHeight * 0.10;
+      centerX = targetWidth / 2;
+      centerY = targetHeight * 0.13 + indexByType * targetHeight * 0.045;
+    } else {
+      centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
+      centerY = clampNumber(centerY + indexByType * targetHeight * 0.04, marginY + maxHeight / 2, targetHeight * 0.34);
+    }
+    maxScale = 1.0;
   } else if (zone.type === "text") {
-    maxWidth = targetWidth * 0.76;
-    maxHeight = targetHeight * 0.18;
-    anchorX = (targetWidth - maxWidth) / 2;
-    anchorY = targetHeight * 0.70 + indexByType * targetHeight * 0.09;
+    maxWidth = targetWidth * 0.82;
+    maxHeight = targetHeight * 0.20;
+    if (isLandscapeToPortrait) {
+      maxWidth = targetWidth * 0.84;
+      maxHeight = targetHeight * 0.16;
+      centerX = targetWidth / 2;
+      centerY = targetHeight * (0.23 + indexByType * 0.075);
+    } else {
+      centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
+      centerY = clampNumber(centerY + indexByType * targetHeight * 0.055, targetHeight * 0.12, targetHeight * 0.86);
+    }
+    maxScale = 1.02;
   } else if (zone.type === "subject") {
-    maxWidth = targetWidth * 0.74;
-    maxHeight = targetHeight * 0.62;
-    anchorX = (targetWidth - maxWidth) / 2;
-    anchorY = targetHeight * 0.22;
+    maxWidth = targetWidth * 0.84;
+    maxHeight = targetHeight * 0.64;
+    if (isLandscapeToPortrait) {
+      maxWidth = targetWidth * 0.86;
+      maxHeight = targetHeight * 0.54;
+      centerX = targetWidth / 2;
+      centerY = targetHeight * 0.64;
+    } else {
+      centerX = clampNumber(centerX, targetWidth * 0.25, targetWidth * 0.75);
+      centerY = clampNumber(centerY, targetHeight * 0.28, targetHeight * 0.66);
+    }
+    maxScale = 1.22;
   }
 
-  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, zone.type === "subject" ? 1.25 : 1.05);
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale);
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   return {
-    x: Math.round(Math.max(marginX, Math.min(targetWidth - marginX - width, anchorX + (maxWidth - width) / 2))),
-    y: Math.round(Math.max(marginY, Math.min(targetHeight - marginY - height, anchorY + (maxHeight - height) / 2))),
+    x: Math.round(clampNumber(centerX - width / 2, marginX, targetWidth - marginX - width)),
+    y: Math.round(clampNumber(centerY - height / 2, marginY, targetHeight - marginY - height)),
     width,
     height,
     scale
@@ -4420,15 +4501,8 @@ async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targ
   await ensureDir(STORAGE_DIR);
   const outputFilename = `aigc_multilayer_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, outputFilename);
-  await sharp(staticUrlToLocalPath(backgroundStatic))
-    .rotate()
-    .resize({
-      width: targetWidth,
-      height: targetHeight,
-      fit: "cover",
-      position: "center",
-      kernel: sharp.kernel.lanczos3
-    })
+  const backgroundBuffer = await buildRelayoutBackgroundBuffer(staticUrlToLocalPath(backgroundStatic), targetWidth, targetHeight);
+  await sharp(backgroundBuffer)
     .composite(composites)
     .flatten({ background: "#ffffff" })
     .jpeg({ quality: 90, mozjpeg: true })
@@ -4458,15 +4532,8 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
   await ensureDir(STORAGE_DIR);
   const outputFilename = `aigc_layered_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, outputFilename);
-  await sharp(backgroundPath)
-    .rotate()
-    .resize({
-      width: targetWidth,
-      height: targetHeight,
-      fit: "cover",
-      position: "center",
-      kernel: sharp.kernel.lanczos3
-    })
+  const backgroundBuffer = await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
+  await sharp(backgroundBuffer)
     .composite([{
       input: foregroundBuffer,
       left: Math.round(layout.x),
@@ -4511,7 +4578,15 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       const trimmed = await trimForegroundLayerForAdapt(zoneSplit.foreground.url);
       const meta = trimmed.meta || await sharp(staticUrlToLocalPath(trimmed.url)).metadata();
       typeIndexes[zone.type] = typeIndexes[zone.type] || 0;
-      const layout = planZonePlacementForAdapt(zone, meta, targetWidth, targetHeight, typeIndexes[zone.type]);
+      const layout = planZonePlacementForAdapt(
+        zone,
+        meta,
+        targetWidth,
+        targetHeight,
+        typeIndexes[zone.type],
+        context.sourceWidth,
+        context.sourceHeight
+      );
       typeIndexes[zone.type] += 1;
       multiLayerItems.push({
         id: zone.id,
@@ -4682,6 +4757,7 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
   const config = context.config;
   const ratio = normalizeOpenapiAspectRatio(targetWidth, targetHeight);
   const apiStyle = getAdaptApiStyle(config);
+  const extensionSize = fitSizeWithinLimit(targetWidth, targetHeight, 2048, 64);
   const openapiImageUrl = apiStyle === ADAPT_API_STYLES.openapi
     ? await resolveOpenapiAdaptImageUrl(imageUrl, context)
     : "";
@@ -4711,10 +4787,31 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
     : {
         media_info_list: [mediaInfo],
         parameter: {
+          base_model_name: "default",
+          enable_check_inout_size: false,
+          enable_debug_info: true,
+          enable_quantization: true,
+          enable_teacache_mode: false,
+          extra_pipe_inputs: {
+            disable_classifier_guidance: true,
+            enable_text_render: true,
+            enable_vae_tiling: true
+          },
+          guidance_scale: 1,
+          height: extensionSize.height,
+          input_image_index: "all",
+          negative_prompt: "新增文字，重复文字，错误文字，新增 logo，新增商品，新增人物，额外装饰，水印，变形主体，扭曲边缘",
+          num_inference_steps: 16,
+          prompt: prompt || "保持画面内容不变，进行延展。不要出现原图之外多余元素，不要出现原图之外多余文字，不要出现重复文字。",
+          remove_prompt_line_breaks: true,
+          resize_mode: -1,
           rsp_media_type: "url",
-          mode: 1,
-          ratio,
-          image_num: 1
+          sample_num: 1,
+          sampler_name: "default",
+          seed: -1,
+          tea_rel_l1_thresh: 0.3,
+          use_input_image_size: false,
+          width: extensionSize.width
         }
       };
   const raw = await runAdaptProvider("expand", payload, context);
