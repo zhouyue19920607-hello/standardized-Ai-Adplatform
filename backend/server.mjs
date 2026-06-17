@@ -994,7 +994,7 @@ async function aigcJsonRequest(url, method, payload, config) {
     return response.data;
   };
   if (config.authMode === "none") {
-    const response = await axios.request({
+    const response = await axiosRequestWithRetry({
       url,
       method,
       data: payload ? body : undefined,
@@ -1007,7 +1007,7 @@ async function aigcJsonRequest(url, method, payload, config) {
   }
 
   if (config.authMode === "query") {
-    const response = await axios.request({
+    const response = await axiosRequestWithRetry({
       url: withAigcQueryAuth(url, config),
       method,
       data: payload ? body : undefined,
@@ -1020,7 +1020,7 @@ async function aigcJsonRequest(url, method, payload, config) {
   }
 
   if (config.authMode === "platform_header" || config.authMode === "header") {
-    const response = await axios.request({
+    const response = await axiosRequestWithRetry({
       url,
       method,
       data: payload ? body : undefined,
@@ -1048,7 +1048,7 @@ async function aigcJsonRequest(url, method, payload, config) {
     body,
     config
   );
-  const response = await axios.request({
+  const response = await axiosRequestWithRetry({
     url,
     method,
     data: payload ? body : undefined,
@@ -1062,6 +1062,40 @@ async function aigcJsonRequest(url, method, payload, config) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isRetriableHttpError(err) {
+  const code = String(err?.code || "");
+  if (["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "EPIPE", "ENOTFOUND", "EAI_AGAIN"].includes(code)) {
+    return true;
+  }
+  const status = Number(err?.response?.status || 0);
+  return [408, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
+async function axiosRequestWithRetry(requestConfig, options = {}) {
+  const retries = Math.max(0, Number(options.retries ?? 2));
+  const label = options.label || requestConfig.url || "http-request";
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await axios.request(requestConfig);
+    } catch (err) {
+      lastError = err;
+      if (attempt >= retries || !isRetriableHttpError(err)) throw err;
+      const delayMs = Math.min(3000, 500 * (2 ** attempt));
+      console.warn("[HTTP] retry", JSON.stringify({
+        label,
+        attempt: attempt + 1,
+        retries,
+        code: err?.code || "",
+        status: err?.response?.status || "",
+        message: err?.message || String(err)
+      }));
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 function toPositiveInt(value) {
@@ -1295,11 +1329,14 @@ function staticUrlToLocalPath(staticUrl) {
 }
 
 async function getObserverSecurityToken(config) {
-  const response = await axios.get(`${config.host}/api/v1/security_token`, {
+  const tokenUrl = `${config.host}/api/v1/security_token`;
+  const response = await axiosRequestWithRetry({
+    url: tokenUrl,
+    method: "GET",
     params: { biz: config.biz },
     headers: { "Access-ID": config.accessId },
     timeout: 30000
-  });
+  }, { label: "observer-token", retries: 3 });
   const token = Array.isArray(response.data) ? response.data[0] : response.data?.data?.[0] || response.data;
   if (!token?.access_key || !token?.secret_key || !token?.security_token || !token?.end_point || !token?.bucket) {
     throw new Error("Observer 未返回完整临时上传凭证");
@@ -1340,7 +1377,10 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
   const uploadUrl = endpointHost.startsWith(`${bucket}.`)
     ? `${endpoint}/${objectName}`
     : `${endpoint}/${bucket}/${objectName}`;
-  await axios.put(uploadUrl, buffer, {
+  await axiosRequestWithRetry({
+    url: uploadUrl,
+    method: "PUT",
+    data: buffer,
     headers: {
       "Content-Type": contentType,
       Date: date,
@@ -1350,7 +1390,7 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
     timeout: 120000
-  });
+  }, { label: "observer-upload", retries: 3 });
   return `${config.cdnDomain}/${objectName}`;
 }
 
