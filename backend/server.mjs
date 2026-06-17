@@ -892,12 +892,18 @@ function getAigcConfig() {
   };
 }
 
+function normalizeHttpBaseUrl(value, fallback = "") {
+  const raw = String(value || fallback || "").trim().replace(/\/+$/, "");
+  if (!raw) return "";
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 function getObserverConfig() {
   return {
     accessId: process.env.OBSERVER_ACCESS_ID || "",
     biz: process.env.OBSERVER_BIZ || "",
-    host: (process.env.OBSERVER_HOST || "https://observer.starii-int.com").replace(/\/+$/, ""),
-    cdnDomain: (process.env.OBSERVER_CDN_DOMAIN || "").replace(/\/+$/, "")
+    host: normalizeHttpBaseUrl(process.env.OBSERVER_HOST, "https://observer.starii-int.com"),
+    cdnDomain: normalizeHttpBaseUrl(process.env.OBSERVER_CDN_DOMAIN)
   };
 }
 
@@ -1399,7 +1405,18 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
   const creds = await getObserverSecurityToken(config);
   const endpoint = String(creds.end_point).replace(/\/+$/, "");
   const bucket = String(creds.bucket);
-  const endpointHost = new URL(endpoint).host;
+  let endpointUrl;
+  try {
+    endpointUrl = new URL(normalizeHttpBaseUrl(endpoint));
+  } catch (err) {
+    throw new Error(`Observer 返回的上传 endpoint 不是合法 URL: ${endpoint}`);
+  }
+  try {
+    new URL(config.cdnDomain);
+  } catch (err) {
+    throw new Error(`OBSERVER_CDN_DOMAIN 不是合法 URL: ${config.cdnDomain}`);
+  }
+  const endpointHost = endpointUrl.host;
   const date = new Date().toUTCString();
   const resource = `/${bucket}/${objectName}`;
   const stringToSign = [
@@ -1412,8 +1429,8 @@ async function uploadBufferToObserverOss(buffer, objectName, contentType = "vide
   ].join("\n");
   const signature = hmacSha1Base64(creds.secret_key, stringToSign);
   const uploadUrl = endpointHost.startsWith(`${bucket}.`)
-    ? `${endpoint}/${objectName}`
-    : `${endpoint}/${bucket}/${objectName}`;
+    ? `${endpointUrl.toString().replace(/\/+$/, "")}/${objectName}`
+    : `${endpointUrl.toString().replace(/\/+$/, "")}/${bucket}/${objectName}`;
   await axiosRequestWithRetry({
     url: uploadUrl,
     method: "PUT",
