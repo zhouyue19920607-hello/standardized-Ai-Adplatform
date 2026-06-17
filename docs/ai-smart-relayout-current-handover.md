@@ -87,6 +87,29 @@ api_name: poster_trans_design_async
 - poster 设计识别提交使用：
   `/v1/poster_trans_design_async`
 
+### v1.0.93 接入修正
+
+根据平台文档，智能排版依赖的两个海报异步接口都不是走统一 submit，而是直调：
+
+- `poster_edit_layer_async`
+  - `POST https://openapi.mtlab.meitu.com/v1/poster_edit_layer_async`
+  - 用于根据检测框分离海报图层
+- `poster_trans_design_async`
+  - `POST https://openapi.mtlab.meitu.com/v1/poster_trans_design_async`
+  - 用于识别海报文字属性 / 图层属性
+
+当前代码已把这两个接口加入 `OPENAPI_DIRECT_ASYNC_ENDPOINTS`，提交 body 保持平台文档要求的顶层结构：
+
+```json
+{
+  "parameter": {},
+  "extra": {},
+  "media_info_list": []
+}
+```
+
+查询结果继续走 MTLab 异步查询候选，优先使用 `/v1/query?api_key=...&api_secret=...&msg_id=...`。
+
 ## 关键代码位置
 
 主要文件：
@@ -189,23 +212,23 @@ https://openapi.mtlab.meitu.com/openapi-poll/query_result?...&msg_id=...
 
 ## 当前仍可能存在的不确定点
 
-- `/v1/algorithm/submit` 是否对当前 AK/SK 开通了 `/v1/poster_edit_layer_async` 权限。
-- 谷仓统一提交是否要求 `api_name` 带 `/v1/`。当前最新修复已经改为带 `/v1/`。
+- 两个海报接口已按文档改为直调，不再依赖 `/v1/algorithm/submit`。
+- 线上需要确认 `/v1/query` 是否已对当前 AK/SK 开通，否则提交成功后仍可能查不到结果。
+- `poster_edit_layer_async` 返回的前景/背景图层字段是否稳定落在 `media_info_list`，或是否返回 JSON 配方文件。
 - `poster_trans_design_async` 返回的 JSON 是否稳定落在 `media_info_list` 或 `details.mtlab_callback_response`。
 - `textdetect_img` 仍可能不可用，但已有 fallback，不是当前 P0。
 
-## 如果 v1.0.74 仍然报 no route found
+## 如果直调后仍然报 no route found / Forbidden
 
-需要向算法/平台同学确认这两个问题：
+需要向算法/平台同学确认：
 
-1. `/v1/algorithm/submit` 的 `api_name` 应该传哪一种：
-
-```text
-/v1/poster_edit_layer_async
-poster_edit_layer_async
-```
-
-2. `poster_edit_layer_async` 是否支持谷仓统一提交；如果不支持，需要平台提供可用的异步查询接口，或配置 `biz_repost_url` 回调。
+1. 当前 AK/SK 是否已经开通：
+   - `/v1/poster_edit_layer_async`
+   - `/v1/poster_trans_design_async`
+   - `/v1/query`
+2. 查询接口是否就是：
+   - `POST /v1/query?api_key=...&api_secret=...&msg_id=...`
+3. `poster_edit_layer_async` 用 `input_type: "box"` 时，返回前景/背景图的字段位置。
 
 回调线索：
 
