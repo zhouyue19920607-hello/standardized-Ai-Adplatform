@@ -4441,9 +4441,9 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale);
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
-  const itemMarginX = zone.type === "subject" ? targetWidth * 0.035 : marginX;
-  const itemMarginTop = zone.type === "subject" ? targetHeight * 0.035 : marginY;
-  const itemMarginBottom = zone.type === "subject" ? targetHeight * 0.015 : marginY;
+  const itemMarginX = zone.type === "subject" ? 0 : marginX;
+  const itemMarginTop = zone.type === "subject" ? 0 : marginY;
+  const itemMarginBottom = zone.type === "subject" ? 0 : marginY;
   return {
     x: Math.round(clampNumber(centerX - width / 2, itemMarginX, targetWidth - itemMarginX - width)),
     y: Math.round(clampNumber(centerY - height / 2, itemMarginTop, targetHeight - itemMarginBottom - height)),
@@ -4539,11 +4539,11 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   let expandedBackgroundUrl = "";
   try {
     const backgroundPrompt = [
-      "只延展当前海报的干净背景层，保持原背景的色彩、光影、材质、透视和空间关系自然连续。",
-      "输入图只作为背景参考，不要补出任何前景主体。",
-      "画面中不要出现新的文字、Logo、slogan、商品、人物、主体物、装饰、图标、按钮、包装、标签、水印或任何额外视觉元素。",
-      "不要复制、重画、补全、生成或改变文案和 slogan；前景图层会由后续排版合成。",
-      "背景需要像一张完整自然的广告背景，不要出现拼接边界、分层边界、模糊框、重复纹理或明显 AI 生成物。"
+      "只修补和延展当前海报的背景，保持原背景的色彩、光影、材质、透视和空间关系自然连续。",
+      "画面里只允许出现原图已经存在的文案和 Logo，不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
+      "输入图只作为背景参考，不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
+      "主体物、原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
+      "背景修补必须自然干净，不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
     ].filter(Boolean).join(" ");
     expandedBackgroundUrl = await expandImageV4ForAdapt(split.background.url, targetWidth, targetHeight, context, backgroundPrompt);
     if (expandedBackgroundUrl) backgroundUrl = expandedBackgroundUrl;
@@ -4796,7 +4796,7 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
           enable_teacache_mode: false,
           extra_pipe_inputs: {
             disable_classifier_guidance: true,
-            enable_text_render: true,
+            enable_text_render: false,
             enable_vae_tiling: true
           },
           guidance_scale: 1,
@@ -4804,10 +4804,11 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
           input_image_index: "all",
           negative_prompt: [
             "新增文字", "重复文字", "错误文字", "伪文字", "乱码文字", "新增 slogan",
-            "新增 logo", "新增品牌标识", "新增商品", "新增主体物", "新增人物",
+            "复制文字", "补全文字", "重画文字", "改写文字", "文字残影",
+            "新增 logo", "复制 logo", "重画 logo", "新增品牌标识", "新增商品", "新增主体物", "新增人物",
             "额外装饰", "图标", "按钮", "包装", "标签", "贴纸", "水印",
             "重复主体", "多余元素", "AI 生成物", "视觉噪点", "拼接边界",
-            "分层边界", "重复纹理", "变形主体", "扭曲边缘"
+            "分层边界", "重复纹理", "涂抹痕迹", "残影", "变形主体", "扭曲边缘"
           ].join("，"),
           num_inference_steps: 16,
           prompt: prompt || "保持画面内容不变，进行延展。不要出现原图之外多余元素，不要出现原图之外多余文字，不要出现重复文字。",
