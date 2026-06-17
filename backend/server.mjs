@@ -2498,7 +2498,9 @@ const OPENAPI_DIRECT_ASYNC_ENDPOINTS = new Set([
   "mtimage_expand_v4_async",
   "image_manipulation_fl_async",
   "image_cropping_async",
-  "ltx_2_async"
+  "ltx_2_async",
+  "poster_edit_layer_async",
+  "poster_trans_design_async"
 ]);
 
 function resolveOpenapiEndpointUrl(apiName, config) {
