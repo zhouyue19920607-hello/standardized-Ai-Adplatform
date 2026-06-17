@@ -110,6 +110,17 @@ api_name: poster_trans_design_async
 
 查询结果继续走 MTLab 异步查询候选，优先使用 `/v1/query?api_key=...&api_secret=...&msg_id=...`。
 
+### 海报延展接口
+
+标准素材 AI 适配里的 OpenAPI 扩图/延展已从旧的 `mtimage_expand_v4_async` 切到海报延展接口：
+
+- `image_extension_async`
+  - `POST https://openapi.mtlab.meitu.com/v1/image_extension_async`
+  - 用于按目标宽高做海报背景延展
+  - 请求体按平台文档传顶层 `parameter / extra / media_info_list`
+
+由于该接口输出边长限制为 64-2048，代码会先把目标尺寸等比压到最大边 2048 内请求算法，之后再通过本地最终尺寸保障回到模板尺寸。
+
 ## 关键代码位置
 
 主要文件：
