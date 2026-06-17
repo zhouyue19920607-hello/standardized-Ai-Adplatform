@@ -4837,7 +4837,11 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         endpoint: err.endpoint,
         stage: err.stage
       };
-      console.warn("[AdaptImage] layered relayout fallback:", err.message);
+      console.warn("[AdaptImage] layered relayout failed:", err.message);
+      const strictError = new Error(`真正智能排版失败，已停止生成：${err.message}`);
+      strictError.stage = "layered-relayout";
+      strictError.endpoint = err.endpoint;
+      throw strictError;
     }
   }
 
@@ -4953,9 +4957,9 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   if (!safeAreaPassed) warnings.push("some protected regions are too close to the output safe-area edge");
   if (analysis.warnings?.length) warnings.push(...analysis.warnings);
   if (plan.strategy === "relayout" && context.layeredRelayout?.failed) {
-    warnings.push(`layered relayout failed and fell back to inpaint + expand + crop: ${context.layeredRelayout.error}`);
+    warnings.push(`layered relayout failed: ${context.layeredRelayout.error}`);
   } else if (plan.strategy === "relayout" && !context.layeredRelayout) {
-    warnings.push("true layered relayout was not executed; current MVP only uses inpaint + expand + crop fallback");
+    warnings.push("true layered relayout was not executed");
   }
 
   let subjectIou = null;
