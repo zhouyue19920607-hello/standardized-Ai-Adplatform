@@ -306,7 +306,7 @@ export const adaptImageWithAigc = async (payload: {
     }
 
     const startedAt = Date.now();
-    const timeoutMs = 20 * 60 * 1000;
+    const timeoutMs = 35 * 60 * 1000;
     const pollIntervalMs = 3000;
     while (Date.now() - startedAt < timeoutMs) {
         await new Promise(resolve => window.setTimeout(resolve, pollIntervalMs));

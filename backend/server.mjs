@@ -5460,6 +5460,7 @@ function buildImageEditAgentRelayoutInstruction({
     : sourceAspect > 1.12 && targetAspect < 0.78
       ? "目标是竖构图，请采用上下排版：文案和 Logo 放在上方安全区域，主体物/产品/人物放在下方，主体可以贴近下方画面边缘，但不要被裁切。"
       : "请在目标画幅内保持原图主要构图关系，必要时只做轻微位置调整，让主体和信息层级更清晰。";
+  const compactUserInstruction = compactImageEditAgentUserInstruction(userInstruction);
   return [
     `请将这张广告图智能改为目标广告尺寸构图：${targetWidth} x ${targetHeight}。`,
     templateName ? `广告模板：${[appName, templateName].filter(Boolean).join(" ")}` : "",
@@ -5470,8 +5471,25 @@ function buildImageEditAgentRelayoutInstruction({
     "只允许对背景做自然延展和必要修复，背景必须延续原图的光影、材质、颜色、纹理、景深和透视关系。",
     "背景不能出现拼接边界、分层边界、涂抹感、重复纹理、残影、模糊框或明显 AI 生成痕迹。",
     "最终画面需要美观、平衡、主体突出，像一张完整的商业广告设计稿。",
-    userInstruction ? `补充要求：${userInstruction}` : ""
+    compactUserInstruction ? `补充要求：${compactUserInstruction}` : ""
   ].filter(Boolean).join("\n");
+}
+
+function compactImageEditAgentUserInstruction(userInstruction) {
+  const text = String(userInstruction || "").trim();
+  if (!text) return "";
+  const duplicateMarkers = [
+    "Highest priority:",
+    "preserve the uploaded poster",
+    "Do not create or add",
+    "Do not generate fake text",
+    "Template:",
+    "Target size:"
+  ];
+  const duplicateScore = duplicateMarkers.filter(marker => text.includes(marker)).length;
+  if (text.length > 800 && duplicateScore >= 3) return "";
+  if (text.length > 800) return text.slice(0, 800);
+  return text;
 }
 
 async function submitImageEditAgentRelayoutTask({
@@ -5527,7 +5545,7 @@ async function submitImageEditAgentRelayoutTask({
       rspMediaType: "url",
       initialDelayMs: 2500,
       pollIntervalMs: Math.max(1000, Number(process.env.AIGC_AGENT_POLL_INTERVAL_MS || config.pollIntervalMs || 2000)),
-      maxPolls: Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 600)),
+      maxPolls: Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 900)),
       publicBaseUrl,
       mediaOptions: { preferPublicImageUrl: true }
     });
@@ -5587,7 +5605,7 @@ async function submitImageEditAgentRelayoutTask({
   }
   await sleep(2500);
   const pollingInterval = Math.max(1000, Number(process.env.AIGC_AGENT_POLL_INTERVAL_MS || config.pollIntervalMs || 2000));
-  const pollingMax = Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 600));
+  const pollingMax = Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 900));
   let emptySuccessCount = 0;
   for (let index = 0; index < pollingMax; index += 1) {
     const result = await getAigcTaskResultOnce(taskId, { config, emptySuccessStatus: "success-empty" });
@@ -5631,7 +5649,7 @@ const imageEditAgentJobs = new Map();
 
 function cleanupImageEditAgentJobs() {
   const now = Date.now();
-  const maxAgeMs = 2 * 60 * 60 * 1000;
+  const maxAgeMs = 3 * 60 * 60 * 1000;
   for (const [jobId, job] of imageEditAgentJobs.entries()) {
     if (now - Number(job.createdAt || now) > maxAgeMs) imageEditAgentJobs.delete(jobId);
   }
