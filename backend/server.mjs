@@ -1571,7 +1571,7 @@ function hasObserverUploadConfig() {
   return Boolean(observerConfig.accessId && observerConfig.biz && observerConfig.cdnDomain);
 }
 
-async function writeStandardizedAigcImage(input) {
+async function writeStandardizedAigcImage(input, options = {}) {
   const metadata = await sharp(input).metadata();
   if (!metadata.width || !metadata.height) {
     throw new Error("AIGC input image metadata is unreadable");
@@ -1580,8 +1580,18 @@ async function writeStandardizedAigcImage(input) {
   await ensureDir(AIGC_INPUTS_DIR);
   const outputFilename = `aigc_input_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.jpg`;
   const outputPath = path.join(AIGC_INPUTS_DIR, outputFilename);
-  await sharp(input)
-    .rotate()
+  const maxSide = toPositiveInt(options.maxSide);
+  const shouldResize = Boolean(maxSide && Math.max(metadata.width, metadata.height) > maxSide);
+  let pipeline = sharp(input).rotate();
+  if (shouldResize) {
+    pipeline = pipeline.resize({
+      width: metadata.width >= metadata.height ? maxSide : undefined,
+      height: metadata.height > metadata.width ? maxSide : undefined,
+      fit: "inside",
+      withoutEnlargement: true
+    });
+  }
+  await pipeline
     .flatten({ background: "#ffffff" })
     .toColorspace("srgb")
     .jpeg({ quality: 92, mozjpeg: true })
@@ -1613,7 +1623,7 @@ async function standardizeAigcImageToBase64(input) {
   return buffer.toString("base64");
 }
 
-async function standardizeStaticImageForAigc(staticUrl) {
+async function standardizeStaticImageForAigc(staticUrl, options = {}) {
   const relativePath = decodeURIComponent(staticUrl.replace(/^\/static\/+/, ""));
   const sourcePath = path.resolve(STORAGE_DIR, relativePath);
   const storageRoot = path.resolve(STORAGE_DIR);
@@ -1628,7 +1638,7 @@ async function standardizeStaticImageForAigc(staticUrl) {
   }
 
   await fs.access(sourcePath);
-  return writeStandardizedAigcImage(sourcePath);
+  return writeStandardizedAigcImage(sourcePath, options);
 }
 
 async function standardizeStaticImageToBase64ForAigc(staticUrl) {
@@ -1642,7 +1652,7 @@ async function standardizeStaticImageToBase64ForAigc(staticUrl) {
   return standardizeAigcImageToBase64(sourcePath);
 }
 
-async function standardizeRemoteImageForAigc(remoteUrl) {
+async function standardizeRemoteImageForAigc(remoteUrl, options = {}) {
   const response = await axios.get(remoteUrl, {
     responseType: "arraybuffer",
     timeout: 60000,
@@ -1653,7 +1663,7 @@ async function standardizeRemoteImageForAigc(remoteUrl) {
   if (contentType && !contentType.includes("image/")) {
     return "";
   }
-  return writeStandardizedAigcImage(Buffer.from(response.data));
+  return writeStandardizedAigcImage(Buffer.from(response.data), options);
 }
 
 async function standardizeRemoteImageToBase64ForAigc(remoteUrl) {
@@ -1749,6 +1759,20 @@ async function normalizeMediaInfoListForAigc(mediaInfoList = [], config, options
         continue;
       }
       if (options.preferPublicImageUrl && hasAigcStandardImageExt(mediaData)) {
+        if (options.standardizePublicImageUrl && hasObserverUploadConfig()) {
+          try {
+            const standardizedRemoteUrl = await standardizeRemoteImageForAigc(mediaData, {
+              maxSide: options.standardizedMaxSide
+            });
+            if (standardizedRemoteUrl) {
+              const observerUrl = await uploadStaticImageToObserverUrl(standardizedRemoteUrl);
+              normalized.push(mediaInfoWithUrl(item, observerUrl));
+              continue;
+            }
+          } catch (err) {
+            console.warn("[AIGC] remote image standardization skipped:", err.message);
+          }
+        }
         normalized.push(mediaInfoWithUrl(item, mediaData));
         continue;
       }
@@ -5513,7 +5537,11 @@ async function submitImageEditAgentRelayoutTask({
   const normalizedMediaInfoList = await normalizeMediaInfoListForAigc(
     [mediaInfoFromUrl(imageUrl)],
     config,
-    { preferPublicImageUrl: true }
+    {
+      preferPublicImageUrl: true,
+      standardizePublicImageUrl: true,
+      standardizedMaxSide: toPositiveInt(process.env.AIGC_AGENT_INPUT_MAX_SIDE) || 1600
+    }
   );
   const initImages = initImagesFromMediaInfoList(normalizedMediaInfoList);
   if (!initImages.length) {
