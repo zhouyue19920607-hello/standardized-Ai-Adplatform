@@ -4660,26 +4660,33 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
 
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
-  const split = await splitPosterLayersForAdapt(imageUrl, layerBox, context);
-  let backgroundUrl = split.background.url;
+  let cleanBackgroundUrl = imageUrl;
+  try {
+    cleanBackgroundUrl = await inpaintForBackgroundPrep(imageUrl, masks, context);
+  } catch (err) {
+    console.warn("[AdaptImage] text/logo background cleanup skipped:", err.message);
+    throw new Error(`text/logo background cleanup failed: ${err.message}`);
+  }
+  let backgroundUrl = cleanBackgroundUrl;
   let expandedBackgroundUrl = "";
   try {
     const backgroundPrompt = [
-      "只延展当前海报背景的画布外缺失区域，尽量不要修改输入图中已经存在的背景区域。",
+      "围绕输入海报的主体物和原始背景进行目标尺寸延展，主体物保留在画面中，不要把主体物抠出后重新生成。",
       "延展区域必须沿着原背景的色彩、光影、材质、纹理、透视和空间关系自然连续。",
       "画面里只允许保留原图已经存在的文案和 Logo，不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
       "不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
-      "主体物、原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
+      "原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
       "不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
     ].filter(Boolean).join(" ");
     expandedBackgroundUrl = await expandImageV4ForAdapt(backgroundUrl, targetWidth, targetHeight, context, backgroundPrompt);
     if (expandedBackgroundUrl) backgroundUrl = expandedBackgroundUrl;
     console.log("[AdaptImage] relayout background extended", JSON.stringify({
-      source: split.background.url,
+      source: cleanBackgroundUrl,
       result: backgroundUrl
     }));
   } catch (err) {
-    console.warn("[AdaptImage] relayout background extension skipped:", err.message);
+    console.warn("[AdaptImage] relayout background extension failed:", err.message);
+    throw new Error(`background extension failed: ${err.message}`);
   }
   let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
   try {
@@ -4697,6 +4704,9 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   const selectedZones = [];
   const selectedCounts = {};
   for (const zone of zones) {
+    if (zone.type === "subject") {
+      continue;
+    }
     if (
       isPortraitToLandscape &&
       primarySubjectZone &&
@@ -4756,22 +4766,22 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
     }
   }
   const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text");
-  if (multiLayerItems.length >= 2 && hasIndependentInfoLayer) {
+  if (multiLayerItems.length >= 1 && hasIndependentInfoLayer) {
     const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
     return {
       resultUrl,
       layerBox,
-      layout: { mode: "zones-v2", itemCount: multiLayerItems.length },
+      layout: { mode: "text-logo-zones-v1", itemCount: multiLayerItems.length },
       zones,
       designAnalysis: {
         layerCount: designAnalysis.layers?.length || 0,
         warnings: designAnalysis.warnings || []
       },
       layers: {
-        mode: "multi-layer-v2",
+        mode: "text-logo-relayout-v1",
         foregroundUrl: "",
         rawForegroundUrl: "",
-        backgroundUrl: split.background.url,
+        backgroundUrl: cleanBackgroundUrl,
         expandedBackgroundUrl,
         backgroundMode: expandedBackgroundUrl ? "ai-extension" : "cover-resize",
         items: multiLayerItems.map(item => ({
@@ -4784,47 +4794,11 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
           layout: item.layout,
           width: item.width,
           height: item.height
-        })),
-        all: split.layers.map(layer => ({
-          url: layer.url,
-          roleHint: layer.roleHint,
-          width: layer.width,
-          height: layer.height,
-          hasAlpha: layer.hasAlpha
         }))
       }
     };
   }
-
-  const trimmedForeground = await trimForegroundLayerForAdapt(split.foreground.url);
-  const foregroundMeta = trimmedForeground.meta || await sharp(staticUrlToLocalPath(trimmedForeground.url)).metadata();
-  const layout = planLayerPlacementForAdapt(foregroundMeta, targetWidth, targetHeight);
-  const resultUrl = await composeLayeredRelayoutForAdapt(backgroundUrl, trimmedForeground.url, targetWidth, targetHeight, layout);
-  return {
-    resultUrl,
-    layerBox,
-    layout,
-    zones,
-    designAnalysis: {
-      layerCount: designAnalysis.layers?.length || 0,
-      warnings: designAnalysis.warnings || []
-    },
-    layers: {
-      mode: "foreground-background-v1",
-      foregroundUrl: trimmedForeground.url,
-      rawForegroundUrl: split.foreground.url,
-      backgroundUrl: split.background.url,
-      expandedBackgroundUrl,
-      backgroundMode: expandedBackgroundUrl ? "ai-extension" : "cover-resize",
-      all: split.layers.map(layer => ({
-        url: layer.url,
-        roleHint: layer.roleHint,
-        width: layer.width,
-        height: layer.height,
-        hasAlpha: layer.hasAlpha
-      }))
-    }
-  };
+  throw new Error(`text/logo relayout produced no compositable layers, zones=${selectedZones.length}`);
 }
 
 async function buildProtectedMaskFallback() {
@@ -6009,7 +5983,8 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       fallbackWarnings: context.fallbackWarnings || [],
       qa,
       limitations: [
-        "当前主流程已关闭改图 Agent，使用检测、分层、背景延展和本地合成的可控排版链路。",
+        "当前主流程已关闭改图 Agent，使用检测、文字/Logo 分层、主体保护式背景延展和本地合成的可控排版链路。",
+        "relayout 模式不会再把主体物抠出后重新贴回，只抽取原图文字和 Logo 图层进行重排。",
         "QA 已包含 OCR 字符召回和 Logo 感知哈希相似度，但仍不是专用品牌识别模型。",
         "如果分层或检测接口权限、响应字段与文档不一致，会停止或降级到背景延展/尺寸合成。"
       ]
