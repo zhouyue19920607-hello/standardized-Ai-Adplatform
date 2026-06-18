@@ -5510,6 +5510,34 @@ async function submitImageEditAgentRelayoutTask({
     sourceHeight,
     userInstruction
   });
+  const agentMode = String(process.env.AIGC_IMAGE_EDIT_AGENT_MODE || "direct").toLowerCase();
+  if (agentMode !== "workflow") {
+    const directResult = await submitAigcTask({
+      task: "/v1/image_edit_agent_async",
+      taskType: "mtlab",
+      params: {
+        parameter: {
+          rsp_media_type: "url",
+          model_type: "auto",
+          prompt: instruction
+        },
+        request_id: ""
+      },
+      mediaInfoList: normalizedMediaInfoList,
+      rspMediaType: "url",
+      initialDelayMs: 2500,
+      pollIntervalMs: Math.max(1000, Number(process.env.AIGC_AGENT_POLL_INTERVAL_MS || config.pollIntervalMs || 2000)),
+      maxPolls: Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 600)),
+      publicBaseUrl,
+      mediaOptions: { preferPublicImageUrl: true }
+    });
+    return {
+      ...directResult,
+      instruction,
+      inputImageUrl: initImages[0].url,
+      agentMode: "direct"
+    };
+  }
   const agentParams = {
     executor: "auto",
     user_instruction: instruction
@@ -5549,6 +5577,7 @@ async function submitImageEditAgentRelayoutTask({
       remoteResultUrl,
       instruction,
       inputImageUrl: initImages[0].url,
+      agentMode: "workflow",
       raw: pushed
     };
   }
@@ -5566,7 +5595,8 @@ async function submitImageEditAgentRelayoutTask({
       return {
         ...result,
         instruction,
-        inputImageUrl: initImages[0].url
+        inputImageUrl: initImages[0].url,
+        agentMode: "workflow"
       };
     }
     if (result.status === "success-empty") {
@@ -5637,6 +5667,7 @@ app.post("/api/aigc/adapt-image-agent", async (req, res) => {
       endpoint: "/api/aigc/adapt-image-agent",
       task: "image_edit_agent_all",
       strategy: "image_edit_agent_relayout",
+      agentMode: result.agentMode || "direct",
       resultUrl: finalUrl,
       remoteResultUrl: result.remoteResultUrl,
       inputImageUrl: result.inputImageUrl,
