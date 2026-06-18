@@ -4658,6 +4658,35 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
   return `/static/${outputFilename}`;
 }
 
+async function assertCleanRelayoutBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context) {
+  const qaContext = { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight };
+  const issues = [];
+  try {
+    const bgText = await detectTextForAdapt(backgroundUrl, qaContext);
+    const texts = (bgText.texts || []).filter(Boolean);
+    const textBoxCount = Array.isArray(bgText.boxes) ? bgText.boxes.length : 0;
+    if (texts.length || textBoxCount) {
+      issues.push(`background still contains text/text-like regions: texts=${texts.slice(0, 3).join("|") || "-"}, boxes=${textBoxCount}`);
+    }
+  } catch (err) {
+    console.warn("[AdaptImage] background text cleanliness check skipped:", err.message);
+  }
+  try {
+    const bgLogo = await detectLogoForAdapt(backgroundUrl, qaContext);
+    const logoBoxCount = Array.isArray(bgLogo.boxes) ? bgLogo.boxes.length : 0;
+    if (bgLogo.hasTarget || logoBoxCount) {
+      issues.push(`background still contains logo/logo-like regions: boxes=${logoBoxCount}`);
+    }
+  } catch (err) {
+    console.warn("[AdaptImage] background logo cleanliness check skipped:", err.message);
+  }
+  if (issues.length) {
+    const error = new Error(`background text/logo cleanup failed: ${issues.join("; ")}`);
+    error.stage = "relayout-background-cleanliness";
+    throw error;
+  }
+}
+
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
   let cleanBackgroundUrl = imageUrl;
@@ -4671,9 +4700,11 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   let expandedBackgroundUrl = "";
   try {
     const backgroundPrompt = [
+      "这是用于后续合成的纯背景层，输入图中的文字和 Logo 已经被移除。",
+      "输出结果必须保持为无文字、无 Logo、无品牌标识、无按钮、无图标、无包装文字的干净背景层。",
       "围绕输入海报的主体物和原始背景进行目标尺寸延展，主体物保留在画面中，不要把主体物抠出后重新生成。",
       "延展区域必须沿着原背景的色彩、光影、材质、纹理、透视和空间关系自然连续。",
-      "画面里只允许保留原图已经存在的文案和 Logo，不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
+      "不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
       "不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
       "原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
       "不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
@@ -4684,6 +4715,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       source: cleanBackgroundUrl,
       result: backgroundUrl
     }));
+    await assertCleanRelayoutBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context);
   } catch (err) {
     console.warn("[AdaptImage] relayout background extension failed:", err.message);
     throw new Error(`background extension failed: ${err.message}`);
