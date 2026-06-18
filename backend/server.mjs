@@ -4083,7 +4083,7 @@ function padBoxForAdapt(box, width, height, paddingRatio = 0.04) {
 function buildZoneLayerSplitBoxForAdapt(zone, width, height) {
   const baseBox = clampBoxToImage(zone?.box, width, height);
   if (!baseBox) return null;
-  const paddingRatio = zone.type === "logo" ? 0.055 : 0.045;
+  const paddingRatio = zone.type === "info" ? 0.035 : zone.type === "logo" ? 0.055 : 0.045;
   return padBoxForAdapt(baseBox, width, height, paddingRatio) || baseBox;
 }
 
@@ -4273,12 +4273,21 @@ function classifyDesignLayer(value = {}) {
   const text = JSON.stringify({
     type: value.type,
     layer_type: value.layer_type,
+    layerType: value.layerType,
+    element_type: value.element_type,
+    elementType: value.elementType,
     category: value.category,
+    class: value.class,
+    tag: value.tag,
     name: value.name,
     label: value.label,
     role: value.role,
+    attr: value.attr,
+    attribute: value.attribute,
+    attributes: value.attributes,
     text: value.text,
-    content: value.content
+    content: value.content,
+    value: value.value
   }).toLowerCase();
   if (/(logo|brand|trademark)/.test(text)) return "logo";
   if (/(text|word|copy|title|subtitle|slogan|ocr|文字|文案|标题)/.test(text)) return "text";
@@ -4290,12 +4299,21 @@ function boxFromAnyLayer(value, width, height) {
   const candidates = [
     value?.box,
     value?.bbox,
+    value?.bounding_box,
+    value?.boundingBox,
+    value?.text_box,
+    value?.textBox,
     value?.rect,
     value?.frame,
     value?.bounds,
+    value?.bound,
     value?.position,
     value?.coord,
+    value?.coords,
     value?.box_coord,
+    value?.boxCoord,
+    value?.points,
+    value?.polygon,
     value
   ];
   for (const candidate of candidates) {
@@ -4398,10 +4416,14 @@ function buildRelayoutZonesForAdapt(analysis, designAnalysis, width, height) {
   (designAnalysis?.layers || []).forEach((layer, index) => {
     zones.push({ id: `design-${layer.type}-${index}`, type: layer.type, box: clampBoxToImage(layer.box, width, height), source: "poster-design", text: layer.text || "" });
   });
+  const infoGroups = buildInfoGroupZonesForAdapt(zones, width, height);
+  const groupedMemberIds = new Set(infoGroups.flatMap(group => (group.members || []).map(member => member.id)));
   const validZones = zones
     .filter(zone => zone.box)
+    .filter(zone => !groupedMemberIds.has(zone.id))
+    .concat(infoGroups)
     .sort((a, b) => {
-      const priority = { subject: 0, logo: 1, text: 2 };
+      const priority = { subject: 0, info: 1, logo: 2, text: 3 };
       return (priority[a.type] ?? 9) - (priority[b.type] ?? 9);
     });
   const deduped = [];
@@ -4432,6 +4454,89 @@ function boxIntersectionCoverage(a, b) {
   const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
   const smallerArea = Math.max(1, Math.min(a.width * a.height, b.width * b.height));
   return intersection / smallerArea;
+}
+
+function absoluteBoxGap(a, b) {
+  if (!a || !b) return { x: Infinity, y: Infinity };
+  const ax2 = a.x + a.width;
+  const ay2 = a.y + a.height;
+  const bx2 = b.x + b.width;
+  const by2 = b.y + b.height;
+  return {
+    x: Math.max(0, Math.max(a.x, b.x) - Math.min(ax2, bx2)),
+    y: Math.max(0, Math.max(a.y, b.y) - Math.min(ay2, by2))
+  };
+}
+
+function unionAbsoluteBoxesForAdapt(boxes = [], width, height, paddingRatio = 0.025) {
+  const valid = boxes.map(box => clampBoxToImage(box, width, height)).filter(Boolean);
+  if (!valid.length) return null;
+  const minX = Math.min(...valid.map(box => box.x));
+  const minY = Math.min(...valid.map(box => box.y));
+  const maxX = Math.max(...valid.map(box => box.x + box.width));
+  const maxY = Math.max(...valid.map(box => box.y + box.height));
+  const padding = Math.max(width, height) * paddingRatio;
+  return clampBoxToImage({
+    x: minX - padding,
+    y: minY - padding,
+    width: (maxX - minX) + padding * 2,
+    height: (maxY - minY) + padding * 2
+  }, width, height);
+}
+
+function areInfoZonesRelatedForAdapt(a, b, width, height) {
+  if (!a?.box || !b?.box) return false;
+  if (boxIntersectionCoverage(a.box, b.box) > 0.08 || boxIntersectionCoverage(b.box, a.box) > 0.08) return true;
+  const gap = absoluteBoxGap(a.box, b.box);
+  const centerAY = a.box.y + a.box.height / 2;
+  const centerBY = b.box.y + b.box.height / 2;
+  const centerAX = a.box.x + a.box.width / 2;
+  const centerBX = b.box.x + b.box.width / 2;
+  const sameRow = Math.abs(centerAY - centerBY) < height * 0.075 && gap.x < width * 0.12;
+  const sameColumn = Math.abs(centerAX - centerBX) < width * 0.18 && gap.y < height * 0.08;
+  const closeBrandStack = gap.x < width * 0.20 && gap.y < height * 0.10;
+  return sameRow || sameColumn || closeBrandStack;
+}
+
+function buildInfoGroupZonesForAdapt(zones = [], width, height) {
+  const candidates = zones
+    .filter(zone => (zone.type === "logo" || zone.type === "text") && zone.box)
+    .map(zone => ({ ...zone }));
+  if (candidates.length < 2) return [];
+  const groups = [];
+  const used = new Set();
+  for (let i = 0; i < candidates.length; i += 1) {
+    if (used.has(i)) continue;
+    const groupIndexes = new Set([i]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let j = 0; j < candidates.length; j += 1) {
+        if (groupIndexes.has(j) || used.has(j)) continue;
+        const matches = [...groupIndexes].some(index => areInfoZonesRelatedForAdapt(candidates[index], candidates[j], width, height));
+        if (matches) {
+          groupIndexes.add(j);
+          changed = true;
+        }
+      }
+    }
+    const members = [...groupIndexes].map(index => candidates[index]);
+    if (members.length < 2) continue;
+    const union = unionAbsoluteBoxesForAdapt(members.map(member => member.box), width, height, 0.025);
+    if (!union) continue;
+    const areaRatio = (union.width * union.height) / Math.max(1, width * height);
+    if (areaRatio > 0.36) continue;
+    groupIndexes.forEach(index => used.add(index));
+    groups.push({
+      id: `info-${groups.length}`,
+      type: "info",
+      box: union,
+      source: members.some(member => member.source === "poster-design") ? "poster-design-group" : "detected-info-group",
+      text: members.map(member => member.text).filter(Boolean).join(" "),
+      members: members.map(member => ({ id: member.id, type: member.type, source: member.source, box: member.box }))
+    });
+  }
+  return groups;
 }
 
 async function trimForegroundLayerForAdapt(foregroundUrl) {
@@ -4535,6 +4640,24 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
     } else {
       centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
       centerY = clampNumber(centerY + indexByType * targetHeight * 0.04, marginY + maxHeight / 2, targetHeight * 0.34);
+    }
+    maxScale = 1.08;
+  } else if (zone.type === "info") {
+    maxWidth = targetWidth * 0.88;
+    maxHeight = targetHeight * 0.25;
+    if (isPortraitToLandscape) {
+      maxWidth = targetWidth * 0.42;
+      maxHeight = targetHeight * 0.44;
+      centerX = targetWidth * 0.29;
+      centerY = targetHeight * 0.46;
+    } else if (isLandscapeToPortrait) {
+      maxWidth = targetWidth * 0.88;
+      maxHeight = targetHeight * 0.24;
+      centerX = targetWidth / 2;
+      centerY = targetHeight * 0.19;
+    } else {
+      centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
+      centerY = clampNumber(centerY, marginY + maxHeight / 2, targetHeight * 0.40);
     }
     maxScale = 1.08;
   } else if (zone.type === "text") {
@@ -4716,12 +4839,15 @@ function filterCleanupBoxesOutsideSubject(boxes = [], subjectBox = null, width =
   });
 }
 
-async function inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context) {
+async function inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context, designAnalysis = null) {
   const sourceWidth = context.sourceWidth;
   const sourceHeight = context.sourceHeight;
   const boxes = [
     ...(analysis.logo?.boxes || []),
-    ...(analysis.text?.boxes || [])
+    ...(analysis.text?.boxes || []),
+    ...((designAnalysis?.layers || [])
+      .filter(layer => layer.type === "logo" || layer.type === "text")
+      .map(layer => layer.box))
   ]
     .map(box => clampBoxToImage(denormalizeBox(box, sourceWidth, sourceHeight), sourceWidth, sourceHeight))
     .filter(Boolean);
@@ -4822,9 +4948,16 @@ async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetW
 
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
+  let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
+  try {
+    designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
+  } catch (err) {
+    designAnalysis = { layers: [], warnings: [err.message] };
+    console.warn("[AdaptImage] design analysis fallback:", err.message);
+  }
   let cleanBackgroundUrl = imageUrl;
   try {
-    cleanBackgroundUrl = await inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context);
+    cleanBackgroundUrl = await inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context, designAnalysis);
   } catch (err) {
     console.warn("[AdaptImage] text/logo background cleanup skipped:", err.message);
     throw new Error(`text/logo background cleanup failed: ${err.message}`);
@@ -4860,14 +4993,6 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
     console.warn("[AdaptImage] relayout background extension failed:", err.message);
     throw new Error(`background extension failed: ${err.message}`);
   }
-  let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
-  try {
-    designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
-  } catch (err) {
-    designAnalysis = { layers: [], warnings: [err.message] };
-    console.warn("[AdaptImage] design analysis fallback:", err.message);
-  }
-
   const zones = buildRelayoutZonesForAdapt(analysis, designAnalysis, context.sourceWidth, context.sourceHeight);
   const sourceAspect = context.sourceWidth / Math.max(1, context.sourceHeight);
   const targetAspect = targetWidth / Math.max(1, targetHeight);
@@ -4877,6 +5002,9 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   const selectedCounts = {};
   for (const zone of zones) {
     if (zone.type === "subject") {
+      continue;
+    }
+    if (selectedZones.some(item => item.type === "info") && (zone.type === "logo" || zone.type === "text")) {
       continue;
     }
     if (
@@ -4894,7 +5022,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       continue;
     }
     selectedCounts[zone.type] = selectedCounts[zone.type] || 0;
-    const limit = zone.type === "text" ? 2 : 1;
+    const limit = zone.type === "text" ? 2 : zone.type === "info" ? 2 : 1;
     if (selectedCounts[zone.type] >= limit) continue;
     selectedZones.push(zone);
     selectedCounts[zone.type] += 1;
@@ -4923,6 +5051,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
         type: zone.type,
         source: zone.source,
         text: zone.text || "",
+        members: zone.members || [],
         url: trimmed.url,
         rawUrl: zoneSplit.foreground.url,
         box: zone.box,
@@ -4938,7 +5067,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       }));
     }
   }
-  const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text");
+  const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text" || item.type === "info");
   if (multiLayerItems.length >= 1 && hasIndependentInfoLayer) {
     const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
     return {
@@ -4961,6 +5090,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
           id: item.id,
           type: item.type,
           source: item.source,
+          members: item.members,
           url: item.url,
           rawUrl: item.rawUrl,
           box: item.box,
