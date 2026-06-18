@@ -1243,38 +1243,68 @@ async function resolveExpandPixels({ imageUrl, targetWidth, targetHeight, expand
 function extractAigcResultMedia(statusData) {
   const taskData = statusData?.data || {};
   const result = taskData.result || {};
+  const resultData = result.data || {};
   const details = taskData.details || {};
-  const callback = details.mtlab_callback_response || {};
-  if (Array.isArray(statusData?.media_info_list)) return statusData.media_info_list;
-  if (callback.error_code === 0 && Array.isArray(callback.media_info_list)) return callback.media_info_list;
-  if (Array.isArray(details.media_info_list)) return details.media_info_list;
-  if (Array.isArray(details.images)) {
-    return details.images.map(item => typeof item === "string"
+  const mtlabResult = result.mtlab_res || resultData.mtlab_res || {};
+  const callback = details.mtlab_callback_response || resultData.mtlab_callback_response || mtlabResult.mtlab_callback_response || {};
+  const toMediaInfoList = values => values
+    .map(item => typeof item === "string"
       ? { media_data: item, media_url: item }
       : {
-          media_data: item?.media_image || item?.media_url || item?.media_data || item?.url,
-          media_url: item?.media_url || item?.media_image || item?.media_data || item?.url,
+          media_data: item?.media_data || item?.media_url || item?.media_image || item?.url,
+          media_url: item?.media_url || item?.media_data || item?.media_image || item?.url,
+          media_type: item?.media_type,
           width: item?.width,
           height: item?.height
-        });
+        })
+    .filter(item => item.media_data || item.media_url);
+  if (Array.isArray(statusData?.media_info_list)) return statusData.media_info_list;
+  if (Array.isArray(statusData?.urls)) return toMediaInfoList(statusData.urls);
+  if (Array.isArray(statusData?.images)) return toMediaInfoList(statusData.images);
+  if (Array.isArray(taskData.urls)) return toMediaInfoList(taskData.urls);
+  if (Array.isArray(taskData.images)) return toMediaInfoList(taskData.images);
+  if (callback.error_code === 0 && Array.isArray(callback.media_info_list)) return callback.media_info_list;
+  if (callback.error_code === 0 && Array.isArray(callback.urls)) return toMediaInfoList(callback.urls);
+  if (callback.error_code === 0 && Array.isArray(callback.images)) return toMediaInfoList(callback.images);
+  if (Array.isArray(details.media_info_list)) return details.media_info_list;
+  if (Array.isArray(details.images)) {
+    return toMediaInfoList(details.images);
   }
   if (Array.isArray(result.urls)) {
-    return result.urls.map(url => ({ media_data: url, media_url: url }));
+    return toMediaInfoList(result.urls);
   }
   if (Array.isArray(result.images)) {
-    return result.images.map(url => ({ media_data: url, media_url: url }));
+    return toMediaInfoList(result.images);
+  }
+  if (Array.isArray(resultData.media_info_list)) {
+    return resultData.media_info_list;
+  }
+  if (Array.isArray(resultData.urls)) {
+    return toMediaInfoList(resultData.urls);
+  }
+  if (Array.isArray(resultData.images)) {
+    return toMediaInfoList(resultData.images);
+  }
+  if (Array.isArray(mtlabResult.media_info_list)) {
+    return mtlabResult.media_info_list;
+  }
+  if (Array.isArray(mtlabResult.urls)) {
+    return toMediaInfoList(mtlabResult.urls);
+  }
+  if (Array.isArray(mtlabResult.images)) {
+    return toMediaInfoList(mtlabResult.images);
   }
   if (Array.isArray(result.parameter?.data)) {
-    return result.parameter.data
-      .map(item => item?.url || item?.media_data || item?.media_url)
-      .filter(Boolean)
-      .map(url => ({ media_data: url, media_url: url }));
+    return toMediaInfoList(result.parameter.data);
   }
   if (Array.isArray(result.parameters?.data)) {
-    return result.parameters.data
-      .map(item => item?.url || item?.media_data || item?.media_url)
-      .filter(Boolean)
-      .map(url => ({ media_data: url, media_url: url }));
+    return toMediaInfoList(result.parameters.data);
+  }
+  if (Array.isArray(resultData.parameter?.data)) {
+    return toMediaInfoList(resultData.parameter.data);
+  }
+  if (Array.isArray(resultData.parameters?.data)) {
+    return toMediaInfoList(resultData.parameters.data);
   }
   if (statusData?.data?.media_url) {
     return [{
@@ -1293,6 +1323,26 @@ function extractAigcResultMedia(statusData) {
     }];
   }
   return result.media_info_list || result.mediaInfoList || result.data?.media_info_list || statusData?.data?.media_info_list || [];
+}
+
+function summarizeAigcTaskStatus(statusData) {
+  const taskData = statusData?.data || {};
+  const result = taskData.result || {};
+  const nested = result.data || {};
+  const mediaInfoList = extractAigcResultMedia(statusData);
+  const keysOf = value => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.keys(value).slice(0, 20)
+    : [];
+  return {
+    code: statusData?.code ?? statusData?.error_code,
+    message: statusData?.message || statusData?.error_msg || result?.msg || result?.error_msg || nested?.error_msg || "",
+    status: taskData.status,
+    progress: taskData.progress,
+    taskId: taskData.task_id || result.id || "",
+    resultKeys: keysOf(result),
+    nestedKeys: keysOf(nested),
+    mediaCount: mediaInfoList.length
+  };
 }
 
 function extractAigcDirectResultUrl(data) {
@@ -2242,8 +2292,9 @@ async function getAigcTaskResultOnce(taskId, options = {}) {
     };
   }
   return {
-    status: state === "success" ? "processing" : state,
+    status: state === "success" ? (options.emptySuccessStatus || "processing") : state,
     taskId,
+    summary: summarizeAigcTaskStatus(statusData),
     raw: statusData
   };
 }
@@ -5506,10 +5557,11 @@ async function submitImageEditAgentRelayoutTask({
     throw new Error("改图 Agent 投递成功但未返回 task_id");
   }
   await sleep(2500);
-  const pollingInterval = Math.max(1000, Number(config.pollIntervalMs || 2000));
-  const pollingMax = Math.max(1, Math.min(180, Number(config.maxPolls || 90)));
+  const pollingInterval = Math.max(1000, Number(process.env.AIGC_AGENT_POLL_INTERVAL_MS || config.pollIntervalMs || 2000));
+  const pollingMax = Math.max(1, Number(process.env.AIGC_AGENT_MAX_POLLS || 600));
+  let emptySuccessCount = 0;
   for (let index = 0; index < pollingMax; index += 1) {
-    const result = await getAigcTaskResultOnce(taskId, { config });
+    const result = await getAigcTaskResultOnce(taskId, { config, emptySuccessStatus: "success-empty" });
     if (result.status === "success") {
       return {
         ...result,
@@ -5517,7 +5569,29 @@ async function submitImageEditAgentRelayoutTask({
         inputImageUrl: initImages[0].url
       };
     }
+    if (result.status === "success-empty") {
+      emptySuccessCount += 1;
+      console.warn("[AIGC Image Edit Agent] completed without media", JSON.stringify({
+        taskId,
+        poll: index + 1,
+        emptySuccessCount,
+        summary: result.summary
+      }));
+      if (emptySuccessCount >= 10) {
+        const message = result.summary?.message ? `: ${result.summary.message}` : "";
+        throw new Error(`改图 Agent 已完成但没有返回结果图: ${taskId}${message}`);
+      }
+    }
     if (result.status === "failed") throw createAigcTaskFailureError(result.raw, taskId);
+    if ((index + 1) % 10 === 0) {
+      console.log("[AIGC Image Edit Agent] polling", JSON.stringify({
+        taskId,
+        poll: index + 1,
+        pollingMax,
+        status: result.status,
+        summary: result.summary
+      }));
+    }
     await sleep(pollingInterval);
   }
   throw new Error(`改图 Agent 任务超时未完成: ${taskId}`);
