@@ -6009,9 +6009,9 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       fallbackWarnings: context.fallbackWarnings || [],
       qa,
       limitations: [
-        "MVP 尚未做主体/文案/Logo 的真实分层重排。",
+        "当前主流程已关闭改图 Agent，使用检测、分层、背景延展和本地合成的可控排版链路。",
         "QA 已包含 OCR 字符召回和 Logo 感知哈希相似度，但仍不是专用品牌识别模型。",
-        "如果 6 个算法接口权限或响应字段与文档不一致，会降级到扩图/裁剪。"
+        "如果分层或检测接口权限、响应字段与文档不一致，会停止或降级到背景延展/尺寸合成。"
       ]
     });
   } catch (err) {
