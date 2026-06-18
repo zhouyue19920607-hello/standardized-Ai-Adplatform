@@ -4068,6 +4068,25 @@ function unionBoxesForAdapt(boxes = [], width, height, paddingRatio = 0.06) {
   }, width, height);
 }
 
+function padBoxForAdapt(box, width, height, paddingRatio = 0.04) {
+  const safe = clampBoxToImage(box, width, height);
+  if (!safe) return null;
+  const padding = Math.max(width, height) * paddingRatio;
+  return clampBoxToImage({
+    x: safe.x - padding,
+    y: safe.y - padding,
+    width: safe.width + padding * 2,
+    height: safe.height + padding * 2
+  }, width, height);
+}
+
+function buildZoneLayerSplitBoxForAdapt(zone, width, height) {
+  const baseBox = clampBoxToImage(zone?.box, width, height);
+  if (!baseBox) return null;
+  const paddingRatio = zone.type === "logo" ? 0.055 : 0.045;
+  return padBoxForAdapt(baseBox, width, height, paddingRatio) || baseBox;
+}
+
 function buildLayerSplitBoxForAdapt(analysis, width, height) {
   const boxes = [
     analysis.subject?.box,
@@ -4490,8 +4509,8 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const targetAspect = targetWidth / targetHeight;
   const isLandscapeToPortrait = sourceAspect > 1.12 && targetAspect < 0.78;
   const isPortraitToLandscape = sourceAspect < 0.78 && targetAspect > 1.12;
-  const marginX = targetWidth * 0.08;
-  const marginY = targetHeight * 0.07;
+  const marginX = targetWidth * 0.05;
+  const marginY = targetHeight * 0.05;
   const normalizedCenterX = zone.box ? (zone.box.x + zone.box.width / 2) / canvasWidth : 0.5;
   const normalizedCenterY = zone.box ? (zone.box.y + zone.box.height / 2) / canvasHeight : 0.5;
   let maxWidth = targetWidth * 0.78;
@@ -4501,41 +4520,41 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   let maxScale = 1.08;
 
   if (zone.type === "logo") {
-    maxWidth = targetWidth * 0.30;
-    maxHeight = targetHeight * 0.13;
+    maxWidth = targetWidth * 0.46;
+    maxHeight = targetHeight * 0.16;
     if (isPortraitToLandscape) {
-      maxWidth = targetWidth * 0.34;
-      maxHeight = targetHeight * 0.13;
+      maxWidth = targetWidth * 0.46;
+      maxHeight = targetHeight * 0.18;
       centerX = targetWidth * 0.28;
       centerY = targetHeight * (0.24 + indexByType * 0.07);
     } else if (isLandscapeToPortrait) {
-      maxWidth = targetWidth * 0.38;
-      maxHeight = targetHeight * 0.10;
+      maxWidth = targetWidth * 0.78;
+      maxHeight = targetHeight * 0.16;
       centerX = targetWidth / 2;
-      centerY = targetHeight * 0.13 + indexByType * targetHeight * 0.045;
+      centerY = targetHeight * 0.13 + indexByType * targetHeight * 0.06;
     } else {
       centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
       centerY = clampNumber(centerY + indexByType * targetHeight * 0.04, marginY + maxHeight / 2, targetHeight * 0.34);
     }
-    maxScale = 1.0;
+    maxScale = 1.08;
   } else if (zone.type === "text") {
-    maxWidth = targetWidth * 0.82;
-    maxHeight = targetHeight * 0.20;
+    maxWidth = targetWidth * 0.90;
+    maxHeight = targetHeight * 0.24;
     if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.40;
       maxHeight = targetHeight * 0.24;
       centerX = targetWidth * 0.29;
       centerY = targetHeight * (0.43 + indexByType * 0.14);
     } else if (isLandscapeToPortrait) {
-      maxWidth = targetWidth * 0.84;
-      maxHeight = targetHeight * 0.16;
+      maxWidth = targetWidth * 0.90;
+      maxHeight = targetHeight * 0.22;
       centerX = targetWidth / 2;
       centerY = targetHeight * (0.23 + indexByType * 0.075);
     } else {
       centerX = clampNumber(centerX, marginX + maxWidth / 2, targetWidth - marginX - maxWidth / 2);
       centerY = clampNumber(centerY + indexByType * targetHeight * 0.055, targetHeight * 0.12, targetHeight * 0.86);
     }
-    maxScale = 1.02;
+    maxScale = 1.10;
   } else if (zone.type === "subject") {
     maxWidth = targetWidth * 0.84;
     maxHeight = targetHeight * 0.64;
@@ -4658,7 +4677,7 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
   return `/static/${outputFilename}`;
 }
 
-function expandBoxForCleanup(box, width, height, paddingRatio = 0.025) {
+function expandBoxForCleanup(box, width, height, paddingRatio = 0.018) {
   const safe = clampBoxToImage(box, width, height);
   if (!safe) return null;
   const padding = Math.max(width, height) * paddingRatio;
@@ -4670,9 +4689,9 @@ function expandBoxForCleanup(box, width, height, paddingRatio = 0.025) {
   }, width, height);
 }
 
-async function createCleanupMaskFromBoxesForAdapt(boxes, width, height) {
+async function createCleanupMaskFromBoxesForAdapt(boxes, width, height, paddingRatio = 0.018) {
   const validBoxes = (boxes || [])
-    .map(box => expandBoxForCleanup(box, width, height))
+    .map(box => expandBoxForCleanup(box, width, height, paddingRatio))
     .filter(Boolean);
   if (!validBoxes.length) return "";
   const svgRects = validBoxes.map(box => (
@@ -4686,14 +4705,56 @@ async function createCleanupMaskFromBoxesForAdapt(boxes, width, height) {
   return `/static/${filename}`;
 }
 
-function filterCleanupBoxesOutsideSubject(boxes = [], subjectBox = null, width = 0, height = 0) {
-  const subject = subjectBox ? clampBoxToImage(denormalizeBox(subjectBox, width, height), width, height) : null;
+function filterCleanupBoxesOutsideSubject(boxes = [], subjectBox = null, width = 0, height = 0, sourceWidth = width, sourceHeight = height) {
+  const mappedSubject = subjectBox ? normalizeBox(subjectBox, sourceWidth, sourceHeight, width, height) : null;
+  const subject = mappedSubject ? padBoxForAdapt(mappedSubject, width, height, 0.09) : null;
   return boxes.filter(box => {
     const safeBox = clampBoxToImage(box, width, height);
     if (!safeBox) return false;
     if (!subject) return true;
-    return boxIntersectionCoverage(safeBox, subject) < 0.28;
+    return boxIntersectionCoverage(safeBox, subject) < 0.01;
   });
+}
+
+async function inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context) {
+  const sourceWidth = context.sourceWidth;
+  const sourceHeight = context.sourceHeight;
+  const boxes = [
+    ...(analysis.logo?.boxes || []),
+    ...(analysis.text?.boxes || [])
+  ]
+    .map(box => clampBoxToImage(denormalizeBox(box, sourceWidth, sourceHeight), sourceWidth, sourceHeight))
+    .filter(Boolean);
+  const cleanupBoxes = filterCleanupBoxesOutsideSubject(
+    boxes,
+    analysis.subject?.box,
+    sourceWidth,
+    sourceHeight,
+    sourceWidth,
+    sourceHeight
+  );
+  if (!cleanupBoxes.length) {
+    console.log("[AdaptImage] relayout source cleanup skipped", JSON.stringify({ reason: "no safe text/logo boxes outside subject" }));
+    return imageUrl;
+  }
+  const maskUrl = await createCleanupMaskFromBoxesForAdapt(cleanupBoxes, sourceWidth, sourceHeight, 0.012);
+  if (!maskUrl) return imageUrl;
+  console.log("[AdaptImage] relayout source cleanup start", JSON.stringify({
+    imageUrl,
+    maskUrl,
+    boxCount: cleanupBoxes.length
+  }));
+  const cleanedUrl = await inpaintImageForAdapt(
+    imageUrl,
+    maskUrl,
+    context,
+    "remove only the original text and logo inside the mask; keep product, subject, packaging, shadows, edges and all unmasked pixels unchanged; fill removed area with nearby background texture only"
+  );
+  console.log("[AdaptImage] relayout source cleanup done", JSON.stringify({
+    resultUrl: cleanedUrl || imageUrl,
+    changed: Boolean(cleanedUrl)
+  }));
+  return cleanedUrl || imageUrl;
 }
 
 async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context, analysis, maxPasses = 2) {
@@ -4705,7 +4766,14 @@ async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetW
     const details = { pass, textBoxes: 0, logoBoxes: 0, cleaned: false };
     try {
       const bgText = await detectTextForAdapt(workingUrl, qaContext);
-      const textBoxes = filterCleanupBoxesOutsideSubject(bgText.boxes || [], analysis.subject?.box, targetWidth, targetHeight);
+      const textBoxes = filterCleanupBoxesOutsideSubject(
+        bgText.boxes || [],
+        analysis.subject?.box,
+        targetWidth,
+        targetHeight,
+        context.sourceWidth,
+        context.sourceHeight
+      );
       cleanupBoxes.push(...textBoxes);
       details.textBoxes = textBoxes.length;
       details.texts = (bgText.texts || []).filter(Boolean).slice(0, 3);
@@ -4714,7 +4782,14 @@ async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetW
     }
     try {
       const bgLogo = await detectLogoForAdapt(workingUrl, qaContext);
-      const logoBoxes = filterCleanupBoxesOutsideSubject(bgLogo.boxes || [], analysis.subject?.box, targetWidth, targetHeight);
+      const logoBoxes = filterCleanupBoxesOutsideSubject(
+        bgLogo.boxes || [],
+        analysis.subject?.box,
+        targetWidth,
+        targetHeight,
+        context.sourceWidth,
+        context.sourceHeight
+      );
       cleanupBoxes.push(...logoBoxes);
       details.logoBoxes = logoBoxes.length;
     } catch (err) {
@@ -4724,7 +4799,7 @@ async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetW
       passes.push(details);
       return { url: workingUrl, passes, cleaned: passes.some(item => item.cleaned) };
     }
-    const maskUrl = await createCleanupMaskFromBoxesForAdapt(cleanupBoxes, targetWidth, targetHeight);
+    const maskUrl = await createCleanupMaskFromBoxesForAdapt(cleanupBoxes, targetWidth, targetHeight, 0.012);
     if (!maskUrl) {
       passes.push(details);
       break;
@@ -4749,7 +4824,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
   let cleanBackgroundUrl = imageUrl;
   try {
-    cleanBackgroundUrl = await inpaintForBackgroundPrep(imageUrl, masks, context);
+    cleanBackgroundUrl = await inpaintTextLogoBackgroundForRelayout(imageUrl, analysis, context);
   } catch (err) {
     console.warn("[AdaptImage] text/logo background cleanup skipped:", err.message);
     throw new Error(`text/logo background cleanup failed: ${err.message}`);
@@ -4828,7 +4903,8 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   const typeIndexes = {};
   for (const zone of selectedZones) {
     try {
-      const zoneSplit = await splitPosterLayersForAdapt(imageUrl, zone.box, context);
+      const zoneLayerBox = buildZoneLayerSplitBoxForAdapt(zone, context.sourceWidth, context.sourceHeight) || zone.box;
+      const zoneSplit = await splitPosterLayersForAdapt(imageUrl, zoneLayerBox, context);
       const trimmed = await trimForegroundLayerForAdapt(zoneSplit.foreground.url);
       const meta = trimmed.meta || await sharp(staticUrlToLocalPath(trimmed.url)).metadata();
       typeIndexes[zone.type] = typeIndexes[zone.type] || 0;
