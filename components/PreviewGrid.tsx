@@ -138,31 +138,44 @@ const AdCard: React.FC<{
         const match = asset.dimensions?.match(/(\d+)\s*x\s*(\d+)/i);
         if (match) { vDim.w = parseInt(match[1]); vDim.h = parseInt(match[2]); }
 
+        const videoResp = await fetch(asset.url);
+        const videoBlob = await videoResp.blob();
+        const videoLimitMB =
+          asset.category === '开屏' ? 4 :
+          asset.category === '焦点视窗' ? 10 :
+          asset.id.includes('mt-p-1') || asset.id.includes('mt-ib-1') ? 4 :
+          undefined;
+        const hasVideoOverlay =
+          Boolean(localShowMask) ||
+          Boolean(localShowCrop && asset.cropOverlayUrl) ||
+          Boolean(localShowBadge && asset.badgeOverlayUrl) ||
+          Boolean(asset.category === '开屏' && localShowMask && (asset.splashText || config.splashText)) ||
+          Boolean(asset.id.includes('mt-p-1') && asset.splashText);
+
+        if (videoLimitMB && !hasVideoOverlay && videoBlob.size <= videoLimitMB * 1024 * 1024) {
+          await downloadAsBlob(asset.url, `${safeName}.mp4`);
+          setIsDownloading(false);
+          return;
+        }
+
         const params = await exportVideoElements(asset, {
           ...config, showMask: localShowMask, showCrop: localShowCrop, showBadge: localShowBadge
         }, vDim);
 
-        const videoResp = await fetch(asset.url);
-        const videoBlob = await videoResp.blob();
-
         const shouldLimitFocalVideo =
-          asset.category === '焦点视窗' &&
-          videoBlob.size > 10 * 1024 * 1024;
+          asset.category === '焦点视窗';
         const shouldLimitSplashVideo =
-          asset.category === '开屏' &&
-          videoBlob.size > 3 * 1024 * 1024;
+          asset.category === '开屏';
         const shouldLimitScorePopupVideo =
-          asset.id.includes('mt-p-1') &&
-          videoBlob.size > 4 * 1024 * 1024;
+          asset.id.includes('mt-p-1');
         const shouldLimitHotRecommendVideo =
-          asset.id.includes('mt-ib-1') &&
-          videoBlob.size > 4 * 1024 * 1024;
+          asset.id.includes('mt-ib-1');
         const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
           targetW: params.targetW,
           targetH: params.targetH,
           videoRect: params.videoRect,
           ...(shouldLimitFocalVideo ? { maxSizeMB: 10 } : {}),
-          ...(shouldLimitSplashVideo ? { maxSizeMB: 3 } : {}),
+          ...(shouldLimitSplashVideo ? { maxSizeMB: 4 } : {}),
           ...(shouldLimitScorePopupVideo ? { maxSizeMB: 4 } : {}),
           ...(shouldLimitHotRecommendVideo ? { maxSizeMB: 4 } : {}),
           ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
