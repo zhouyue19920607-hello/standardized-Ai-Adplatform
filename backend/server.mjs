@@ -5627,6 +5627,137 @@ async function submitImageEditAgentRelayoutTask({
   throw new Error(`改图 Agent 任务超时未完成: ${taskId}`);
 }
 
+const imageEditAgentJobs = new Map();
+
+function cleanupImageEditAgentJobs() {
+  const now = Date.now();
+  const maxAgeMs = 2 * 60 * 60 * 1000;
+  for (const [jobId, job] of imageEditAgentJobs.entries()) {
+    if (now - Number(job.createdAt || now) > maxAgeMs) imageEditAgentJobs.delete(jobId);
+  }
+}
+
+function buildAdaptImageAgentSuccessResponse({ result, finalUrl, width, height, templateName, appName }) {
+  return {
+    ok: true,
+    provider: "meitu-open-platform",
+    endpoint: "/api/aigc/adapt-image-agent",
+    task: "image_edit_agent_all",
+    strategy: "image_edit_agent_relayout",
+    agentMode: result.agentMode || "direct",
+    resultUrl: finalUrl,
+    remoteResultUrl: result.remoteResultUrl,
+    inputImageUrl: result.inputImageUrl,
+    instruction: result.instruction,
+    target: { width, height },
+    template: { name: templateName, app: appName },
+    raw: result.raw
+  };
+}
+
+app.post("/api/aigc/adapt-image-agent/start", async (req, res) => {
+  try {
+    cleanupImageEditAgentJobs();
+    const {
+      imageUrl,
+      targetWidth,
+      targetHeight,
+      templateName,
+      app: appName,
+      userInstruction = ""
+    } = req.body || {};
+    const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+    if (validationError) return res.status(400).json({ ok: false, error: validationError });
+    const width = toPositiveInt(targetWidth);
+    const height = toPositiveInt(targetHeight);
+    if (!width || !height) {
+      return res.status(400).json({ ok: false, error: "targetWidth / targetHeight 必须是正整数" });
+    }
+
+    const jobId = crypto.randomUUID();
+    const config = getAigcConfig();
+    const publicBaseUrl = getRequestPublicBaseUrl(req);
+    imageEditAgentJobs.set(jobId, {
+      status: "processing",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      templateName,
+      appName,
+      target: { width, height }
+    });
+
+    (async () => {
+      try {
+        const sourceMeta = await getImageMetadataForUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
+        const result = await submitImageEditAgentRelayoutTask({
+          imageUrl,
+          targetWidth: width,
+          targetHeight: height,
+          templateName,
+          appName,
+          userInstruction,
+          sourceWidth: sourceMeta.width || width,
+          sourceHeight: sourceMeta.height || height,
+          publicBaseUrl
+        });
+        const finalUrl = result.resultUrl?.startsWith("/static/")
+          ? await ensureFinalAdaptSize(result.resultUrl, width, height)
+          : result.resultUrl;
+        imageEditAgentJobs.set(jobId, {
+          status: "success",
+          createdAt: imageEditAgentJobs.get(jobId)?.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          response: buildAdaptImageAgentSuccessResponse({
+            result,
+            finalUrl,
+            width,
+            height,
+            templateName,
+            appName
+          })
+        });
+      } catch (err) {
+        console.error("[AIGC Image Edit Agent Job] failed:", err.message);
+        imageEditAgentJobs.set(jobId, {
+          status: "failed",
+          createdAt: imageEditAgentJobs.get(jobId)?.createdAt || Date.now(),
+          updatedAt: Date.now(),
+          error: "改图 Agent 智能排版失败",
+          details: err.message
+        });
+      }
+    })();
+
+    res.status(202).json({ ok: true, jobId, status: "processing" });
+  } catch (err) {
+    console.error("[AIGC Image Edit Agent Job] start failed:", err.message);
+    res.status(500).json({ ok: false, error: "改图 Agent 智能排版启动失败", details: err.message });
+  }
+});
+
+app.get("/api/aigc/adapt-image-agent/status/:jobId", (req, res) => {
+  cleanupImageEditAgentJobs();
+  const job = imageEditAgentJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "任务不存在或已过期" });
+  if (job.status === "success") return res.json(job.response);
+  if (job.status === "failed") {
+    return res.status(500).json({
+      ok: false,
+      error: job.error || "改图 Agent 智能排版失败",
+      details: job.details || ""
+    });
+  }
+  res.json({
+    ok: true,
+    status: "processing",
+    jobId: req.params.jobId,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    target: job.target,
+    template: { name: job.templateName, app: job.appName }
+  });
+});
+
 app.post("/api/aigc/adapt-image-agent", async (req, res) => {
   try {
     const {
@@ -5661,21 +5792,14 @@ app.post("/api/aigc/adapt-image-agent", async (req, res) => {
     const finalUrl = result.resultUrl?.startsWith("/static/")
       ? await ensureFinalAdaptSize(result.resultUrl, width, height)
       : result.resultUrl;
-    res.json({
-      ok: true,
-      provider: "meitu-open-platform",
-      endpoint: "/api/aigc/adapt-image-agent",
-      task: "image_edit_agent_all",
-      strategy: "image_edit_agent_relayout",
-      agentMode: result.agentMode || "direct",
-      resultUrl: finalUrl,
-      remoteResultUrl: result.remoteResultUrl,
-      inputImageUrl: result.inputImageUrl,
-      instruction: result.instruction,
-      target: { width, height },
-      template: { name: templateName, app: appName },
-      raw: result.raw
-    });
+    res.json(buildAdaptImageAgentSuccessResponse({
+      result,
+      finalUrl,
+      width,
+      height,
+      templateName,
+      appName
+    }));
   } catch (err) {
     console.error("[AIGC Image Edit Agent] failed:", err.message);
     res.status(500).json({ ok: false, error: "改图 Agent 智能排版失败", details: err.message });

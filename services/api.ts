@@ -296,11 +296,26 @@ export const adaptImageWithAigc = async (payload: {
     prompt?: string;
     allowRelayout?: boolean;
 }): Promise<AdaptImageWithAigcResponse> => {
-    const response = await api.post<AdaptImageWithAigcResponse>('/aigc/adapt-image-agent', {
+    const startResponse = await api.post<{ ok: boolean; jobId: string; status: string }>('/aigc/adapt-image-agent/start', {
         ...payload,
         userInstruction: payload.prompt
     });
-    return response.data;
+    const jobId = startResponse.data.jobId;
+    if (!jobId) {
+        throw new Error('AI 适配任务启动失败：未返回任务 ID');
+    }
+
+    const startedAt = Date.now();
+    const timeoutMs = 20 * 60 * 1000;
+    const pollIntervalMs = 3000;
+    while (Date.now() - startedAt < timeoutMs) {
+        await new Promise(resolve => window.setTimeout(resolve, pollIntervalMs));
+        const response = await api.get<AdaptImageWithAigcResponse | { ok: boolean; status: string; details?: string }>(`/aigc/adapt-image-agent/status/${jobId}`);
+        if ('resultUrl' in response.data && response.data.resultUrl) {
+            return response.data as AdaptImageWithAigcResponse;
+        }
+    }
+    throw new Error(`AI 适配任务等待超时：${jobId}`);
 };
 
 export const generateVideoWithAigc = async (payload: {
