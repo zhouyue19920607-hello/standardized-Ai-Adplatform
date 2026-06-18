@@ -9,7 +9,7 @@ export async function compressAndCompositeVideo(
 ) {
     const maxSizeBytes = options.maxSizeMB ? options.maxSizeMB * 1024 * 1024 : null;
     const bitrateSteps = maxSizeBytes
-        ? [1500, 1200, 900, 700, 500, 350, 250, 180, 120]
+        ? [null, 1500, 1200, 900, 700, 500, 350, 250, 180, 120]
         : [null];
 
     const encode = (videoBitrateKbps) => new Promise((resolve, reject) => {
@@ -90,11 +90,11 @@ export async function compressAndCompositeVideo(
 
         const stats = await fs.stat(outputPath);
         if (stats.size <= maxSizeBytes) {
-            console.log(`[VideoComposite] Compressed under ${options.maxSizeMB}MB at ${bitrate}k: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+            console.log(`[VideoComposite] Output under ${options.maxSizeMB}MB${bitrate ? ` at ${bitrate}k` : " with high-quality encode"}: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
             return;
         }
 
-        console.log(`[VideoComposite] Output ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds ${options.maxSizeMB}MB at ${bitrate}k, retrying...`);
+        console.log(`[VideoComposite] Output ${(stats.size / 1024 / 1024).toFixed(2)}MB exceeds ${options.maxSizeMB}MB${bitrate ? ` at ${bitrate}k` : " with high-quality encode"}, retrying...`);
     }
 
     const finalStats = await fs.stat(outputPath);

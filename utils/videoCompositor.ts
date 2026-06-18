@@ -84,10 +84,11 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
     bgCanvas.width = fgCanvas.width = targetW;
     bgCanvas.height = fgCanvas.height = targetH;
     
+    const showCrop = Boolean(config.showCrop);
     const loadList: Promise<HTMLImageElement | null>[] = [
         asset.maskUrl ? loadImg(`${ASSETS_URL}${asset.maskUrl}`) : Promise.resolve(null),
         asset.badgeOverlayUrl ? loadImg(`${ASSETS_URL}${asset.badgeOverlayUrl}`) : Promise.resolve(null),
-        asset.cropOverlayUrl ? loadImg(`${ASSETS_URL}${asset.cropOverlayUrl}`) : Promise.resolve(null)
+        showCrop && asset.cropOverlayUrl ? loadImg(`${ASSETS_URL}${asset.cropOverlayUrl}`) : Promise.resolve(null)
     ];
 
     if (asset.category === '焦点视窗') {

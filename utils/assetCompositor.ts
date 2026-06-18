@@ -90,6 +90,13 @@ const drawImageRounded = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, 
     ctx.restore();
 };
 
+const getImageTargetSizeBytes = (asset: AdAsset): number => {
+    if (asset.category === '开屏') return 300 * 1024;
+    if (asset.category === '焦点视窗' && asset.app === '美图秀秀') return 250 * 1024;
+    if (asset.category === '焦点视窗') return 250 * 1024;
+    return 500 * 1024;
+};
+
 /**
  * Intelligent asset compositor that replicates the PreviewGrid download logic.
  * Returns a Blob (JPEG/MP4) of the composited result.
@@ -132,13 +139,22 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     // DEBUG: 打印关键变量帮助排查
     console.log(`[Compositor] id=${asset.id} category=${asset.category} isPopup=${isPopup} isScorePopup=${isScorePopup} showMask=${showMask} needsComposite=${needsComposite} maskUrl=${asset.maskUrl} url.slice0-20=${asset.url?.slice(0, 20)}`);
 
-    // NOTE: 开屏/焦点视窗静态图即使没有蒙版也要走 compositor，以确保下载体积压到 200KB 内。
+    // NOTE: 开屏/焦点视窗静态图需要控制导出体积；若原图已达标且没有叠层，则直接下载原图，不再压缩。
     const shouldForceSizeLimit = asset.category === '开屏' || asset.category === '焦点视窗';
     // NOTE: mt-ib-1 always goes through compositor to guarantee 720×960 canvas output
     if (!needsComposite && !isMts1 && !isHotRecommend && !shouldForceSizeLimit) {
         console.log('[Compositor] EARLY RETURN - fetching asset.url directly');
         const resp = await fetch(asset.url);
         return await resp.blob();
+    }
+    if (!needsComposite && !isMts1 && !isHotRecommend && shouldForceSizeLimit) {
+        const resp = await fetch(asset.url);
+        const blob = await resp.blob();
+        const targetSizeBytes = getImageTargetSizeBytes(asset);
+        if (blob.size <= targetSizeBytes) {
+            console.log(`[Compositor] EARLY RETURN - original ${asset.category} image under ${(targetSizeBytes / 1024).toFixed(0)}KB`);
+            return blob;
+        }
     }
 
     const categoryRequiresJpeg = isMts1 || asset.category === '开屏' || asset.category === '焦点视窗';
@@ -588,8 +604,8 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         ctx.drawImage(img, 0, 0);
     }
 
-    // 动态调整目标大小，开屏和焦点视窗限定 200KB，其他可稍微放宽或默认 500KB，但这里先强制全局或针对性设置
-    const targetSizeBytes = (asset.category === '开屏' || asset.category === '焦点视窗') ? 200 * 1024 : 500 * 1024;
+    // 动态调整目标大小：开屏 300KB；焦点视窗 250KB；其他 500KB。
+    const targetSizeBytes = getImageTargetSizeBytes(asset);
     return new Promise((resolve, reject) => {
         let quality = 0.9;
 
