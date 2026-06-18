@@ -4658,33 +4658,91 @@ async function composeLayeredRelayoutForAdapt(backgroundUrl, foregroundUrl, targ
   return `/static/${outputFilename}`;
 }
 
-async function assertCleanRelayoutBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context) {
+function expandBoxForCleanup(box, width, height, paddingRatio = 0.025) {
+  const safe = clampBoxToImage(box, width, height);
+  if (!safe) return null;
+  const padding = Math.max(width, height) * paddingRatio;
+  return clampBoxToImage({
+    x: safe.x - padding,
+    y: safe.y - padding,
+    width: safe.width + padding * 2,
+    height: safe.height + padding * 2
+  }, width, height);
+}
+
+async function createCleanupMaskFromBoxesForAdapt(boxes, width, height) {
+  const validBoxes = (boxes || [])
+    .map(box => expandBoxForCleanup(box, width, height))
+    .filter(Boolean);
+  if (!validBoxes.length) return "";
+  const svgRects = validBoxes.map(box => (
+    `<rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="${Math.max(2, Math.min(box.width, box.height) * 0.08).toFixed(2)}" fill="white"/>`
+  )).join("");
+  const svg = Buffer.from(`<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="black"/>${svgRects}</svg>`);
+  await ensureDir(STORAGE_DIR);
+  const filename = `relayout_cleanup_mask_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputPath = path.join(STORAGE_DIR, filename);
+  await sharp(svg).png().toFile(outputPath);
+  return `/static/${filename}`;
+}
+
+function filterCleanupBoxesOutsideSubject(boxes = [], subjectBox = null, width = 0, height = 0) {
+  const subject = subjectBox ? clampBoxToImage(denormalizeBox(subjectBox, width, height), width, height) : null;
+  return boxes.filter(box => {
+    const safeBox = clampBoxToImage(box, width, height);
+    if (!safeBox) return false;
+    if (!subject) return true;
+    return boxIntersectionCoverage(safeBox, subject) < 0.28;
+  });
+}
+
+async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context, analysis, maxPasses = 2) {
   const qaContext = { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight };
-  const issues = [];
-  try {
-    const bgText = await detectTextForAdapt(backgroundUrl, qaContext);
-    const texts = (bgText.texts || []).filter(Boolean);
-    const textBoxCount = Array.isArray(bgText.boxes) ? bgText.boxes.length : 0;
-    if (texts.length || textBoxCount) {
-      issues.push(`background still contains text/text-like regions: texts=${texts.slice(0, 3).join("|") || "-"}, boxes=${textBoxCount}`);
+  let workingUrl = backgroundUrl;
+  const passes = [];
+  for (let pass = 1; pass <= maxPasses; pass += 1) {
+    const cleanupBoxes = [];
+    const details = { pass, textBoxes: 0, logoBoxes: 0, cleaned: false };
+    try {
+      const bgText = await detectTextForAdapt(workingUrl, qaContext);
+      const textBoxes = filterCleanupBoxesOutsideSubject(bgText.boxes || [], analysis.subject?.box, targetWidth, targetHeight);
+      cleanupBoxes.push(...textBoxes);
+      details.textBoxes = textBoxes.length;
+      details.texts = (bgText.texts || []).filter(Boolean).slice(0, 3);
+    } catch (err) {
+      console.warn("[AdaptImage] background text cleanup detection skipped:", err.message);
     }
-  } catch (err) {
-    console.warn("[AdaptImage] background text cleanliness check skipped:", err.message);
-  }
-  try {
-    const bgLogo = await detectLogoForAdapt(backgroundUrl, qaContext);
-    const logoBoxCount = Array.isArray(bgLogo.boxes) ? bgLogo.boxes.length : 0;
-    if (bgLogo.hasTarget || logoBoxCount) {
-      issues.push(`background still contains logo/logo-like regions: boxes=${logoBoxCount}`);
+    try {
+      const bgLogo = await detectLogoForAdapt(workingUrl, qaContext);
+      const logoBoxes = filterCleanupBoxesOutsideSubject(bgLogo.boxes || [], analysis.subject?.box, targetWidth, targetHeight);
+      cleanupBoxes.push(...logoBoxes);
+      details.logoBoxes = logoBoxes.length;
+    } catch (err) {
+      console.warn("[AdaptImage] background logo cleanup detection skipped:", err.message);
     }
-  } catch (err) {
-    console.warn("[AdaptImage] background logo cleanliness check skipped:", err.message);
+    if (!cleanupBoxes.length) {
+      passes.push(details);
+      return { url: workingUrl, passes, cleaned: passes.some(item => item.cleaned) };
+    }
+    const maskUrl = await createCleanupMaskFromBoxesForAdapt(cleanupBoxes, targetWidth, targetHeight);
+    if (!maskUrl) {
+      passes.push(details);
+      break;
+    }
+    const cleanedUrl = await inpaintImageForAdapt(
+      workingUrl,
+      maskUrl,
+      context,
+      "remove generated text, generated logo, fake letters and brand-like artifacts only; fill the removed area with seamless clean background matching nearby color, texture, light and perspective"
+    );
+    details.cleaned = Boolean(cleanedUrl);
+    details.maskUrl = maskUrl;
+    details.resultUrl = cleanedUrl || workingUrl;
+    passes.push(details);
+    if (!cleanedUrl) break;
+    workingUrl = cleanedUrl;
   }
-  if (issues.length) {
-    const error = new Error(`background text/logo cleanup failed: ${issues.join("; ")}`);
-    error.stage = "relayout-background-cleanliness";
-    throw error;
-  }
+  return { url: workingUrl, passes, cleaned: passes.some(item => item.cleaned) };
 }
 
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, prompt = "") {
@@ -4715,7 +4773,14 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       source: cleanBackgroundUrl,
       result: backgroundUrl
     }));
-    await assertCleanRelayoutBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context);
+    const cleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context, analysis, 2);
+    backgroundUrl = cleanup.url || backgroundUrl;
+    context.relayoutBackgroundCleanup = cleanup;
+    console.log("[AdaptImage] relayout background cleanup", JSON.stringify({
+      cleaned: cleanup.cleaned,
+      result: backgroundUrl,
+      passes: cleanup.passes
+    }));
   } catch (err) {
     console.warn("[AdaptImage] relayout background extension failed:", err.message);
     throw new Error(`background extension failed: ${err.message}`);
@@ -6012,6 +6077,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         layout: context.layeredRelayout.layout,
         layers: context.layeredRelayout.layers
       } : null,
+      relayoutBackgroundCleanup: context.relayoutBackgroundCleanup || null,
       fallbackWarnings: context.fallbackWarnings || [],
       qa,
       limitations: [
