@@ -888,7 +888,8 @@ function getAigcConfig() {
     publicBaseUrl: (process.env.AIGC_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
     hostHeader: process.env.AIGC_HOST_HEADER || "",
     maxPolls: Math.max(1, Number(process.env.AIGC_MAX_POLLS || 360)),
-    pollIntervalMs: Math.max(500, Number(process.env.AIGC_POLL_INTERVAL_MS || 2000))
+    pollIntervalMs: Math.max(500, Number(process.env.AIGC_POLL_INTERVAL_MS || 2000)),
+    layeredRelayoutMode: String(process.env.AIGC_LAYERED_RELAYOUT_MODE || "preserve").toLowerCase()
   };
 }
 
@@ -3657,10 +3658,10 @@ function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight)
       ? ["resize"]
       : strategy === "crop"
         ? ["detect", "merge_masks", "ai_crop", "qa"]
-        : ["detect", "merge_masks", "inpaint_copy", "expand", "ai_crop", "qa"],
+        : ["detect", "merge_masks", "preserve_expand", "protected_crop", "qa"],
     reasons: [
       exactSize ? "源图尺寸与目标尺寸一致" : `比例差异 ${(ratioDelta * 100).toFixed(1)}%`,
-      strategy === "relayout" ? "比例跨度较大，MVP 使用增强扩图降级处理，尚未做完整分层重排" : ""
+      strategy === "relayout" ? "比例跨度较大，优先保留原 Logo/文案完整，再做背景延展和保护裁剪" : ""
     ].filter(Boolean)
   };
 }
@@ -4004,22 +4005,139 @@ async function maskIouFromUrls(beforeMaskUrl, afterMaskUrl, width, height, thres
   return union ? (intersection / union) : null;
 }
 
-async function cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context) {
+function protectedBoxesForAdapt(analysis, width, height) {
+  return [
+    analysis?.subject?.box,
+    ...(analysis?.logo?.boxes || []),
+    ...(analysis?.text?.boxes || [])
+  ]
+    .map(box => clampBoxToImage(denormalizeBox(box, width, height), width, height))
+    .filter(Boolean);
+}
+
+function unionAbsoluteBoxesNoPaddingForAdapt(boxes = [], width, height) {
+  const valid = boxes.map(box => clampBoxToImage(box, width, height)).filter(Boolean);
+  if (!valid.length) return null;
+  const minX = Math.min(...valid.map(box => box.x));
+  const minY = Math.min(...valid.map(box => box.y));
+  const maxX = Math.max(...valid.map(box => box.x + box.width));
+  const maxY = Math.max(...valid.map(box => box.y + box.height));
+  return clampBoxToImage({ x: minX, y: minY, width: maxX - minX, height: maxY - minY }, width, height);
+}
+
+async function cropImageToTargetProtectingBoxesForAdapt(imageUrl, targetWidth, targetHeight, boxes = [], options = {}) {
+  const sourcePath = imageUrl.startsWith("/static/") ? staticUrlToLocalPath(imageUrl) : null;
+  if (!sourcePath) return resizeStaticImageToTarget(imageUrl, targetWidth, targetHeight, options);
+  await fs.access(sourcePath);
+  const meta = await sharp(sourcePath).metadata();
+  const sourceWidth = meta.width || targetWidth;
+  const sourceHeight = meta.height || targetHeight;
+  const targetAspect = targetWidth / Math.max(1, targetHeight);
+  const sourceAspect = sourceWidth / Math.max(1, sourceHeight);
+  const safeBoxes = boxes.map(box => clampBoxToImage(box, sourceWidth, sourceHeight)).filter(Boolean);
+  const union = unionAbsoluteBoxesNoPaddingForAdapt(safeBoxes, sourceWidth, sourceHeight);
+  const padding = Math.max(sourceWidth, sourceHeight) * 0.04;
+  let cropWidth = sourceWidth;
+  let cropHeight = sourceHeight;
+  let left = 0;
+  let top = 0;
+
+  if (sourceAspect > targetAspect) {
+    cropHeight = sourceHeight;
+    cropWidth = Math.min(sourceWidth, Math.round(sourceHeight * targetAspect));
+    const centerX = union ? union.x + union.width / 2 : sourceWidth / 2;
+    left = centerX - cropWidth / 2;
+    if (union && cropWidth >= union.width + padding * 2) {
+      left = Math.min(left, union.x - padding);
+      left = Math.max(left, union.x + union.width + padding - cropWidth);
+    }
+    left = clampNumber(left, 0, sourceWidth - cropWidth);
+  } else if (sourceAspect < targetAspect) {
+    cropWidth = sourceWidth;
+    cropHeight = Math.min(sourceHeight, Math.round(sourceWidth / targetAspect));
+    const centerY = union ? union.y + union.height / 2 : sourceHeight / 2;
+    top = centerY - cropHeight / 2;
+    if (union && cropHeight >= union.height + padding * 2) {
+      top = Math.min(top, union.y - padding);
+      top = Math.max(top, union.y + union.height + padding - cropHeight);
+    }
+    top = clampNumber(top, 0, sourceHeight - cropHeight);
+  }
+
+  await ensureDir(STORAGE_DIR);
+  const outputFilename = `aigc_protected_crop_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, outputFilename);
+  await sharp(sourcePath)
+    .rotate()
+    .extract({
+      left: Math.round(left),
+      top: Math.round(top),
+      width: Math.max(1, Math.round(cropWidth)),
+      height: Math.max(1, Math.round(cropHeight))
+    })
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: Number(options.quality) || 90, mozjpeg: true })
+    .toFile(outputPath);
+  return `/static/${outputFilename}`;
+}
+
+async function validateCriticalContentForAdapt(resultUrl, analysis, targetWidth, targetHeight, context) {
+  const issues = [];
+  if ((analysis?.text?.texts || []).length > 0) {
+    try {
+      const afterText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+      const recall = textRecall(analysis.text.texts, afterText.texts || []);
+      if (recall < 0.8) issues.push(`text recall ${(recall * 100).toFixed(1)}% below 80%`);
+    } catch (err) {
+      issues.push(`text check unavailable: ${err.message}`);
+    }
+  }
+  if ((analysis?.logo?.boxes || []).length > 0 || analysis?.logo?.hasTarget) {
+    try {
+      const afterLogo = await detectLogoForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+      if (!afterLogo?.hasTarget && !(afterLogo?.boxes || []).length) issues.push("logo not detected after crop");
+    } catch (err) {
+      issues.push(`logo check unavailable: ${err.message}`);
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+async function cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context, analysis = null) {
   try {
     const cropped = await suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, context);
-    if (cropped.resultUrl) return cropped.resultUrl;
+    if (cropped.resultUrl) {
+      const validation = await validateCriticalContentForAdapt(cropped.resultUrl, analysis, targetWidth, targetHeight, context);
+      if (validation.ok) return cropped.resultUrl;
+      context.fallbackWarnings = context.fallbackWarnings || [];
+      context.fallbackWarnings.push(`AI crop rejected to preserve logo/text: ${validation.issues.join("; ")}`);
+      console.warn("[AdaptImage] AI cropping rejected", JSON.stringify({ issues: validation.issues }));
+    }
   } catch (err) {
     console.warn("[AdaptImage] AI cropping skipped:", err.message);
   }
-  return cropImageToTargetForAdapt(imageUrl, targetWidth, targetHeight, { quality: 88 });
+  const sourceWidth = context.sourceWidth || targetWidth;
+  const sourceHeight = context.sourceHeight || targetHeight;
+  const boxes = protectedBoxesForAdapt(analysis, sourceWidth, sourceHeight);
+  return cropImageToTargetProtectingBoxesForAdapt(imageUrl, targetWidth, targetHeight, boxes, { quality: 90 });
 }
 
-async function ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight) {
+async function ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight, context = null, analysis = null) {
   if (!resultUrl?.startsWith("/static/")) return resultUrl;
   const localPath = staticUrlToLocalPath(resultUrl);
   const meta = await sharp(localPath).metadata();
   if (meta.width === targetWidth && meta.height === targetHeight) {
     return resultUrl;
+  }
+  if (context && analysis) {
+    const boxes = protectedBoxesForAdapt(analysis, meta.width || targetWidth, meta.height || targetHeight);
+    return cropImageToTargetProtectingBoxesForAdapt(resultUrl, targetWidth, targetHeight, boxes, { quality: 90 });
   }
   return cropImageToTargetForAdapt(resultUrl, targetWidth, targetHeight, { quality: 88 });
 }
@@ -5419,12 +5537,12 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   }));
   if (plan.strategy === "direct") {
     console.log("[AdaptImage] execute direct");
-    return ensureFinalAdaptSize(imageUrl, targetWidth, targetHeight);
+    return ensureFinalAdaptSize(imageUrl, targetWidth, targetHeight, context, analysis);
   }
   if (plan.strategy === "crop") {
     console.log("[AdaptImage] execute crop");
-    const croppedUrl = await cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context);
-    return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight);
+    const croppedUrl = await cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context, analysis);
+    return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight, context, analysis);
   }
 
   const legacyEnhancedPromptParts = [
@@ -5438,13 +5556,14 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   const enhancedPrompt = [
     AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
     plan.strategy === "relayout"
-      ? "For large ratio changes, prefer empty background extension and leave composition to the protected foreground/layout pipeline. Do not invent new advertising elements."
-      : "For moderate ratio changes, keep the original content intact and only fill missing background area. Do not redesign the poster.",
+      ? "For large ratio changes, preserve the original logo and all readable text exactly. Keep every brand mark, slogan, button copy, and title visible and uncropped. Extend the background and improve composition without deleting or rewriting text."
+      : "For moderate ratio changes, keep the original logo and text intact and only fill missing background area. Do not redesign the poster.",
     prompt || ""
   ].filter(Boolean).join(" ");
   let workingUrl = imageUrl;
 
-  if (plan.strategy === "relayout") {
+  const layeredRelayoutEnabled = context.config?.layeredRelayoutMode === "layered";
+  if (plan.strategy === "relayout" && layeredRelayoutEnabled) {
     try {
       const layered = await executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, enhancedPrompt);
       context.layeredRelayout = layered;
@@ -5469,17 +5588,32 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       strictError.endpoint = err.endpoint;
       throw strictError;
     }
+  } else if (plan.strategy === "relayout") {
+    context.layeredRelayout = {
+      failed: false,
+      status: "preserve_expand_crop",
+      layout: { mode: "preserve-logo-text-expand-crop" },
+      layers: { mode: "preserve-original-logo-text" },
+      diagnostics: {
+        reason: "layered text/logo relocation disabled by default to prevent missing logo/copy",
+        enableWith: "AIGC_LAYERED_RELAYOUT_MODE=layered"
+      }
+    };
   }
 
-  workingUrl = await inpaintForBackgroundPrep(workingUrl, masks, context);
+  context.backgroundPrep = {
+    skipped: true,
+    reason: "preserve original logo and copy; do not inpaint text/logo before extension"
+  };
+  console.log("[AdaptImage] Step3 inpaint skipped", JSON.stringify(context.backgroundPrep));
 
   const expandedUrl = await expandImageV4ForAdapt(workingUrl, targetWidth, targetHeight, context, enhancedPrompt);
   console.log("[AdaptImage] Step4 expand done", JSON.stringify({ before: workingUrl, after: expandedUrl || workingUrl }));
   workingUrl = expandedUrl || workingUrl;
 
-  workingUrl = await cropWithFallbackForAdapt(workingUrl, targetWidth, targetHeight, context);
+  workingUrl = await cropWithFallbackForAdapt(workingUrl, targetWidth, targetHeight, context, analysis);
   console.log("[AdaptImage] Step5 crop done", JSON.stringify({ resultUrl: workingUrl }));
-  return ensureFinalAdaptSize(workingUrl, targetWidth, targetHeight);
+  return ensureFinalAdaptSize(workingUrl, targetWidth, targetHeight, context, analysis);
 }
 
 let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidth, targetHeight, sourceWidth, sourceHeight, context, originalImageUrl, masks) {
@@ -6325,7 +6459,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
     }
     const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
-    const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height);
+    const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height, context, analysis);
     const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
     if (context.fallbackWarnings?.length) {
       qa.warnings = [...(qa.warnings || []), ...context.fallbackWarnings];
@@ -6381,13 +6515,14 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         layers: context.layeredRelayout.layers
       } : null,
       relayoutBackgroundCleanup: context.relayoutBackgroundCleanup || null,
+      backgroundPrep: context.backgroundPrep || null,
       fallbackWarnings: context.fallbackWarnings || [],
       qa,
       limitations: [
         "当前主流程已关闭改图 Agent，使用检测、文字/Logo 分层、主体保护式背景延展和本地合成的可控排版链路。",
-        "relayout 模式不会再把主体物抠出后重新贴回，只抽取原图文字和 Logo 图层进行重排。",
+        "默认 relayout 模式优先保留原图 Logo 和文案，不再先擦除旧位置；分层搬运仅在 AIGC_LAYERED_RELAYOUT_MODE=layered 时启用。",
         "QA 已包含 OCR 字符召回和 Logo 感知哈希相似度，但仍不是专用品牌识别模型。",
-        "如果分层或检测接口权限、响应字段与文档不一致，会停止或降级到背景延展/尺寸合成。"
+        "智能裁剪如果导致 OCR/Logo 复检不通过，会回退到本地保护区裁剪。"
       ]
     });
   } catch (err) {
