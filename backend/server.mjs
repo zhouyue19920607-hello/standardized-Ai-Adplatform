@@ -1950,6 +1950,62 @@ async function imageBufferWithTransparentWhiteBackground(imgBuffer, resizeOption
   return sharp(cleaned, { raw: { width, height, channels } }).png().toBuffer();
 }
 
+async function imageBufferWithSubjectMaskCutout(imgBuffer, maskPath, targetWidth = 450, targetHeight = 450, subjectBox = null) {
+  const sourceMeta = await sharp(imgBuffer).metadata();
+  const sourceWidth = sourceMeta.width || targetWidth;
+  const sourceHeight = sourceMeta.height || targetHeight;
+  const safeBox = clampBoxToImage(subjectBox, sourceWidth, sourceHeight);
+  const padding = Math.max(sourceWidth, sourceHeight) * 0.08;
+  const cropBox = safeBox
+    ? clampBoxToImage({
+        x: safeBox.x - padding,
+        y: safeBox.y - padding,
+        width: safeBox.width + padding * 2,
+        height: safeBox.height + padding * 2
+      }, sourceWidth, sourceHeight)
+    : null;
+  const extract = cropBox
+    ? {
+        left: Math.round(cropBox.x),
+        top: Math.round(cropBox.y),
+        width: Math.max(1, Math.round(cropBox.width)),
+        height: Math.max(1, Math.round(cropBox.height))
+      }
+    : null;
+  const input = sharp(imgBuffer).rotate().ensureAlpha();
+  const mask = sharp(maskPath).rotate().greyscale();
+  const croppedInput = extract ? input.extract(extract) : input;
+  const croppedMask = extract ? mask.extract(extract) : mask;
+  const resizedInput = await croppedInput
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      kernel: sharp.kernel.lanczos3
+    })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const resizedMask = await croppedMask
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0 },
+      kernel: sharp.kernel.lanczos3
+    })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const data = Buffer.from(resizedInput.data);
+  const channels = resizedInput.info.channels;
+  for (let index = 0; index < targetWidth * targetHeight; index += 1) {
+    const alphaOffset = index * channels + 3;
+    const maskAlpha = resizedMask.data[index] || 0;
+    data[alphaOffset] = Math.min(data[alphaOffset], maskAlpha > 18 ? maskAlpha : 0);
+  }
+  return sharp(data, { raw: { width: targetWidth, height: targetHeight, channels } }).png().toBuffer();
+}
+
 async function persistAigcResult(resultUrl, mediaType, options = {}) {
   if (!/^https?:\/\//i.test(resultUrl)) return null;
   const response = await axios.get(resultUrl, {
@@ -5929,7 +5985,7 @@ app.post("/api/aigc/image-to-image", async (req, res) => {
 
 app.post("/api/aigc/image-cutout", async (req, res) => {
   try {
-    const { imageUrl, width, height, fit = "contain" } = req.body || {};
+    const { imageUrl, width, height, fit = "contain", mode = "subject-mask" } = req.body || {};
     const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
     if (validationError) return res.status(400).json({ error: validationError });
 
@@ -5953,7 +6009,37 @@ app.post("/api/aigc/image-cutout", async (req, res) => {
     const resize = targetWidth && targetHeight
       ? { width: targetWidth, height: targetHeight, fit }
       : null;
-    const outputBuffer = await imageBufferWithTransparentWhiteBackground(inputBuffer, resize);
+    let outputBuffer;
+    let method = "local-white-key";
+    let subject = null;
+    if (mode !== "white-key" && targetWidth && targetHeight) {
+      try {
+        const config = getAigcConfig();
+        const publicBaseUrl = getRequestPublicBaseUrl(req);
+        const meta = await sharp(inputBuffer).metadata();
+        subject = await detectSaliencyForAdapt(imageUrl, {
+          config,
+          publicBaseUrl,
+          sourceWidth: meta.width || targetWidth,
+          sourceHeight: meta.height || targetHeight
+        });
+        if (subject?.maskUrl) {
+          outputBuffer = await imageBufferWithSubjectMaskCutout(
+            inputBuffer,
+            staticUrlToLocalPath(subject.maskUrl),
+            targetWidth,
+            targetHeight,
+            subject.box
+          );
+          method = "sod-subject-mask";
+        }
+      } catch (cutoutErr) {
+        console.warn("[AIGC Image Cutout] subject-mask fallback:", cutoutErr.message);
+      }
+    }
+    if (!outputBuffer) {
+      outputBuffer = await imageBufferWithTransparentWhiteBackground(inputBuffer, resize);
+    }
     const metadata = await sharp(outputBuffer).metadata();
     const outputFilename = `image_subject_cutout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
     const outputPath = path.join(STORAGE_DIR, outputFilename);
@@ -5962,12 +6048,17 @@ app.post("/api/aigc/image-cutout", async (req, res) => {
     res.json({
       ok: true,
       provider: "local-transparent-cutout",
-      method: "local-white-key",
+      method,
       resultUrl: `/static/${outputFilename}`,
       url: `/static/${outputFilename}`,
       mediaType: "image",
       width: metadata.width,
-      height: metadata.height
+      height: metadata.height,
+      subject: subject ? {
+        exists: subject.exists,
+        box: subject.box,
+        maskUrl: subject.maskUrl
+      } : null
     });
   } catch (err) {
     console.error("[AIGC Image Cutout] failed:", err.message);

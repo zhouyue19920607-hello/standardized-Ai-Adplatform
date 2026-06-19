@@ -1349,25 +1349,15 @@ const ConfigWorkspace: React.FC = () => {
             setAiGeneratingKey('cutout-pendant-upload');
 
             const uploaded = await uploadRawAsset(file);
-            let result;
-            let methodLabel = '美图图生图';
-            try {
-                result = await editImageWithAigc({
-                    imageUrl: uploaded.url,
-                    prompt: '保留上传图片的主体物，去除背景，输出单个居中的透明底 PNG 挂件素材。主体边缘干净完整，不要添加文字、水印、边框或额外装饰，适合 450x450 App 开屏挂件。',
-                    ratio: '1:1',
-                    transparentWhite: true,
-                });
-            } catch (aiErr) {
-                console.warn('上传挂件 AI 抠图失败，降级本地白底透明化', aiErr);
-                methodLabel = '本地白底透明化';
-                result = await cutoutImageWithAigc({
-                    imageUrl: uploaded.url,
-                    width: PENDANT_SIZE,
-                    height: PENDANT_SIZE,
-                    fit: 'contain',
-                });
-                setError(aiErr instanceof Error ? `AI 主体抠图暂不可用，已先用本地白底透明化处理。原因：${aiErr.message}` : 'AI 主体抠图暂不可用，已先用本地白底透明化处理');
+            const result = await cutoutImageWithAigc({
+                imageUrl: uploaded.url,
+                width: PENDANT_SIZE,
+                height: PENDANT_SIZE,
+                fit: 'contain',
+            });
+            const methodLabel = result.method === 'sod-subject-mask' ? '主体抠图' : '本地白底透明化';
+            if (result.method !== 'sod-subject-mask') {
+                setError('主体抠图不可用，已降级为本地白底透明化；如原图不是白底，背景可能无法完全去除。');
             }
             const nextFile = await fileFromGeneratedUrl(
                 result.resultUrl,
@@ -1381,7 +1371,7 @@ const ConfigWorkspace: React.FC = () => {
                 url: nextUrl,
                 status: 'valid',
                 message: `${methodLabel}已生成透明 PNG 450 x 450，符合 MR 标准`,
-                whiteRemovalMode: methodLabel === '美图图生图' ? 'provider-cutout' : 'local-key',
+                whiteRemovalMode: result.method === 'sod-subject-mask' ? 'provider-cutout' : 'local-key',
             });
         } catch (err) {
             setAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '图片读取失败' });
