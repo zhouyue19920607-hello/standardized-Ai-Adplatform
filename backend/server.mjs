@@ -4539,6 +4539,69 @@ function buildInfoGroupZonesForAdapt(zones = [], width, height) {
   return groups;
 }
 
+function summarizeRelayoutBoxForAdapt(box, width, height) {
+  const safe = clampBoxToImage(box, width, height);
+  if (!safe) return null;
+  return {
+    x: Math.round(safe.x),
+    y: Math.round(safe.y),
+    width: Math.round(safe.width),
+    height: Math.round(safe.height),
+    areaRatio: Number(((safe.width * safe.height) / Math.max(1, width * height)).toFixed(4))
+  };
+}
+
+function summarizeRelayoutZoneForAdapt(zone, width, height) {
+  if (!zone) return null;
+  return {
+    id: zone.id,
+    type: zone.type,
+    source: zone.source,
+    text: zone.text || "",
+    box: summarizeRelayoutBoxForAdapt(zone.box, width, height),
+    memberCount: zone.members?.length || 0,
+    members: (zone.members || []).map(member => ({
+      id: member.id,
+      type: member.type,
+      source: member.source,
+      box: summarizeRelayoutBoxForAdapt(member.box, width, height)
+    }))
+  };
+}
+
+function buildRelayoutDiagnosticsForAdapt({
+  zones = [],
+  selectedZones = [],
+  skippedZones = [],
+  layerErrors = [],
+  multiLayerItems = [],
+  designAnalysis = null,
+  width = 0,
+  height = 0
+} = {}) {
+  const infoGroups = zones.filter(zone => zone.type === "info");
+  return {
+    designLayerCount: designAnalysis?.layers?.length || 0,
+    designWarnings: designAnalysis?.warnings || [],
+    zoneCounts: zones.reduce((acc, zone) => {
+      acc[zone.type] = (acc[zone.type] || 0) + 1;
+      return acc;
+    }, {}),
+    infoGroups: infoGroups.map(zone => summarizeRelayoutZoneForAdapt(zone, width, height)),
+    selectedZones: selectedZones.map(zone => summarizeRelayoutZoneForAdapt(zone, width, height)),
+    skippedZones,
+    layerErrors,
+    compositedItems: multiLayerItems.map(item => ({
+      id: item.id,
+      type: item.type,
+      source: item.source,
+      memberCount: item.members?.length || 0,
+      box: summarizeRelayoutBoxForAdapt(item.box, width, height),
+      layout: item.layout
+    }))
+  };
+}
+
 async function trimForegroundLayerForAdapt(foregroundUrl) {
   if (!foregroundUrl?.startsWith("/static/")) return { url: foregroundUrl, meta: null };
   const sourcePath = staticUrlToLocalPath(foregroundUrl);
@@ -5000,11 +5063,15 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   const primarySubjectZone = zones.find(zone => zone.type === "subject");
   const selectedZones = [];
   const selectedCounts = {};
+  const skippedZones = [];
+  const layerErrors = [];
   for (const zone of zones) {
     if (zone.type === "subject") {
+      skippedZones.push({ id: zone.id, type: zone.type, reason: "subject is preserved by background pipeline" });
       continue;
     }
     if (selectedZones.some(item => item.type === "info") && (zone.type === "logo" || zone.type === "text")) {
+      skippedZones.push({ id: zone.id, type: zone.type, reason: "covered by selected info group" });
       continue;
     }
     if (
@@ -5019,11 +5086,20 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
         source: zone.source,
         overlapWithSubject: Number(boxIntersectionCoverage(zone.box, primarySubjectZone.box).toFixed(3))
       }));
+      skippedZones.push({
+        id: zone.id,
+        type: zone.type,
+        reason: "overlaps primary subject in portrait-to-landscape relayout",
+        overlapWithSubject: Number(boxIntersectionCoverage(zone.box, primarySubjectZone.box).toFixed(3))
+      });
       continue;
     }
     selectedCounts[zone.type] = selectedCounts[zone.type] || 0;
     const limit = zone.type === "text" ? 2 : zone.type === "info" ? 2 : 1;
-    if (selectedCounts[zone.type] >= limit) continue;
+    if (selectedCounts[zone.type] >= limit) {
+      skippedZones.push({ id: zone.id, type: zone.type, reason: `type limit reached: ${limit}` });
+      continue;
+    }
     selectedZones.push(zone);
     selectedCounts[zone.type] += 1;
   }
@@ -5060,6 +5136,12 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
         height: meta.height || 0
       });
     } catch (err) {
+      layerErrors.push({
+        id: zone.id,
+        type: zone.type,
+        source: zone.source,
+        message: err.message
+      });
       console.warn("[AdaptImage] zone layer split skipped", JSON.stringify({
         id: zone.id,
         type: zone.type,
@@ -5067,6 +5149,16 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       }));
     }
   }
+  const diagnostics = buildRelayoutDiagnosticsForAdapt({
+    zones,
+    selectedZones,
+    skippedZones,
+    layerErrors,
+    multiLayerItems,
+    designAnalysis,
+    width: context.sourceWidth,
+    height: context.sourceHeight
+  });
   const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text" || item.type === "info");
   if (multiLayerItems.length >= 1 && hasIndependentInfoLayer) {
     const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
@@ -5075,6 +5167,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       layerBox,
       layout: { mode: "text-logo-zones-v1", itemCount: multiLayerItems.length },
       zones,
+      diagnostics,
       designAnalysis: {
         layerCount: designAnalysis.layers?.length || 0,
         warnings: designAnalysis.warnings || []
@@ -5101,7 +5194,9 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       }
     };
   }
-  throw new Error(`text/logo relayout produced no compositable layers, zones=${selectedZones.length}`);
+  const error = new Error(`text/logo relayout produced no compositable layers, selectedZones=${selectedZones.length}, layerErrors=${layerErrors.length}`);
+  error.diagnostics = diagnostics;
+  throw error;
 }
 
 async function buildProtectedMaskFallback() {
@@ -5365,7 +5460,8 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         error: err.message,
         status: isProviderPermissionException(err) ? "permission_denied" : "failed",
         endpoint: err.endpoint,
-        stage: err.stage
+        stage: err.stage,
+        diagnostics: err.diagnostics
       };
       console.warn("[AdaptImage] layered relayout failed:", err.message);
       const strictError = new Error(`真正智能排版失败，已停止生成：${err.message}`);
@@ -6281,6 +6377,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         endpoint: context.layeredRelayout.endpoint,
         layerBox: context.layeredRelayout.layerBox,
         layout: context.layeredRelayout.layout,
+        diagnostics: context.layeredRelayout.diagnostics,
         layers: context.layeredRelayout.layers
       } : null,
       relayoutBackgroundCleanup: context.relayoutBackgroundCleanup || null,
