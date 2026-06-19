@@ -2921,6 +2921,24 @@ const ConfigWorkspace: React.FC = () => {
         return url;
     };
 
+    const cutoutPendantGeneratedImage = async (imageUrl: string, filename: string) => {
+        const result = await cutoutImageWithAigc({
+            imageUrl,
+            width: PENDANT_SIZE,
+            height: PENDANT_SIZE,
+            fit: 'contain',
+        });
+        if (result.method !== 'sod-subject-mask') {
+            setError('主体抠图不可用，已降级为本地白底透明化；如边缘不干净，请换一张主体更清晰、背景更简单的参考图。');
+        }
+        const file = await fileFromGeneratedUrl(result.resultUrl, filename, 'image/png');
+        return {
+            file,
+            url: result.resultUrl,
+            method: result.method,
+        };
+    };
+
     const generatePromptAsset = async () => {
         const generationKey = 'pendant-text';
         const text = prompt.trim() || '炫动开屏素材';
@@ -2943,21 +2961,22 @@ const ConfigWorkspace: React.FC = () => {
                     imageUrl: referenceUpload.url,
                     prompt: promptText,
                     ratio: '1:1',
-                    transparentWhite: true,
+                    transparentWhite: false,
                 })
                 : await generateImageWithAigc({
                     prompt: promptText,
                     ratio: '1:1',
-                    transparentWhite: true,
+                    transparentWhite: false,
                 });
-            const file = await fileFromGeneratedUrl(result.resultUrl, 'ai-pendant-asset.png', 'image/png');
+            const cutout = await cutoutPendantGeneratedImage(result.resultUrl, 'ai-pendant-asset.png');
             setAsset({
-                file,
-                url: result.resultUrl,
+                file: cutout.file,
+                url: cutout.url,
                 status: 'valid',
-                message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成透明 PNG 挂件素材`,
+                message: `${referenceUpload ? '美图图生图' : '美图文生图'}已生成并主体抠图为 450 x 450 透明 PNG`,
+                whiteRemovalMode: cutout.method === 'sod-subject-mask' ? 'provider-cutout' : 'local-key',
             });
-            return result.resultUrl;
+            return cutout.url;
         } catch (err) {
             console.warn('炫动开屏 AI 生成失败，降级本地素材', err);
             const fallbackUrl = await generateLocalPromptAsset(text);
@@ -3019,19 +3038,20 @@ const ConfigWorkspace: React.FC = () => {
                 imageUrl: uploaded.url,
                 prompt: `${text}，参考图主体改造成 450x450 App 开屏挂件素材，透明背景，主体边缘干净，主体清晰，高级商业视觉，不要文字`,
                 ratio: '1:1',
-                transparentWhite: true,
+                transparentWhite: false,
             });
-            const file = await fileFromGeneratedUrl(result.resultUrl, 'image-to-pendant-asset.png', 'image/png');
+            const cutout = await cutoutPendantGeneratedImage(result.resultUrl, 'image-to-pendant-asset.png');
             setAsset((current) => {
                 if (current.url) URL.revokeObjectURL(current.url);
                 return {
-                    file,
-                    url: result.resultUrl,
+                    file: cutout.file,
+                    url: cutout.url,
                     status: 'valid',
-                    message: '美图图生图已生成透明 PNG 挂件素材',
+                    message: '美图图生图已生成并主体抠图为 450 x 450 透明 PNG',
+                    whiteRemovalMode: cutout.method === 'sod-subject-mask' ? 'provider-cutout' : 'local-key',
                 };
             });
-            return result.resultUrl;
+            return cutout.url;
         } catch (err) {
             setAsset((current) => ({
                 ...current,
