@@ -1349,12 +1349,26 @@ const ConfigWorkspace: React.FC = () => {
             setAiGeneratingKey('cutout-pendant-upload');
 
             const uploaded = await uploadRawAsset(file);
-            const result = await cutoutImageWithAigc({
-                imageUrl: uploaded.url,
-                width: PENDANT_SIZE,
-                height: PENDANT_SIZE,
-                fit: 'contain',
-            });
+            let result;
+            let methodLabel = '美图图生图';
+            try {
+                result = await editImageWithAigc({
+                    imageUrl: uploaded.url,
+                    prompt: '保留上传图片的主体物，去除背景，输出单个居中的透明底 PNG 挂件素材。主体边缘干净完整，不要添加文字、水印、边框或额外装饰，适合 450x450 App 开屏挂件。',
+                    ratio: '1:1',
+                    transparentWhite: true,
+                });
+            } catch (aiErr) {
+                console.warn('上传挂件 AI 抠图失败，降级本地白底透明化', aiErr);
+                methodLabel = '本地白底透明化';
+                result = await cutoutImageWithAigc({
+                    imageUrl: uploaded.url,
+                    width: PENDANT_SIZE,
+                    height: PENDANT_SIZE,
+                    fit: 'contain',
+                });
+                setError(aiErr instanceof Error ? `AI 主体抠图暂不可用，已先用本地白底透明化处理。原因：${aiErr.message}` : 'AI 主体抠图暂不可用，已先用本地白底透明化处理');
+            }
             const nextFile = await fileFromGeneratedUrl(
                 result.resultUrl,
                 `${file.name.replace(/\.[^.]+$/, '') || 'pendant'}-${PENDANT_SIZE}x${PENDANT_SIZE}-cutout.png`,
@@ -1366,8 +1380,8 @@ const ConfigWorkspace: React.FC = () => {
                 file: nextFile,
                 url: nextUrl,
                 status: 'valid',
-                message: '已自动抠成透明 PNG 450 x 450，符合 MR 标准',
-                whiteRemovalMode: 'local-key',
+                message: `${methodLabel}已生成透明 PNG 450 x 450，符合 MR 标准`,
+                whiteRemovalMode: methodLabel === '美图图生图' ? 'provider-cutout' : 'local-key',
             });
         } catch (err) {
             setAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '图片读取失败' });
