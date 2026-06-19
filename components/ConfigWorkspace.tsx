@@ -1325,19 +1325,54 @@ const ConfigWorkspace: React.FC = () => {
 
         try {
             const size = await getImageSize(file);
-            const url = URL.createObjectURL(file);
             const isTransparentReady = isPngFile(file);
             const isValid = isTransparentReady && size.width === 450 && size.height === 450;
+            if (isValid) {
+                const url = URL.createObjectURL(file);
+                setAsset({
+                    file,
+                    url,
+                    status: 'valid',
+                    message: 'PNG 450 x 450，符合 MR 标准',
+                    whiteRemovalMode: 'none',
+                });
+                return;
+            }
+
+            const previewUrl = URL.createObjectURL(file);
             setAsset({
                 file,
-                url,
-                status: isValid ? 'valid' : 'adapted',
-                message: isValid
-                    ? 'PNG 450 x 450，符合 MR 标准'
-                    : `当前 ${size.width} x ${size.height}，可点击抠成透明 PNG 并适配 450 x 450`,
+                url: previewUrl,
+                status: 'adapted',
+                message: `当前 ${size.width} x ${size.height}，正在自动抠成透明 PNG 450 x 450`,
+            });
+            setAiGeneratingKey('cutout-pendant-upload');
+
+            const uploaded = await uploadRawAsset(file);
+            const result = await cutoutImageWithAigc({
+                imageUrl: uploaded.url,
+                width: PENDANT_SIZE,
+                height: PENDANT_SIZE,
+                fit: 'contain',
+            });
+            const nextFile = await fileFromGeneratedUrl(
+                result.resultUrl,
+                `${file.name.replace(/\.[^.]+$/, '') || 'pendant'}-${PENDANT_SIZE}x${PENDANT_SIZE}-cutout.png`,
+                'image/png'
+            );
+            const nextUrl = URL.createObjectURL(nextFile);
+            URL.revokeObjectURL(previewUrl);
+            setAsset({
+                file: nextFile,
+                url: nextUrl,
+                status: 'valid',
+                message: '已自动抠成透明 PNG 450 x 450，符合 MR 标准',
+                whiteRemovalMode: 'local-key',
             });
         } catch (err) {
             setAsset({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '图片读取失败' });
+        } finally {
+            setAiGeneratingKey((current) => current === 'cutout-pendant-upload' ? null : current);
         }
     };
 
@@ -3887,8 +3922,8 @@ const ConfigWorkspace: React.FC = () => {
     const breakFramePreviewStarted = breakPreviewPhase !== null;
 
     return (
-        <div className="fixed inset-0 top-[73px] bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300">
-            <div className="flex h-full gap-6 p-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
+            <div className="flex h-full gap-6 p-6">
                 <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
