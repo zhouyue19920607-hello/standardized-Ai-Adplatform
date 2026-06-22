@@ -12,8 +12,9 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: "PingFang SC", "PingFang TC", -apple-system, BlinkMacSystemFont, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   background-color: var(--background);
   /* Premium Mesh Gradient Background */
   background-image:
@@ -26,6 +27,17 @@ body {
   min-height: 100vh;
   margin: 0;
   color: #f8fafc;
+}
+
+button,
+input,
+textarea,
+select,
+pre,
+code,
+kbd,
+samp {
+  font-family: "PingFang SC", "PingFang TC", -apple-system, BlinkMacSystemFont, "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
 /* Liquid Glass Utility */
