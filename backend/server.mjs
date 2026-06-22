@@ -4842,7 +4842,17 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
     .toBuffer();
 }
 
-function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0, sourceCanvasWidth = 0, sourceCanvasHeight = 0) {
+function isStandardFocalWindowTemplateForAdapt(context = {}) {
+  const templateId = String(context.templateId || "").toLowerCase();
+  const templateName = String(context.templateName || "");
+  const appName = String(context.appName || "");
+  if (/^(mt|my|wk)-f-\d+/.test(templateId)) return true;
+  const text = `${appName}${templateName}${templateId}`.toLowerCase();
+  if (!/(焦点视窗|focal)/i.test(text)) return false;
+  return !/(破框|3d|多态|跃动|焕新|翻卡|画廊|break|refresh|polymorphic|gallery)/i.test(text);
+}
+
+function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0, sourceCanvasWidth = 0, sourceCanvasHeight = 0, context = {}) {
   const sourceWidth = Math.max(1, sourceMeta?.width || zone.box?.width || targetWidth);
   const sourceHeight = Math.max(1, sourceMeta?.height || zone.box?.height || targetHeight);
   const canvasWidth = Math.max(1, sourceCanvasWidth || targetWidth);
@@ -4851,6 +4861,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const targetAspect = targetWidth / targetHeight;
   const isLandscapeToPortrait = sourceAspect > 1.12 && targetAspect < 0.78;
   const isPortraitToLandscape = sourceAspect < 0.78 && targetAspect > 1.12;
+  const isFocalLeftRight = isStandardFocalWindowTemplateForAdapt(context);
   const marginX = targetWidth * 0.05;
   const marginY = targetHeight * 0.05;
   const normalizedCenterX = zone.box ? (zone.box.x + zone.box.width / 2) / canvasWidth : 0.5;
@@ -4864,7 +4875,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   if (zone.type === "logo") {
     maxWidth = targetWidth * 0.46;
     maxHeight = targetHeight * 0.16;
-    if (isPortraitToLandscape) {
+    if (isFocalLeftRight) {
+      maxWidth = targetWidth * 0.43;
+      maxHeight = targetHeight * 0.16;
+      centerX = targetWidth * 0.27;
+      centerY = targetHeight * (0.28 + indexByType * 0.08);
+    } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.46;
       maxHeight = targetHeight * 0.18;
       centerX = targetWidth * 0.28;
@@ -4882,7 +4898,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   } else if (zone.type === "info") {
     maxWidth = targetWidth * 0.88;
     maxHeight = targetHeight * 0.25;
-    if (isPortraitToLandscape) {
+    if (isFocalLeftRight) {
+      maxWidth = targetWidth * 0.43;
+      maxHeight = targetHeight * 0.48;
+      centerX = targetWidth * 0.28;
+      centerY = targetHeight * 0.43;
+    } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.42;
       maxHeight = targetHeight * 0.44;
       centerX = targetWidth * 0.29;
@@ -4900,7 +4921,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   } else if (zone.type === "text") {
     maxWidth = targetWidth * 0.90;
     maxHeight = targetHeight * 0.24;
-    if (isPortraitToLandscape) {
+    if (isFocalLeftRight) {
+      maxWidth = targetWidth * 0.42;
+      maxHeight = targetHeight * 0.24;
+      centerX = targetWidth * 0.28;
+      centerY = targetHeight * (0.42 + indexByType * 0.13);
+    } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.40;
       maxHeight = targetHeight * 0.24;
       centerX = targetWidth * 0.29;
@@ -4918,7 +4944,12 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   } else if (zone.type === "subject") {
     maxWidth = targetWidth * 0.84;
     maxHeight = targetHeight * 0.64;
-    if (isPortraitToLandscape) {
+    if (isFocalLeftRight) {
+      maxWidth = targetWidth * 0.58;
+      maxHeight = targetHeight * 0.94;
+      centerX = targetWidth * 0.74;
+      centerY = targetHeight * 0.54;
+    } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.54;
       maxHeight = targetHeight * 0.92;
       centerX = targetWidth * 0.73;
@@ -5185,6 +5216,7 @@ async function cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetW
 
 async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, prompt = "") {
   const layerBox = buildLayerSplitBoxForAdapt(analysis, context.sourceWidth, context.sourceHeight);
+  const useFocalLeftRightLayout = isStandardFocalWindowTemplateForAdapt(context);
   let designAnalysis = { layers: [], warnings: ["poster design analysis not executed"] };
   try {
     designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
@@ -5203,6 +5235,9 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   let expandedBackgroundUrl = "";
   try {
     const backgroundPrompt = [
+      useFocalLeftRightLayout
+        ? "这是标准素材看板焦点视窗模板的左右排版背景层：左侧必须保留干净、连续、低干扰的背景空间，后续会放置原图文案和 Logo；右侧保留原主体物、产品和人物的视觉重心，不要改变产品形状。"
+        : "",
       "这是用于后续合成的纯背景层，输入图中的文字和 Logo 已经被移除。",
       "输出结果必须保持为无文字、无 Logo、无品牌标识、无按钮、无图标、无包装文字的干净背景层。",
       "围绕输入海报的主体物和原始背景进行目标尺寸延展，主体物保留在画面中，不要把主体物抠出后重新生成。",
@@ -5293,7 +5328,8 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
         targetHeight,
         typeIndexes[zone.type],
         context.sourceWidth,
-        context.sourceHeight
+        context.sourceHeight,
+        context
       );
       typeIndexes[zone.type] += 1;
       multiLayerItems.push({
@@ -6485,7 +6521,15 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
     const sourceMeta = await getImageMetadataForUrl(publicAigcImageUrl(imageUrl, config, publicBaseUrl));
     const sourceWidth = sourceMeta.width || width;
     const sourceHeight = sourceMeta.height || height;
-    const context = { config, publicBaseUrl, sourceWidth, sourceHeight };
+    const context = {
+      config,
+      publicBaseUrl,
+      sourceWidth,
+      sourceHeight,
+      templateId,
+      templateName,
+      appName
+    };
     const settings = await readJson(SETTINGS_FILE, {
       aiEnhancedMode: false,
       aiProvider: "nanobanner",

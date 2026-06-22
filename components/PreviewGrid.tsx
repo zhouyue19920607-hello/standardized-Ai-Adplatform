@@ -237,34 +237,6 @@ const AdCard: React.FC<{
             ? (asset.app === 'wink' ? '1126 x 2438' : '1126 x 2436') 
             : asset.dimensions}
         </span>
-        {asset.aiAdaptation?.label && (
-          <span
-            className="max-w-full truncate rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-600"
-            title={[
-              asset.aiAdaptation.label,
-              ...(asset.aiAdaptation.debugLines || []),
-              ...(asset.aiAdaptation.warnings || [])
-            ].filter(Boolean).join('\n')}
-          >
-            {asset.aiAdaptation.label}
-          </span>
-        )}
-        {asset.aiAdaptation?.debugLines?.length ? (
-          <div className="mt-1.5 w-full rounded-[12px] border border-amber-200/80 bg-amber-50 px-2.5 py-2 text-[9px] font-bold leading-relaxed text-amber-700">
-            <div className="mb-1 flex items-center gap-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-500">
-              <span className="material-symbols-outlined text-[11px]">lab_profile</span>
-              <span>AI诊断</span>
-            </div>
-            {asset.aiAdaptation.debugLines.slice(0, 4).map((line) => (
-              <div key={line} className="truncate" title={line}>{line}</div>
-            ))}
-            {asset.aiAdaptation.warnings?.length ? (
-              <div className="mt-1 truncate text-rose-500" title={asset.aiAdaptation.warnings[0]}>
-                warning: {asset.aiAdaptation.warnings[0]}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
       <div
         className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"
