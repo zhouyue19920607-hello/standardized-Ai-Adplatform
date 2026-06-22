@@ -5236,7 +5236,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   try {
     const backgroundPrompt = [
       useFocalLeftRightLayout
-        ? "这是标准素材看板焦点视窗模板的左右排版背景层：左侧必须保留干净、连续、低干扰的背景空间，后续会放置原图文案和 Logo；右侧保留原主体物、产品和人物的视觉重心，不要改变产品形状。"
+        ? "这是标准素材看板焦点视窗模板的左右排版背景层：左侧 45% 区域必须是干净、连续、低干扰、无任何文字和 Logo 的背景空间，后续会放置原图文案和 Logo；右侧保留原主体物、产品和人物的视觉重心，不要改变产品形状。"
         : "",
       "这是用于后续合成的纯背景层，输入图中的文字和 Logo 已经被移除。",
       "输出结果必须保持为无文字、无 Logo、无品牌标识、无按钮、无图标、无包装文字的干净背景层。",
@@ -5253,7 +5253,14 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       source: cleanBackgroundUrl,
       result: backgroundUrl
     }));
-    const cleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(backgroundUrl, targetWidth, targetHeight, context, analysis, 2);
+    const cleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(
+      backgroundUrl,
+      targetWidth,
+      targetHeight,
+      context,
+      analysis,
+      useFocalLeftRightLayout ? 4 : 2
+    );
     backgroundUrl = cleanup.url || backgroundUrl;
     context.relayoutBackgroundCleanup = cleanup;
     console.log("[AdaptImage] relayout background cleanup", JSON.stringify({
@@ -5304,7 +5311,17 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       continue;
     }
     selectedCounts[zone.type] = selectedCounts[zone.type] || 0;
-    const limit = zone.type === "text" ? 2 : zone.type === "info" ? 2 : 1;
+    const limit = useFocalLeftRightLayout
+      ? zone.type === "info"
+        ? 1
+        : zone.type === "text"
+          ? (selectedZones.some(item => item.type === "logo") ? 1 : 2)
+          : 1
+      : zone.type === "text"
+        ? 2
+        : zone.type === "info"
+          ? 2
+          : 1;
     if (selectedCounts[zone.type] >= limit) {
       skippedZones.push({ id: zone.id, type: zone.type, reason: `type limit reached: ${limit}` });
       continue;
