@@ -5654,7 +5654,8 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   ].filter(Boolean).join(" ");
   let workingUrl = imageUrl;
 
-  const layeredRelayoutEnabled = context.config?.layeredRelayoutMode === "layered";
+  const isFocalLeftRightRelayout = isStandardFocalWindowTemplateForAdapt(context);
+  const layeredRelayoutEnabled = context.config?.layeredRelayoutMode === "layered" || isFocalLeftRightRelayout;
   if (plan.strategy === "relayout" && layeredRelayoutEnabled) {
     try {
       const layered = await executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeight, context, analysis, masks, enhancedPrompt);
@@ -6544,6 +6545,11 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
     const analysis = await analyzeAdImageForAdapt(imageUrl, context);
     const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
     const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
+    if (isStandardFocalWindowTemplateForAdapt(context) && plan.strategy !== "direct" && allowRelayout) {
+      plan.strategy = "relayout";
+      plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
+      plan.reasons.push("标准焦点视窗模板强制使用左右智能排版：左侧文案/Logo，右侧主体物");
+    }
     if (plan.strategy === "relayout" && !allowRelayout) {
       plan.strategy = "outpaint";
       plan.reasons.push("调用方禁用 relayout，回退到 outpaint");
