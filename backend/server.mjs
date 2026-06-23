@@ -4881,6 +4881,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   const isLandscapeToPortrait = sourceAspect > 1.12 && targetAspect < 0.78;
   const isPortraitToLandscape = sourceAspect < 0.78 && targetAspect > 1.12;
   const isFocalLeftRight = isStandardFocalWindowTemplateForAdapt(context);
+  const focalLeftCenterX = targetWidth * 0.24;
   const marginX = targetWidth * 0.05;
   const marginY = targetHeight * 0.05;
   const normalizedCenterX = zone.box ? (zone.box.x + zone.box.width / 2) / canvasWidth : 0.5;
@@ -4897,7 +4898,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
     if (isFocalLeftRight) {
       maxWidth = targetWidth * 0.43;
       maxHeight = targetHeight * 0.16;
-      centerX = targetWidth * 0.27;
+      centerX = focalLeftCenterX;
       centerY = targetHeight * (0.28 + indexByType * 0.08);
     } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.46;
@@ -4920,7 +4921,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
     if (isFocalLeftRight) {
       maxWidth = targetWidth * 0.43;
       maxHeight = targetHeight * 0.48;
-      centerX = targetWidth * 0.28;
+      centerX = focalLeftCenterX;
       centerY = targetHeight * 0.43;
     } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.42;
@@ -4943,7 +4944,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
     if (isFocalLeftRight) {
       maxWidth = targetWidth * 0.42;
       maxHeight = targetHeight * 0.24;
-      centerX = targetWidth * 0.28;
+      centerX = focalLeftCenterX;
       centerY = targetHeight * (0.42 + indexByType * 0.13);
     } else if (isPortraitToLandscape) {
       maxWidth = targetWidth * 0.40;
@@ -5255,15 +5256,15 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   try {
     const backgroundPrompt = [
       useFocalLeftRightLayout
-        ? "这是标准素材看板焦点视窗模板的左右排版背景层：左侧 45% 区域必须是干净、连续、低干扰、无任何文字和 Logo 的背景空间，后续会放置原图文案和 Logo；右侧保留原主体物、产品和人物的视觉重心，不要改变产品形状。"
+        ? "这是标准素材看板焦点视窗模板的左右排版背景延展：只延展原图已有背景和主体周围环境，不要设计新的左侧信息底，不要生成任何新文字、Logo、按钮、图标或品牌元素；原图文案和 Logo 会以原始图层方式放到左侧并水平居中。"
         : "",
       "这是用于后续合成的纯背景层，输入图中的文字和 Logo 已经被移除。",
-      "输出结果必须保持为无文字、无 Logo、无品牌标识、无按钮、无图标、无包装文字的干净背景层。",
+      "输出结果必须保持为无文字、无 Logo、无品牌标识、无按钮、无图标、无包装文字、无伪字母、无乱码和无类似商标图案的背景层。",
       "围绕输入海报的主体物和原始背景进行目标尺寸延展，主体物保留在画面中，不要把主体物抠出后重新生成。",
       "延展区域必须沿着原背景的色彩、光影、材质、纹理、透视和空间关系自然连续。",
-      "不允许新增、复制、重画、补全或改写任何文字、slogan、Logo、品牌标识。",
+      "不允许新增、复制、重画、补全、改写、翻译或仿造任何文字、slogan、Logo、品牌标识、包装文字、促销信息或按钮文案。",
       "不要补出任何新的前景主体、商品、人物、装饰、图标、按钮、包装、标签、水印或额外视觉元素。",
-      "原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段不要生成这些内容。",
+      "原文案、原 slogan、原 Logo 会由后续图层排版合成，背景延展阶段如果需要填补空间，只能使用原图背景纹理，不能使用文字或图形元素填补。",
       "不能有拼接边界、分层边界、模糊框、重复纹理、涂抹痕迹、残影或明显 AI 生成物。"
     ].filter(Boolean).join(" ");
     expandedBackgroundUrl = await expandImageV4ForAdapt(backgroundUrl, targetWidth, targetHeight, context, backgroundPrompt);
@@ -5278,7 +5279,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
       targetHeight,
       context,
       analysis,
-      useFocalLeftRightLayout ? 4 : 2
+      useFocalLeftRightLayout ? 6 : 2
     );
     backgroundUrl = cleanup.url || backgroundUrl;
     context.relayoutBackgroundCleanup = cleanup;

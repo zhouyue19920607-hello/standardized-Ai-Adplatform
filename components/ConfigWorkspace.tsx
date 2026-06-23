@@ -6025,7 +6025,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 )}
                                             </>
                                         )}
-                                        {cropAreaEnabled && (
+                                        {cropAreaEnabled && !hoveredPreviewVideoUrl && (
                                             <div
                                                 className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
                                             >

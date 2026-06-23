@@ -348,7 +348,8 @@
     "dimensions": "1284 x 1128",
     "maskPath": "backend/storage/masks/1777270597630_______-____________.png",
     "mask_path": "/static/masks/1777270597630_______-____________.png",
-    "maskUrl": "/static/masks/1777270597630_______-____________.png"
+    "maskUrl": "/static/masks/1777270597630_______-____________.png",
+    "preview_video_path": "/static/previews/meiyan-focal-window_preview.mp4"
   },
   {
     "id": "my-f-3",

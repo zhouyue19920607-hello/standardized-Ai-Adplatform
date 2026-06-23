@@ -226,12 +226,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <h3 className="text-xs font-bold text-slate-800">{t(`apps.${appName}`)}</h3>
                 </div>
                 <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
-                  <div className="px-1 relative group/template">
+                  <div
+                    className="px-1 relative group/template"
+                    onMouseEnter={() => handleTemplatePreviewEnter(focalTpl)}
+                    onMouseOver={() => handleTemplatePreviewEnter(focalTpl)}
+                    onMouseLeave={() => handleTemplatePreviewLeave(focalTpl)}
+                    onPointerEnter={() => handleTemplatePreviewEnter(focalTpl)}
+                    onPointerLeave={() => handleTemplatePreviewLeave(focalTpl)}
+                    onFocus={() => handleTemplatePreviewEnter(focalTpl)}
+                    onBlur={() => handleTemplatePreviewLeave(focalTpl)}
+                  >
                     <label
-                      onMouseEnter={() => handleTemplatePreviewEnter(focalTpl)}
-                      onMouseLeave={() => handleTemplatePreviewLeave(focalTpl)}
-                      onPointerEnter={() => handleTemplatePreviewEnter(focalTpl)}
-                      onPointerLeave={() => handleTemplatePreviewLeave(focalTpl)}
                       className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
                         ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                       }
