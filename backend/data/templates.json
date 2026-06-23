@@ -482,6 +482,7 @@
     "dimensions": "1126 x 1410",
     "maskPath": "backend/storage/masks/1777262149806_wink____________.png",
     "mask_path": "/static/masks/1777262149806_wink____________.png",
-    "maskUrl": "/static/masks/1777262149806_wink____________.png"
+    "maskUrl": "/static/masks/1777262149806_wink____________.png",
+    "preview_video_path": "/static/previews/wink-focal-window_preview.mp4"
   }
 ]

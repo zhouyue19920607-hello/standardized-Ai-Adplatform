@@ -70,6 +70,8 @@ const platformOptions = [
     { id: 'wink', label: 'Wink', icon: '/icons/wink_mask_icon.png' },
 ] as const;
 
+const SHOW_REFRESH_BOTTOM_NAV_UPLOAD = false;
+
 const defaultCreativeCategories = [
     {
         id: 'splash',
@@ -1314,6 +1316,48 @@ const ConfigWorkspace: React.FC = () => {
             <span>{aiGeneratingKey === key ? '生成中...' : label}</span>
         </>
     );
+
+    const getAiGeneratingLabel = (key: string | null) => {
+        if (!key) return 'AI 正在生成素材';
+        if (key.includes('i2v') || key.includes('image') || key.includes('break')) return 'AI 正在生成视频';
+        if (key.includes('cutout')) return 'AI 正在抠图处理';
+        return 'AI 正在生成图片';
+    };
+
+    const matchesAiLoadingKey = (patterns: string | string[]) => {
+        if (!aiGeneratingKey) return false;
+        const list = Array.isArray(patterns) ? patterns : [patterns];
+        return list.some((pattern) => pattern.endsWith('*')
+            ? aiGeneratingKey.startsWith(pattern.slice(0, -1))
+            : aiGeneratingKey === pattern);
+    };
+
+    const renderAiLoadingOverlay = (patterns: string | string[], label?: string) => {
+        if (!matchesAiLoadingKey(patterns)) return null;
+        return (
+            <div className="absolute inset-0 z-30 rounded-[18px] border border-primary/20 bg-zinc-950/80 backdrop-blur-xl flex items-center justify-center overflow-hidden pointer-events-none">
+                <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/80 to-transparent animate-pulse" />
+                <div className="absolute -left-10 top-1/2 h-28 w-28 -translate-y-1/2 rounded-full bg-primary/15 blur-2xl animate-pulse" />
+                <div className="absolute -right-8 bottom-0 h-24 w-24 rounded-full bg-cyan-300/10 blur-2xl animate-pulse" />
+                <div className="relative flex flex-col items-center gap-3 px-6 text-center">
+                    <div className="relative h-14 w-14">
+                        <div className="absolute inset-0 rounded-full border border-primary/30 animate-ping" />
+                        <div className="absolute inset-1 rounded-full border-2 border-zinc-700 border-t-primary animate-spin" />
+                        <div className="absolute inset-4 rounded-full bg-primary shadow-[0_0_22px_rgba(255,46,99,0.55)]" />
+                    </div>
+                    <div>
+                        <p className="text-[12px] font-black text-white tracking-wide">{label || getAiGeneratingLabel(aiGeneratingKey)}</p>
+                        <p className="mt-1 text-[9px] font-bold text-zinc-500">处理中，请稍等，完成后会自动写入素材</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary/80 animate-bounce [animation-delay:120ms]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:240ms]" />
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     const updateAsset = async (file: File) => {
         setError('');
@@ -3589,7 +3633,7 @@ const ConfigWorkspace: React.FC = () => {
             setError('请上传或生成 1 个 1228 x 674px 的 icon 底图');
             return;
         }
-        if (!refreshBottomNav.url || !refreshBottomNav.file || refreshBottomNav.status !== 'valid') {
+        if (SHOW_REFRESH_BOTTOM_NAV_UPLOAD && (!refreshBottomNav.url || !refreshBottomNav.file || refreshBottomNav.status !== 'valid')) {
             setError('请上传 1 张 1126 x 252px 的底导素材');
             return;
         }
@@ -3605,9 +3649,9 @@ const ConfigWorkspace: React.FC = () => {
             const iconSheetIsVideo = refreshIconSheet.file.type.startsWith('video/');
             const iconSheetImage = iconSheetIsVideo ? null : await loadImage(refreshIconSheet.url);
             const iconSheetVideo = iconSheetIsVideo ? await loadVideoElement(refreshIconSheet.url) : null;
-            const bottomNavIsVideo = refreshBottomNav.file.type.startsWith('video/');
-            const bottomNavImage = bottomNavIsVideo ? null : await loadImage(refreshBottomNav.url);
-            const bottomNavVideo = bottomNavIsVideo ? await loadVideoElement(refreshBottomNav.url) : null;
+            const bottomNavIsVideo = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.file ? refreshBottomNav.file.type.startsWith('video/') : false;
+            const bottomNavImage = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.url && !bottomNavIsVideo ? await loadImage(refreshBottomNav.url) : null;
+            const bottomNavVideo = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.url && bottomNavIsVideo ? await loadVideoElement(refreshBottomNav.url) : null;
             const focalIsVideo = breakFocal.file.type.startsWith('video/');
             const focalImage = focalIsVideo ? null : await loadImage(breakFocal.url);
             const focalVideo = focalIsVideo ? await loadVideoElement(breakFocal.url) : null;
@@ -3851,7 +3895,9 @@ const ConfigWorkspace: React.FC = () => {
                     : isJumpingFocalTemplate
                         ? '输出规格 1126 x 2436 / 跃动破框 1126 x 906'
                     : isRefreshUiBottomNavTemplate
-                        ? 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252'
+                        ? SHOW_REFRESH_BOTTOM_NAV_UPLOAD
+                            ? 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252'
+                            : 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon'
                 : isBreakFocalTemplate
                     ? '输出规格 1126 x 2436 / 破框 3D'
                 : '输出规格 1440 x 2340 / 5s';
@@ -3947,6 +3993,22 @@ const ConfigWorkspace: React.FC = () => {
 
     return (
         <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
+            {aiGeneratingKey && (
+                <div className="fixed right-8 bottom-8 z-[90] pointer-events-none rounded-[24px] border border-primary/20 bg-zinc-950/90 px-5 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-white/[0.03] to-cyan-300/10 animate-pulse" />
+                    <div className="relative flex items-center gap-4">
+                        <div className="relative h-10 w-10 shrink-0">
+                            <div className="absolute inset-0 rounded-full border border-primary/40 animate-ping" />
+                            <div className="absolute inset-1 rounded-full border-2 border-zinc-700 border-t-primary animate-spin" />
+                            <span className="material-symbols-outlined absolute inset-0 flex items-center justify-center text-[18px] text-white">auto_awesome</span>
+                        </div>
+                        <div>
+                            <p className="text-[12px] font-black text-white">{getAiGeneratingLabel(aiGeneratingKey)}</p>
+                            <p className="mt-1 text-[9px] font-bold text-zinc-500">生成完成后会自动更新预览</p>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="flex h-full gap-6 p-6">
                 <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
@@ -4060,7 +4122,8 @@ const ConfigWorkspace: React.FC = () => {
                     </div>
                 </aside>
 
-                <main className="flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                <main className="relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                    {renderAiLoadingOverlay('*')}
                     <header className="px-10 py-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-center shrink-0">
                         <div>
                             <div className="flex items-center gap-3 mb-2">
@@ -4997,125 +5060,127 @@ const ConfigWorkspace: React.FC = () => {
                                             )}
                                         </div>
 
-                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <h2 className="text-white text-sm font-black">底导素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传或 AI 生成底部导航素材 / 1126 x 252px</p>
-                                                </div>
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNav.status)}`}>{refreshBottomNav.message}</span>
-                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNavAiReference.status)}`}>参考图：{refreshBottomNavAiReference.message}</span>
-                                                </div>
-                                            </div>
-                                            <input
-                                                ref={refreshBottomNavInputRef}
-                                                type="file"
-                                                accept="image/*,video/*"
-                                                className="hidden"
-                                                onChange={async (e) => {
-                                                    const input = e.currentTarget;
-                                                    if (input.files?.[0]) await updateRefreshBottomNav(input.files[0]);
-                                                    input.value = '';
-                                                }}
-                                            />
-                                            <div className="relative">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => refreshBottomNavInputRef.current?.click()}
-                                                    onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav')}
-                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav')}
-                                                    onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-nav')}
-                                                    className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-nav' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
-                                                >
-                                                    {refreshBottomNav.url ? (
-                                                        refreshBottomNav.file?.type.startsWith('video/') ? (
-                                                            <video src={refreshBottomNav.url} className="h-20 w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline autoPlay />
-                                                        ) : (
-                                                            <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
-                                                        )
-                                                    ) : (
-                                                        <div className="text-center">
-                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">bottom_navigation</span>
-                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入底导素材</p>
-                                                        </div>
-                                                    )}
-                                                </button>
-                                                {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` }, {
-                                                    key: 'cutout-refresh-bottom-nav',
-                                                    setState: setRefreshBottomNav,
-                                                    width: REFRESH_BOTTOM_NAV_W,
-                                                    height: REFRESH_BOTTOM_NAV_H,
-                                                    filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png`,
-                                                })}
-                                            </div>
-                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                        {SHOW_REFRESH_BOTTOM_NAV_UPLOAD && (
+                                            <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                                 <div className="flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                    <div>
+                                                        <h2 className="text-white text-sm font-black">底导素材</h2>
+                                                        <p className="text-[10px] text-zinc-600 font-bold mt-1">上传或 AI 生成底部导航素材 / 1126 x 252px</p>
                                                     </div>
-                                                    <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNav.status)}`}>{refreshBottomNav.message}</span>
+                                                        <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(refreshBottomNavAiReference.status)}`}>参考图：{refreshBottomNavAiReference.message}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-[1fr_92px] gap-3">
-                                                    <textarea
-                                                        value={refreshBottomNavAiPrompt}
-                                                        onChange={(event) => setRefreshBottomNavAiPrompt(event.target.value)}
-                                                        placeholder="描述底导背景风格、主题、色彩；上传参考图后自动走图生图..."
-                                                        className="w-full min-h-[84px] resize-none bg-zinc-950/80 border border-white/5 rounded-[16px] p-3 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
-                                                    />
-                                                    <div className="relative min-h-[84px]">
+                                                <input
+                                                    ref={refreshBottomNavInputRef}
+                                                    type="file"
+                                                    accept="image/*,video/*"
+                                                    className="hidden"
+                                                    onChange={async (e) => {
+                                                        const input = e.currentTarget;
+                                                        if (input.files?.[0]) await updateRefreshBottomNav(input.files[0]);
+                                                        input.value = '';
+                                                    }}
+                                                />
+                                                <div className="relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => refreshBottomNavInputRef.current?.click()}
+                                                        onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav')}
+                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav')}
+                                                        onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-nav')}
+                                                        className={`w-full min-h-[116px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'refresh-bottom-nav' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                    >
+                                                        {refreshBottomNav.url ? (
+                                                            refreshBottomNav.file?.type.startsWith('video/') ? (
+                                                                <video src={refreshBottomNav.url} className="h-20 w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline autoPlay />
+                                                            ) : (
+                                                                <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
+                                                            )
+                                                        ) : (
+                                                            <div className="text-center">
+                                                                <span className="material-symbols-outlined text-3xl text-zinc-600">bottom_navigation</span>
+                                                                <p className="text-[10px] text-zinc-500 font-black mt-2">点击或拖入底导素材</p>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                    {uploadRemoveButton(refreshBottomNav, () => clearUploadState(refreshBottomNav, setRefreshBottomNav), '删除底导素材', { width: REFRESH_BOTTOM_NAV_W, height: REFRESH_BOTTOM_NAV_H, filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png` }, {
+                                                        key: 'cutout-refresh-bottom-nav',
+                                                        setState: setRefreshBottomNav,
+                                                        width: REFRESH_BOTTOM_NAV_W,
+                                                        height: REFRESH_BOTTOM_NAV_H,
+                                                        filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png`,
+                                                    })}
+                                                </div>
+                                                <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
+                                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                        </div>
+                                                        <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-[1fr_92px] gap-3">
+                                                        <textarea
+                                                            value={refreshBottomNavAiPrompt}
+                                                            onChange={(event) => setRefreshBottomNavAiPrompt(event.target.value)}
+                                                            placeholder="描述底导背景风格、主题、色彩；上传参考图后自动走图生图..."
+                                                            className="w-full min-h-[84px] resize-none bg-zinc-950/80 border border-white/5 rounded-[16px] p-3 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
+                                                        />
+                                                        <div className="relative min-h-[84px]">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
+                                                                className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                            >
+                                                                {refreshBottomNavAiReference.url ? (
+                                                                    <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="text-center px-2">
+                                                                        <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                            <input
+                                                                ref={refreshBottomNavAiReferenceInputRef}
+                                                                type="file"
+                                                                accept="image/*"
+                                                                className="hidden"
+                                                                onChange={async (event) => {
+                                                                    const input = event.currentTarget;
+                                                                    if (input.files?.[0]) await updateRefreshBottomNavAiReference(input.files[0]);
+                                                                    input.value = '';
+                                                                }}
+                                                            />
+                                                            {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图', {}, {
+                                                                key: 'cutout-refresh-bottom-reference',
+                                                                setState: setRefreshBottomNavAiReference,
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
                                                         <button
                                                             type="button"
-                                                            onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
-                                                            className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                            onClick={generateRefreshBottomNavByPrompt}
+                                                            disabled={!!aiGeneratingKey}
+                                                            className="h-10 rounded-[18px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
                                                         >
-                                                            {refreshBottomNavAiReference.url ? (
-                                                                <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="text-center px-2">
-                                                                    <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
-                                                                </div>
-                                                            )}
+                                                            {renderAiButtonContent('refresh-bottom-nav-text', '生成图片')}
                                                         </button>
-                                                        <input
-                                                            ref={refreshBottomNavAiReferenceInputRef}
-                                                            type="file"
-                                                            accept="image/*"
-                                                            className="hidden"
-                                                            onChange={async (event) => {
-                                                                const input = event.currentTarget;
-                                                                if (input.files?.[0]) await updateRefreshBottomNavAiReference(input.files[0]);
-                                                                input.value = '';
-                                                            }}
-                                                        />
-                                                        {uploadRemoveButton(refreshBottomNavAiReference, removeRefreshBottomNavAiReference, '删除底导参考图', {}, {
-                                                            key: 'cutout-refresh-bottom-reference',
-                                                            setState: setRefreshBottomNavAiReference,
-                                                        })}
+                                                        <button
+                                                            type="button"
+                                                            onClick={generateRefreshBottomNavVideoByReference}
+                                                            disabled={!!aiGeneratingKey || !(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url)}
+                                                            className={`h-10 rounded-[18px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
+                                                        >
+                                                            {renderAiButtonContent('refresh-bottom-nav-i2v', '图生视频')}
+                                                        </button>
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={generateRefreshBottomNavByPrompt}
-                                                        disabled={!!aiGeneratingKey}
-                                                        className="h-10 rounded-[18px] bg-white/10 hover:bg-white/15 text-white text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5"
-                                                    >
-                                                        {renderAiButtonContent('refresh-bottom-nav-text', '生成图片')}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={generateRefreshBottomNavVideoByReference}
-                                                        disabled={!!aiGeneratingKey || !(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url)}
-                                                        className={`h-10 rounded-[18px] text-[11px] font-black transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1.5 ${(refreshBottomNav.file?.type.startsWith('image/') || refreshBottomNavAiReference.url) ? 'bg-white/10 hover:bg-white/15 text-white' : 'bg-white/[0.04] text-zinc-600'}`}
-                                                    >
-                                                        {renderAiButtonContent('refresh-bottom-nav-i2v', '图生视频')}
-                                                    </button>
-                                                </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </>
                                 ) : isBreakFocalTemplate ? (
                                     <>
@@ -5835,35 +5900,37 @@ const ConfigWorkspace: React.FC = () => {
                                                                 </div>
                                                             )}
                                                             <img src="/focal-window/fixed_bg_1.png" className="absolute inset-0 z-[30] w-full h-full object-fill" alt="" />
-                                                            <div className="absolute inset-0 z-[40]">
-                                                                {refreshBottomNav.url ? (
-                                                                    refreshBottomNav.file?.type.startsWith('video/') ? (
-                                                                        <video
-                                                                            src={refreshBottomNav.url}
-                                                                            className="absolute left-0 bottom-0 w-full object-cover"
-                                                                            style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
-                                                                            muted
-                                                                            loop
-                                                                            playsInline
-                                                                            autoPlay
-                                                                        />
+                                                            {SHOW_REFRESH_BOTTOM_NAV_UPLOAD && (
+                                                                <div className="absolute inset-0 z-[40]">
+                                                                    {refreshBottomNav.url ? (
+                                                                        refreshBottomNav.file?.type.startsWith('video/') ? (
+                                                                            <video
+                                                                                src={refreshBottomNav.url}
+                                                                                className="absolute left-0 bottom-0 w-full object-cover"
+                                                                                style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
+                                                                                muted
+                                                                                loop
+                                                                                playsInline
+                                                                                autoPlay
+                                                                            />
+                                                                        ) : (
+                                                                            <img
+                                                                                src={refreshBottomNav.url}
+                                                                                alt="底导素材预览"
+                                                                                className="absolute left-0 bottom-0 w-full object-cover"
+                                                                                style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
+                                                                            />
+                                                                        )
                                                                     ) : (
-                                                                        <img
-                                                                            src={refreshBottomNav.url}
-                                                                            alt="底导素材预览"
-                                                                            className="absolute left-0 bottom-0 w-full object-cover"
+                                                                        <div
+                                                                            className="absolute left-0 bottom-0 w-full border border-dashed border-emerald-300/70 bg-emerald-300/5 flex items-center justify-center"
                                                                             style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
-                                                                        />
-                                                                    )
-                                                                ) : (
-                                                                    <div
-                                                                        className="absolute left-0 bottom-0 w-full border border-dashed border-emerald-300/70 bg-emerald-300/5 flex items-center justify-center"
-                                                                        style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
-                                                                    >
-                                                                        <span className="text-[9px] font-black text-emerald-200 tracking-widest">1126 x 252 / BOTTOM NAV</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                                        >
+                                                                            <span className="text-[9px] font-black text-emerald-200 tracking-widest">1126 x 252 / BOTTOM NAV</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </>
                                                 ) : isBreakFocalTemplate ? (
