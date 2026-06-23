@@ -6614,16 +6614,22 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       appName
     };
     const settings = await readSystemSettings();
-    if (settings.aiProvider !== "nanobanner" || !settings.nanobannerApiKey) {
-      return res.status(400).json({
-        ok: false,
-        error: "标准素材看板已切换为 Gemini / Nano Banner 外采适配，请先在后台配置 Nano Banner API Key，并选择 Nano Banner API 服务商。"
-      });
-    }
-    try {
+    const canUseGptImage2Route = Boolean(settings.nanobannerApiKey);
+    const shouldPreferGptImage2Route = Boolean(settings.aiEnhancedMode && settings.nanobannerApiKey);
+    const routeFailures = [];
+    const routeErrorMessage = (routeName, err) => `${routeName}: ${err.response?.data?.error?.message || err.response?.data?.message || err.message}`;
+
+    const runGptImage2Route = async (routeReason, fallbackWarnings = []) => {
+      if (!settings.nanobannerApiKey) {
+        throw new Error("后台未配置 Nano Banner / GPT Image 2 API Key");
+      }
+      const gptContext = {
+        ...context,
+        fallbackWarnings: [...fallbackWarnings]
+      };
       const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
       const sourcePath = sourceStaticUrl?.startsWith("/static/") ? staticUrlToLocalPath(sourceStaticUrl) : "";
-      if (!sourcePath) throw new Error("Nano Banner 需要可读取的本地输入图片");
+      if (!sourcePath) throw new Error("GPT Image 2 需要可读取的本地输入图片");
       const nanoPrompt = [
         AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
         "Adapt this exact original poster to the target ad size.",
@@ -6633,11 +6639,13 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         settings.tongyiExpandPrompt || "",
         prompt || ""
       ].filter(Boolean).join(" ");
-      console.log("[AdaptImage] NanoBanner external-only enabled", JSON.stringify({
+      console.log("[AdaptImage] GPT Image 2 route start", JSON.stringify({
         targetWidth: width,
         targetHeight: height,
         templateId,
-        templateName
+        templateName,
+        routeReason,
+        model: settings.nanobannerModel || getNanoBannerModel()
       }));
       const nanoResult = await nanobannerOutpaint(
         sourcePath,
@@ -6648,14 +6656,15 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         nanoPrompt,
         settings.nanobannerModel
       );
-      const finalUrl = await ensureFinalAdaptSize(nanoResult.url, width, height, context, null);
-      console.log("[AdaptImage] NanoBanner external-only done", JSON.stringify({ resultUrl: finalUrl }));
-      return res.json({
+      const finalUrl = await ensureFinalAdaptSize(nanoResult.url, width, height, gptContext, null);
+      console.log("[AdaptImage] GPT Image 2 route done", JSON.stringify({ resultUrl: finalUrl, routeReason }));
+      return {
         ok: true,
-        provider: "nanobanner",
+        provider: "gpt-image2",
+        route: routeReason,
         endpoint: "/api/aigc/adapt-image",
         resultUrl: finalUrl,
-        strategy: "nanobanner-outpaint",
+        strategy: "gpt-image2-images-edits",
         target: { width, height },
         template: { id: templateId, name: templateName, app: appName },
         analysis: {
@@ -6663,166 +6672,163 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
           subject: null,
           logo: null,
           text: null,
-          warnings: ["标准素材看板当前使用 Gemini / Nano Banner 外采适配，已跳过美图检测与智能排版链路。"]
+          warnings: [
+            routeReason === "enhanced-first"
+              ? "后台 AI 增强已开启，优先使用 GPT Image 2 路线。"
+              : "美图 AI 智能排版路线失败后，已自动转到 GPT Image 2 路线。"
+          ]
         },
         masks: await buildProtectedMaskFallback(),
         plan: {
-          strategy: "nanobanner-outpaint",
-          steps: ["nanobanner_external_adapt", "local_size_normalize"],
-          reasons: ["标准素材看板临时切换为 Gemini / Nano Banner 外采模型适配"]
+          strategy: "gpt-image2-images-edits",
+          steps: ["gpt_image2_images_edits", "local_size_normalize"],
+          reasons: [routeReason === "enhanced-first" ? "后台 AI 增强开启，优先使用 GPT Image 2 路线" : "美图智能排版失败，自动使用 GPT Image 2 路线"]
         },
         layeredRelayout: {
           failed: false,
-          status: "nanobanner_external_only",
-          layout: { mode: "nanobanner-outpaint", provider: "nanobanner" },
-          layers: { mode: "nanobanner-outpaint", provider: "nanobanner" }
+          status: "gpt_image2_route",
+          layout: { mode: "images-edits", provider: "gpt-image2" },
+          layers: { mode: "images-edits", provider: "gpt-image2" }
         },
-        fallbackWarnings: [],
+        fallbackWarnings: gptContext.fallbackWarnings || [],
         qa: { passed: true, warnings: [] },
         limitations: [
-          "当前标准素材看板已跳过美图检测、Logo/文字分层、扩图和 QA 链路，只调用 Gemini / Nano Banner 外采模型做图像适配。",
-          "如果效果不符合预期，需要调整 Nano Banner Prompt 或 API Base URL 对应的模型能力。"
+          "GPT Image 2 路线使用老张 OpenAI 兼容 Images Edits 接口，后台 API Key / Base URL / Model 会持久保存。",
+          "常规美图智能排版路线仍保留；当增强路线失败时，会自动回退到美图路线。"
         ]
-      });
-    } catch (err) {
-      console.error("[AdaptImage] NanoBanner external-only failed:", err.response?.data || err.message);
-      return res.status(500).json({
-        ok: false,
-        error: "Gemini / Nano Banner 外采适配失败",
-        details: err.response?.data?.error?.message || err.response?.data?.message || err.message
-      });
-    }
-    const analysis = await analyzeAdImageForAdapt(imageUrl, context);
-    const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
-    const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
-    if (isStandardFocalWindowTemplateForAdapt(context) && plan.strategy !== "direct" && allowRelayout) {
-      plan.strategy = "relayout";
-      plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
-      plan.reasons.push("标准焦点视窗模板强制使用左右智能排版：左侧文案/Logo，右侧主体物");
-    }
-    if (plan.strategy === "relayout" && !allowRelayout) {
-      plan.strategy = "outpaint";
-      plan.reasons.push("调用方禁用 relayout，回退到 outpaint");
-    }
+      };
+    };
 
-    let resultUrl = "";
-    if (shouldUseNanoBannerAdapt) {
+    const runMeituLayoutRoute = async (fallbackWarnings = []) => {
+      const meituContext = {
+        ...context,
+        fallbackWarnings: [...fallbackWarnings]
+      };
+      const analysis = await analyzeAdImageForAdapt(imageUrl, meituContext);
+      const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
+      const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
+      if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.strategy !== "direct" && allowRelayout) {
+        plan.strategy = "relayout";
+        plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
+        plan.reasons.push("标准焦点视窗模板强制使用左右智能排版：左侧文案/Logo，右侧主体物");
+      }
+      if (plan.strategy === "relayout" && !allowRelayout) {
+        plan.strategy = "outpaint";
+        plan.reasons.push("调用方禁用 relayout，回退到 outpaint");
+      }
+
+      const resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, meituContext, prompt, analysis, masks);
+      const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
+      const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height, meituContext, analysis);
+      const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, meituContext, imageUrl, masks);
+      if (meituContext.fallbackWarnings?.length) {
+        qa.warnings = [...(qa.warnings || []), ...meituContext.fallbackWarnings];
+        qa.passed = false;
+      }
+      console.log("[AdaptImage] Meitu route done", JSON.stringify({
+        strategy: plan.strategy,
+        resultUrl: finalUrl,
+        qaPassed: qa?.passed,
+        qaWarnings: qa?.warnings?.length || 0
+      }));
+
+      return {
+        ok: true,
+        provider: "meitu-open-platform",
+        route: "regular",
+        endpoint: "/api/aigc/adapt-image",
+        resultUrl: finalUrl,
+        strategy: plan.strategy,
+        target: { width, height },
+        template: { id: templateId, name: templateName, app: appName },
+        analysis: {
+          source: { width: sourceWidth, height: sourceHeight },
+          subject: analysis.subject ? {
+            exists: analysis.subject.exists,
+            kind: analysis.subject.kind,
+            box: analysis.subject.box,
+            maskUrl: analysis.subject.maskUrl
+          } : null,
+          logo: analysis.logo ? {
+            hasTarget: analysis.logo.hasTarget,
+            boxes: analysis.logo.boxes,
+            maskUrl: analysis.logo.maskUrl
+          } : null,
+          text: analysis.text ? {
+            hasText: analysis.text.hasText,
+            boxes: analysis.text.boxes,
+            maskUrl: analysis.text.maskUrl,
+            texts: analysis.text.texts
+          } : null,
+          warnings: analysis.warnings
+        },
+        masks,
+        plan,
+        layeredRelayout: meituContext.layeredRelayout ? {
+          failed: Boolean(meituContext.layeredRelayout.failed),
+          error: meituContext.layeredRelayout.error,
+          status: meituContext.layeredRelayout.status,
+          stage: meituContext.layeredRelayout.stage,
+          endpoint: meituContext.layeredRelayout.endpoint,
+          layerBox: meituContext.layeredRelayout.layerBox,
+          layout: meituContext.layeredRelayout.layout,
+          diagnostics: meituContext.layeredRelayout.diagnostics,
+          layers: meituContext.layeredRelayout.layers
+        } : null,
+        relayoutBackgroundCleanup: meituContext.relayoutBackgroundCleanup || null,
+        backgroundPrep: meituContext.backgroundPrep || null,
+        fallbackWarnings: meituContext.fallbackWarnings || [],
+        qa,
+        limitations: [
+          "常规路线使用美图检测、文字/Logo 分层、主体保护式背景延展和本地合成的可控智能排版链路。",
+          "如果常规路线故障，且后台已保存 GPT Image 2 API Key，会自动转到 GPT Image 2 路线。",
+          "后台 AI 增强开启时，会优先使用 GPT Image 2 路线；失败后自动回退到美图智能排版路线。"
+        ]
+      };
+    };
+
+    if (shouldPreferGptImage2Route) {
       try {
-        const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
-        const sourcePath = sourceStaticUrl?.startsWith("/static/") ? staticUrlToLocalPath(sourceStaticUrl) : "";
-        if (!sourcePath) throw new Error("NanoBanner requires a local static source image");
-        const nanoPrompt = [
-          AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-          "Adapt this exact original poster to the target ad size.",
-          "Move or extend only existing visual information. Prefer clean empty background over adding any new content.",
-          "Do not add unrelated objects, new text, fake letters, fake logos, labels, stickers, UI buttons or marketing copy.",
-          settings.tongyiExpandPrompt || "",
-          prompt || ""
-        ].filter(Boolean).join(" ");
-        console.log("[AdaptImage] NanoBanner override enabled", JSON.stringify({
-          targetWidth: width,
-          targetHeight: height,
-          templateId,
-          templateName
-        }));
-        const nanoResult = await nanobannerOutpaint(
-          sourcePath,
-          width,
-          height,
-          settings.nanobannerApiKey,
-          settings.nanobannerBaseUrl,
-          nanoPrompt,
-          settings.nanobannerModel
-        );
-        resultUrl = nanoResult.url;
-        context.layeredRelayout = {
-          failed: false,
-          status: "nanobanner_override",
-          layout: { mode: "nanobanner-outpaint", provider: "nanobanner" },
-          layers: { mode: "nanobanner-outpaint", provider: "nanobanner" }
-        };
+        return res.json(await runGptImage2Route("enhanced-first"));
       } catch (err) {
-        context.fallbackWarnings = context.fallbackWarnings || [];
-        context.fallbackWarnings.push(`nanobanner override failed and fell back to Meitu adapt: ${err.message}`);
-        console.warn("[AdaptImage] NanoBanner override failed, fallback to Meitu adapt:", err.message);
+        routeFailures.push(routeErrorMessage("gpt-image2", err));
+        console.warn("[AdaptImage] GPT Image 2 first route failed, fallback to Meitu:", err.response?.data || err.message);
+        try {
+          return res.json(await runMeituLayoutRoute([routeErrorMessage("gpt-image2", err)]));
+        } catch (meituErr) {
+          routeFailures.push(routeErrorMessage("meitu", meituErr));
+          const finalErr = new Error(`标准素材看板两条 AI 路线均失败：${routeFailures.join("；")}`);
+          finalErr.routeFailures = routeFailures;
+          throw finalErr;
+        }
       }
     }
-    if (!resultUrl) {
-      resultUrl = await executeAdaptPlan(imageUrl, width, height, plan, context, prompt, analysis, masks);
-    }
-    const resizableUrl = await ensureStaticImageUrlForResize(resultUrl);
-    const finalUrl = await ensureFinalAdaptSize(resizableUrl, width, height, context, analysis);
-    const qa = await runAdaptQa(finalUrl, analysis, plan, width, height, sourceWidth, sourceHeight, context, imageUrl, masks);
-    if (context.fallbackWarnings?.length) {
-      qa.warnings = [...(qa.warnings || []), ...context.fallbackWarnings];
-      qa.passed = false;
-    }
-    console.log("[AdaptImage] done", JSON.stringify({
-      strategy: plan.strategy,
-      resultUrl: finalUrl,
-      qaPassed: qa?.passed,
-      qaWarnings: qa?.warnings?.length || 0
-    }));
 
-    res.json({
-      ok: true,
-      provider: "meitu-open-platform",
-      endpoint: "/api/aigc/adapt-image",
-      resultUrl: finalUrl,
-      strategy: plan.strategy,
-      target: { width, height },
-      template: { id: templateId, name: templateName, app: appName },
-      analysis: {
-        source: { width: sourceWidth, height: sourceHeight },
-        subject: analysis.subject ? {
-          exists: analysis.subject.exists,
-          kind: analysis.subject.kind,
-          box: analysis.subject.box,
-          maskUrl: analysis.subject.maskUrl
-        } : null,
-        logo: analysis.logo ? {
-          hasTarget: analysis.logo.hasTarget,
-          boxes: analysis.logo.boxes,
-          maskUrl: analysis.logo.maskUrl
-        } : null,
-        text: analysis.text ? {
-          hasText: analysis.text.hasText,
-          boxes: analysis.text.boxes,
-          maskUrl: analysis.text.maskUrl,
-          texts: analysis.text.texts
-        } : null,
-        warnings: analysis.warnings
-      },
-      masks,
-      plan,
-      layeredRelayout: context.layeredRelayout ? {
-        failed: Boolean(context.layeredRelayout.failed),
-        error: context.layeredRelayout.error,
-        status: context.layeredRelayout.status,
-        stage: context.layeredRelayout.stage,
-        endpoint: context.layeredRelayout.endpoint,
-        layerBox: context.layeredRelayout.layerBox,
-        layout: context.layeredRelayout.layout,
-        diagnostics: context.layeredRelayout.diagnostics,
-        layers: context.layeredRelayout.layers
-      } : null,
-      relayoutBackgroundCleanup: context.relayoutBackgroundCleanup || null,
-      backgroundPrep: context.backgroundPrep || null,
-      fallbackWarnings: context.fallbackWarnings || [],
-      qa,
-      limitations: [
-        "当前主流程已关闭改图 Agent，使用检测、文字/Logo 分层、主体保护式背景延展和本地合成的可控排版链路。",
-        "默认 relayout 模式优先保留原图 Logo 和文案，不再先擦除旧位置；分层搬运仅在 AIGC_LAYERED_RELAYOUT_MODE=layered 时启用。",
-        "QA 已包含 OCR 字符召回和 Logo 感知哈希相似度，但仍不是专用品牌识别模型。",
-        "智能裁剪如果导致 OCR/Logo 复检不通过，会回退到本地保护区裁剪。"
-      ]
-    });
+    try {
+      return res.json(await runMeituLayoutRoute());
+    } catch (meituErr) {
+      routeFailures.push(routeErrorMessage("meitu", meituErr));
+      console.warn("[AdaptImage] Meitu regular route failed:", meituErr.response?.data || meituErr.message);
+      if (canUseGptImage2Route) {
+        try {
+          return res.json(await runGptImage2Route("meitu-fallback", [routeErrorMessage("meitu", meituErr)]));
+        } catch (gptErr) {
+          routeFailures.push(routeErrorMessage("gpt-image2", gptErr));
+        }
+      } else {
+        routeFailures.push("gpt-image2: 后台未配置 Nano Banner / GPT Image 2 API Key，无法兜底");
+      }
+      const finalErr = new Error(`标准素材看板两条 AI 路线均失败：${routeFailures.join("；")}`);
+      finalErr.routeFailures = routeFailures;
+      throw finalErr;
+    }
   } catch (err) {
     console.error("[AIGC Adapt Image] failed:", err.message);
     res.status(500).json({
       ok: false,
       error: "AI 广告图适配管线失败",
       details: err.message,
+      routeFailures: err.routeFailures || undefined,
       stage: err.stage,
       provider: err.endpoint ? {
         endpoint: err.endpoint,

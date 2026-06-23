@@ -20,11 +20,11 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
               visibility
             </span>
           </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-900">
+          <div className={isConfigPage ? 'rounded-[14px] bg-white/90 border border-white/70 px-3 py-1 shadow-sm' : ''}>
+            <h1 className={`text-lg font-bold tracking-tight ${isConfigPage ? 'text-slate-950' : 'text-slate-900'}`}>
               {isConfigPage ? '创新形式标准素材看板' : t('header.title')}
             </h1>
-            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+            <p className={`text-[10px] font-semibold uppercase tracking-wider ${isConfigPage ? 'text-slate-500' : 'text-slate-500'}`}>
               {isConfigPage ? '自定义模版' : t('header.subtitle')}
             </p>
           </div>
