@@ -4861,38 +4861,6 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
     .toBuffer();
 }
 
-async function buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight, layerItems = []) {
-  const baseBuffer = await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
-  const infoItems = (layerItems || []).filter(item => ["info", "logo", "text"].includes(item.type) && item.layout);
-  if (!infoItems.length) return baseBuffer;
-  const paddingX = Math.round(targetWidth * 0.035);
-  const paddingY = Math.round(targetHeight * 0.035);
-  const rects = infoItems.map(item => {
-    const x = clampNumber(Math.round(item.layout.x - paddingX), 0, targetWidth);
-    const y = clampNumber(Math.round(item.layout.y - paddingY), 0, targetHeight);
-    const right = clampNumber(Math.round(item.layout.x + item.layout.width + paddingX), 0, targetWidth);
-    const bottom = clampNumber(Math.round(item.layout.y + item.layout.height + paddingY), 0, targetHeight);
-    return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
-  }).filter(rect => rect.width > 1 && rect.height > 1);
-  if (!rects.length) return baseBuffer;
-  const maskSvg = Buffer.from(`
-    <svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" xmlns="http://www.w3.org/2000/svg">
-      ${rects.map(rect => `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${Math.round(Math.min(rect.width, rect.height) * 0.18)}" fill="white"/>`).join("")}
-    </svg>
-  `);
-  const featheredMask = await sharp(maskSvg).blur(18).png().toBuffer();
-  const cleanOverlay = await sharp(baseBuffer)
-    .blur(38)
-    .modulate({ saturation: 0.88, brightness: 1.02 })
-    .composite([{ input: featheredMask, blend: "dest-in" }])
-    .png()
-    .toBuffer();
-  return sharp(baseBuffer)
-    .composite([{ input: cleanOverlay, left: 0, top: 0, blend: "over" }])
-    .jpeg({ quality: 91, mozjpeg: true })
-    .toBuffer();
-}
-
 function isStandardFocalWindowTemplateForAdapt(context = {}) {
   const templateId = String(context.templateId || "").toLowerCase();
   const templateName = String(context.templateName || "");
@@ -5040,7 +5008,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   };
 }
 
-async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targetWidth, targetHeight, options = {}) {
+async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targetWidth, targetHeight) {
   const backgroundStatic = await ensureStaticImageUrlForResize(backgroundUrl);
   if (!backgroundStatic?.startsWith("/static/")) {
     throw new Error("multi-layer relayout requires a local static background layer");
@@ -5074,10 +5042,7 @@ async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targ
   await ensureDir(STORAGE_DIR);
   const outputFilename = `aigc_multilayer_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, outputFilename);
-  const backgroundPath = staticUrlToLocalPath(backgroundStatic);
-  const backgroundBuffer = options.cleanLeftInfoArea
-    ? await buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight, layerItems)
-    : await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
+  const backgroundBuffer = await buildRelayoutBackgroundBuffer(staticUrlToLocalPath(backgroundStatic), targetWidth, targetHeight);
   await sharp(backgroundBuffer)
     .composite(composites)
     .flatten({ background: "#ffffff" })
@@ -5442,9 +5407,7 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   });
   const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text" || item.type === "info");
   if (multiLayerItems.length >= 1 && hasIndependentInfoLayer) {
-    const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight, {
-      cleanLeftInfoArea: useFocalLeftRightLayout
-    });
+    const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
     return {
       resultUrl,
       layerBox,
