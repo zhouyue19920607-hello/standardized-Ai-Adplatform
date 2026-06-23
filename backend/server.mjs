@@ -175,6 +175,44 @@ async function writeJson(filePath, data) {
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
+function firstConfiguredEnv(...names) {
+  for (const name of names) {
+    const value = String(process.env[name] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function getNanoBannerModel() {
+  return firstConfiguredEnv("NANO_BANNER_MODEL", "NANOBANNER_MODEL") || "gpt-image2";
+}
+
+function getDefaultSystemSettings() {
+  const nanobannerApiKey = firstConfiguredEnv("NANO_BANNER_API_KEY", "NANOBANNER_API_KEY");
+  return {
+    aiEnhancedMode: false,
+    aiProvider: nanobannerApiKey ? "nanobanner" : "tongyi",
+    tongyiApiKey: firstConfiguredEnv("TONGYI_API_KEY", "DASHSCOPE_API_KEY"),
+    nanobannerApiKey,
+    nanobannerBaseUrl: firstConfiguredEnv("NANO_BANNER_BASE_URL", "NANO_BANNER_API_BASE_URL", "NANOBANNER_BASE_URL"),
+    comfyuiUrl: firstConfiguredEnv("COMFYUI_BASE_URL") || "http://127.0.0.1:8188",
+    tongyiExpandPrompt: firstConfiguredEnv("NANO_BANNER_PROMPT", "TONGYI_EXPAND_PROMPT")
+  };
+}
+
+async function readSystemSettings() {
+  const defaults = getDefaultSystemSettings();
+  const saved = await readJson(SETTINGS_FILE, {});
+  const settings = { ...defaults, ...(saved || {}) };
+  if (!settings.tongyiApiKey) settings.tongyiApiKey = defaults.tongyiApiKey;
+  if (!settings.nanobannerApiKey) settings.nanobannerApiKey = defaults.nanobannerApiKey;
+  if (!settings.nanobannerBaseUrl) settings.nanobannerBaseUrl = defaults.nanobannerBaseUrl;
+  if (!settings.comfyuiUrl) settings.comfyuiUrl = defaults.comfyuiUrl;
+  if (!settings.tongyiExpandPrompt) settings.tongyiExpandPrompt = defaults.tongyiExpandPrompt;
+  if (!settings.aiProvider && settings.nanobannerApiKey) settings.aiProvider = "nanobanner";
+  return settings;
+}
+
 async function persistTemplateAssetOverrides(templates = []) {
   const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
   let changed = false;
@@ -259,12 +297,7 @@ async function ensureDataFiles() {
   // NOTE: 初始化 AI 增强模式配置，默认关闭
   const settings = await readJson(SETTINGS_FILE, null);
   if (!settings) {
-    await writeJson(SETTINGS_FILE, {
-      aiEnhancedMode: false,
-      aiProvider: "tongyi",
-      tongyiApiKey: "",
-      comfyuiUrl: "http://127.0.0.1:8188"
-    });
+    await writeJson(SETTINGS_FILE, getDefaultSystemSettings());
   }
 
   const creativeSettings = await readJson(CREATIVE_SETTINGS_FILE, null);
@@ -6568,13 +6601,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       templateName,
       appName
     };
-    const settings = await readJson(SETTINGS_FILE, {
-      aiEnhancedMode: false,
-      aiProvider: "nanobanner",
-      nanobannerApiKey: "",
-      nanobannerBaseUrl: "",
-      tongyiExpandPrompt: ""
-    });
+    const settings = await readSystemSettings();
     if (settings.aiProvider !== "nanobanner" || !settings.nanobannerApiKey) {
       return res.status(400).json({
         ok: false,
@@ -7523,14 +7550,7 @@ app.post("/api/focal-window/generate", upload.single("image"), async (req, res) 
 
 // ---- API: 系统设置（AI 增强模式开关）----
 app.get("/api/settings", async (req, res) => {
-  const settings = await readJson(SETTINGS_FILE, {
-    aiEnhancedMode: false,
-    aiProvider: "tongyi",
-    tongyiApiKey: "",
-    nanobannerApiKey: "",
-    nanobannerBaseUrl: "",
-    comfyuiUrl: "http://127.0.0.1:8188"
-  });
+  const settings = await readSystemSettings();
   // NOTE: 为安全起见，返回时遮盖 API Key 的实际内容（只显示是否已配置）
   res.json({
     ...settings,
@@ -7544,14 +7564,7 @@ app.get("/api/settings", async (req, res) => {
 
 app.put("/api/settings", async (req, res) => {
   const payload = req.body || {};
-  const current = await readJson(SETTINGS_FILE, {
-    aiEnhancedMode: false,
-    aiProvider: "tongyi",
-    tongyiApiKey: "",
-    nanobannerApiKey: "",
-    nanobannerBaseUrl: "",
-    comfyuiUrl: "http://127.0.0.1:8188"
-  });
+  const current = await readSystemSettings();
 
   // NOTE: 如果前端传来 "***configured***" 说明用户没改 key，保持原值
   if (payload.tongyiApiKey === "***configured***") {
@@ -7797,8 +7810,9 @@ async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, api
     const extendPrompt = `请根据这张图片进行自然无缝向外扩充延展，生成 ${targetWidth}x${targetHeight} 等比例的完整图像。主体保持不变与居中。${customPrompt}`;
 
     // NOTE: 对于此类高级代理商，将图片作为 vision 发到 chat/completions 会通过底层映射触发他们的特定修图工作流
+    const nanoBannerModel = getNanoBannerModel();
     const payload = {
-      model: "gemini-3.1-flash-image-preview", // 适用 laozhang.ai 映射环境
+      model: nanoBannerModel,
       messages: [{
         role: "user",
         content: [
@@ -7813,7 +7827,7 @@ async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, api
       "Content-Type": "application/json"
     };
 
-    console.log(`[NanoBanner] 发起图生图合并请求到: ${apiEndpoint}`);
+    console.log(`[NanoBanner] 发起图生图合并请求到: ${apiEndpoint}, model=${nanoBannerModel}`);
     // 允许大底图的长连接时长
     const submitResp = await axios.post(apiEndpoint, payload, {
       headers,
@@ -7822,7 +7836,14 @@ async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, api
       timeout: 120000
     });
 
-    const contentReturn = submitResp.data?.choices?.[0]?.message?.content;
+    if (typeof submitResp.data === "string" && /<(?:!doctype|html)\b/i.test(submitResp.data)) {
+      throw new Error(`Nano Banner API Base URL 返回了网页 HTML，不是接口 JSON。请把 API BASE URL 填为接口根地址，例如 https://api.laozhang.ai/v1，不要填官网/落地页；当前请求地址：${apiEndpoint}`);
+    }
+
+    const rawContent = submitResp.data?.choices?.[0]?.message?.content;
+    const contentReturn = Array.isArray(rawContent)
+      ? rawContent.map((item) => item?.text || item?.image_url?.url || "").join("\n")
+      : rawContent;
     if (!contentReturn) {
       throw new Error(`无文本结果返回: ${JSON.stringify(submitResp.data).substring(0, 200)}`);
     }
@@ -8012,12 +8033,7 @@ async function writePendantWithTransparentBackground(imgBuffer, outPath) {
 app.post("/api/creative/dynamic-splash/pendant", async (req, res) => {
   try {
     const prompt = String(req.body?.prompt || "").trim();
-    const settings = await readJson(SETTINGS_FILE, {
-      aiEnhancedMode: false,
-      aiProvider: "nanobanner",
-      nanobannerApiKey: "",
-      nanobannerBaseUrl: ""
-    });
+    const settings = await readSystemSettings();
 
     if (!settings.nanobannerApiKey) {
       return res.status(400).json({ error: "请先在后台看板管理中配置 Nano Banner API Key" });
@@ -8109,7 +8125,7 @@ async function uploadImageToBailianStorage(imagePath, apiKey) {
 // NOTE: 提供独立的测试接口，方便用户在 Admin 面板验证 API Key 是否正确配置
 app.post("/api/tongyi/test", async (req, res) => {
   try {
-    const settings = await readJson(SETTINGS_FILE, { tongyiApiKey: "" });
+    const settings = await readSystemSettings();
     const apiKey = req.body?.apiKey || settings.tongyiApiKey;
 
     if (!apiKey || apiKey === "***configured***") {
@@ -8151,7 +8167,7 @@ app.post("/api/tongyi/test", async (req, res) => {
 
 app.post("/api/nanobanner/test", async (req, res) => {
   try {
-    const settings = await readJson(SETTINGS_FILE, { nanobannerApiKey: "", nanobannerBaseUrl: "" });
+    const settings = await readSystemSettings();
     const apiKey = req.body?.apiKey || settings.nanobannerApiKey;
     let baseUrl = req.body?.baseUrl || settings.nanobannerBaseUrl;
 
@@ -8173,10 +8189,17 @@ app.post("/api/nanobanner/test", async (req, res) => {
       timeout: 10000
     });
 
-    if (tokenResp.status === 200) {
+    if (typeof tokenResp.data === "string" && /<(?:!doctype|html)\b/i.test(tokenResp.data)) {
+      return res.status(400).json({
+        ok: false,
+        error: "连接失败：API Base URL 返回了网页 HTML，不是接口 JSON。请填写接口根地址，例如 https://api.laozhang.ai/v1，不要填写官网/落地页。"
+      });
+    }
+
+    if (tokenResp.status === 200 && tokenResp.data && typeof tokenResp.data === "object") {
       return res.json({ ok: true, message: "Nano Banner API 测试成功，接口通畅" });
     } else {
-      return res.status(400).json({ ok: false, error: "身份认证失败：接口未返回 200 OK" });
+      return res.status(400).json({ ok: false, error: "连接失败：接口没有返回标准 JSON，请检查 API Base URL 是否为服务商提供的接口根地址。" });
     }
   } catch (err) {
     const status = err.response?.status;
@@ -8296,11 +8319,7 @@ app.post("/api/smart-crop", upload.single("image"), async (req, res) => {
     const limitKB = parseInt(maxSizeKB) || 200;
 
     // NOTE: 检查 AI 增强模式开关，如果开启则路由到对应 AI 服务
-    const settings = await readJson(SETTINGS_FILE, {
-      aiEnhancedMode: false,
-      aiProvider: "tongyi",
-      tongyiApiKey: ""
-    });
+    const settings = await readSystemSettings();
     console.log(`[SmartCrop DEBUG] settings.aiEnhancedMode=${settings.aiEnhancedMode}, aiProvider=${settings.aiProvider}, hasKey=${!!settings.tongyiApiKey}, keyLen=${settings.tongyiApiKey?.length}`);
     if (settings.aiEnhancedMode && settings.aiProvider === "tongyi" && settings.tongyiApiKey) {
       try {
