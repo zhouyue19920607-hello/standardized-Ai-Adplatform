@@ -226,7 +226,7 @@ const pendantMotionNotes = {
 const CANVAS_W = 1440;
 const CANVAS_H = 2340;
 const PENDANT_SIZE = 450;
-const PENDANT_PREVIEW_SIZE_RATIO = 0.55;
+const PENDANT_DISPLAY_SIZE_RATIO = 0.55;
 const PENDANT_GROUP_START_Y = -CANVAS_H - PENDANT_SIZE;
 const PENDANT_GROUP_END_Y = CANVAS_H + PENDANT_SIZE * 1.25;
 const MAGAZINE_MIN_ASSETS = 3;
@@ -512,7 +512,7 @@ const getPendantPreviewStyle = (
     return {
         left: `${(seed.x / CANVAS_W) * 100}%`,
         top: `${(seed.y / CANVAS_H) * 100}%`,
-        width: `${(PENDANT_SIZE / CANVAS_W) * 100 * seed.scale * PENDANT_PREVIEW_SIZE_RATIO}%`,
+        width: `${(PENDANT_SIZE / CANVAS_W) * 100 * seed.scale * PENDANT_DISPLAY_SIZE_RATIO}%`,
         opacity: 1,
     };
 };
@@ -1001,7 +1001,7 @@ const ConfigWorkspace: React.FC = () => {
     }, [expandedTemplate, polyCards.length]);
 
     useEffect(() => {
-        const isBreakLikeTemplate = isBreakFrameLikeTemplateId(expandedTemplate);
+        const isBreakLikeTemplate = isBreakFrameLikeTemplateId(expandedTemplate) && expandedTemplate !== 'refresh-ui-bottom-nav';
         if (!isBreakLikeTemplate || generatedVideoUrl) {
             setBreakPreviewElapsed(0);
             return undefined;
@@ -3845,7 +3845,7 @@ const ConfigWorkspace: React.FC = () => {
                 pendantSeeds.forEach((seed) => {
                     const frame = getPendantFrame(seed, progress);
                     if (frame.opacity <= 0) return;
-                    const size = PENDANT_SIZE * frame.scale;
+                    const size = PENDANT_SIZE * frame.scale * PENDANT_DISPLAY_SIZE_RATIO;
                     ctx.save();
                     ctx.globalAlpha = frame.opacity;
                     ctx.translate(frame.x + size / 2, frame.y + size / 2);
