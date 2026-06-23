@@ -75,7 +75,7 @@ const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "meiyan-break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "美颜-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "polymorphic-flip-card", groupId: "home", groupName: "首页创意模版", name: "多态翻卡", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "jumping-focal-window", groupId: "home", groupName: "首页创意模版", name: "跃动焦点视窗", dimensions: "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900", enabled: true },
-  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI/底导", dimensions: "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252", enabled: true }
+  { id: "refresh-ui-bottom-nav", groupId: "home", groupName: "首页创意模版", name: "焕新UI", dimensions: "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon", enabled: true }
 ];
 const IMPLEMENTED_CREATIVE_TEMPLATE_IDS = new Set(DEFAULT_CREATIVE_TEMPLATES.map(t => t.id));
 // NOTE: 模版使用次数单独存储，不随 templates.json 一起被 git 覆盖
@@ -489,10 +489,17 @@ app.get("/api/creative-templates", async (req, res) => {
   const defaultById = Object.fromEntries(DEFAULT_CREATIVE_TEMPLATES.map(t => [t.id, t]));
   const merged = templates
     .filter(t => IMPLEMENTED_CREATIVE_TEMPLATE_IDS.has(t.id))
-    .map(t => ({
-      ...(defaultById[t.id] || {}),
-      ...t
-    }));
+    .map(t => {
+      const merged = {
+        ...(defaultById[t.id] || {}),
+        ...t
+      };
+      if (merged.id === "refresh-ui-bottom-nav") {
+        merged.name = "焕新UI";
+        merged.dimensions = "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon";
+      }
+      return merged;
+    });
   res.json(merged);
 });
 

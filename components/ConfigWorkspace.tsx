@@ -92,7 +92,7 @@ const defaultCreativeCategories = [
             { id: 'meiyan-break-frame-focal-3d', label: '美颜-破框焦点视窗3D' },
             { id: 'polymorphic-flip-card', label: '多态翻卡' },
             { id: 'jumping-focal-window', label: '跃动焦点视窗' },
-            { id: 'refresh-ui-bottom-nav', label: '焕新UI/底导' },
+            { id: 'refresh-ui-bottom-nav', label: '焕新UI' },
         ],
     },
 ];
@@ -165,8 +165,8 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         id: 'refresh-ui-bottom-nav',
         groupId: 'home',
         groupName: '首页创意模版',
-        name: '焕新UI/底导',
-        dimensions: 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252',
+        name: '焕新UI',
+        dimensions: 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon',
         preview_video_path: '/static/previews/refresh-ui-bottom-nav_preview.mp4',
         enabled: true,
     },
@@ -3644,7 +3644,7 @@ const ConfigWorkspace: React.FC = () => {
             canvas.width = BREAK_CANVAS_W;
             canvas.height = BREAK_CANVAS_H;
             const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('无法创建焕新UI/底导视频');
+            if (!ctx) throw new Error('无法创建焕新UI视频');
 
             const iconSheetIsVideo = refreshIconSheet.file.type.startsWith('video/');
             const iconSheetImage = iconSheetIsVideo ? null : await loadImage(refreshIconSheet.url);
@@ -3727,7 +3727,7 @@ const ConfigWorkspace: React.FC = () => {
             setGeneratedVideoUrl(URL.createObjectURL(output));
             setGeneratedVideoType(mimeType);
         } catch (err) {
-            setError(err instanceof Error ? err.message : '焕新UI/底导视频合成失败');
+            setError(err instanceof Error ? err.message : '焕新UI视频合成失败');
         } finally {
             setIsGenerating(false);
         }
@@ -3759,7 +3759,7 @@ const ConfigWorkspace: React.FC = () => {
         }
 
         if (expandedTemplate !== 'dynamic-splash') {
-            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI/底导」模版编辑');
+            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI」模版编辑');
             return;
         }
         if (!splash.url || !splash.file || splash.status === 'invalid') {
@@ -5455,15 +5455,15 @@ const ConfigWorkspace: React.FC = () => {
                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                         <div className="flex items-start gap-4">
                                             <div className="h-11 w-11 rounded-[16px] bg-white/10 flex items-center justify-center shrink-0">
-                                                <span className="material-symbols-outlined text-zinc-300">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'bottom_navigation'}</span>
+                                                <span className="material-symbols-outlined text-zinc-300">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'auto_awesome_mosaic'}</span>
                                             </div>
                                             <div>
                                                 <h2 className="text-white text-sm font-black">{selectedTemplateName}模版</h2>
-                                                <p className="text-[10px] text-zinc-600 font-bold mt-1">模版入口已创建，后续可继续配置上传素材、动画规则和合成预览。</p>
+                                                <p className="text-[10px] text-zinc-600 font-bold mt-1">{isJumpingFocalTemplate ? '模版入口已创建，后续可继续配置上传素材、动画规则和合成预览。' : '当前仅保留 icon 底图素材能力，底部导航素材入口暂不展示。'}</p>
                                             </div>
                                         </div>
                                         <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 text-[11px] leading-5 text-zinc-500 font-bold">
-                                            当前不会套用其他模版的上传能力，避免误生成。等你确认底导素材规格后，我再把这一块补成完整可用的后台配置。
+                                            当前不会套用其他模版的上传能力，避免误生成。
                                         </div>
                                     </div>
                                 ) : (
@@ -6031,8 +6031,8 @@ const ConfigWorkspace: React.FC = () => {
                                                     </>
                                                 ) : isJumpingFocalTemplate || isRefreshUiBottomNavTemplate ? (
                                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
-                                                        <span className="material-symbols-outlined text-6xl">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'bottom_navigation'}</span>
-                                                        <span className="mt-3 text-[10px] font-black tracking-widest uppercase">{isJumpingFocalTemplate ? 'Jumping Focal Window' : 'Refresh UI / Bottom Nav'}</span>
+                                                        <span className="material-symbols-outlined text-6xl">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'auto_awesome_mosaic'}</span>
+                                                        <span className="mt-3 text-[10px] font-black tracking-widest uppercase">{isJumpingFocalTemplate ? 'Jumping Focal Window' : 'Refresh UI'}</span>
                                                     </div>
                                                 ) : splash.url ? (
                                                     splash.file?.type.startsWith('video/') ? (

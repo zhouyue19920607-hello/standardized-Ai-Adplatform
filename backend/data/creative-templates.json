@@ -66,8 +66,8 @@
     "id": "refresh-ui-bottom-nav",
     "groupId": "home",
     "groupName": "首页创意模版",
-    "name": "焕新UI/底导",
-    "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252",
+    "name": "焕新UI",
+    "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon",
     "preview_video_path": "/static/previews/refresh-ui-bottom-nav_preview.mp4",
     "enabled": true
   }
