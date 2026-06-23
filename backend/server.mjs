@@ -4861,27 +4861,30 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
     .toBuffer();
 }
 
-async function buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight) {
+async function buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight, layerItems = []) {
   const baseBuffer = await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
-  const leftWidth = Math.round(targetWidth * 0.48);
-  const featherWidth = Math.round(targetWidth * 0.10);
-  const gradientStop = Math.max(0, Math.min(100, (leftWidth / Math.max(1, leftWidth + featherWidth)) * 100));
+  const infoItems = (layerItems || []).filter(item => ["info", "logo", "text"].includes(item.type) && item.layout);
+  if (!infoItems.length) return baseBuffer;
+  const paddingX = Math.round(targetWidth * 0.035);
+  const paddingY = Math.round(targetHeight * 0.035);
+  const rects = infoItems.map(item => {
+    const x = clampNumber(Math.round(item.layout.x - paddingX), 0, targetWidth);
+    const y = clampNumber(Math.round(item.layout.y - paddingY), 0, targetHeight);
+    const right = clampNumber(Math.round(item.layout.x + item.layout.width + paddingX), 0, targetWidth);
+    const bottom = clampNumber(Math.round(item.layout.y + item.layout.height + paddingY), 0, targetHeight);
+    return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+  }).filter(rect => rect.width > 1 && rect.height > 1);
+  if (!rects.length) return baseBuffer;
   const maskSvg = Buffer.from(`
     <svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="fade" x1="0" x2="${leftWidth + featherWidth}" y1="0" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="white" stop-opacity="1"/>
-          <stop offset="${gradientStop.toFixed(2)}%" stop-color="white" stop-opacity="1"/>
-          <stop offset="100%" stop-color="white" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="${leftWidth + featherWidth}" height="${targetHeight}" fill="url(#fade)"/>
+      ${rects.map(rect => `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${Math.round(Math.min(rect.width, rect.height) * 0.18)}" fill="white"/>`).join("")}
     </svg>
   `);
+  const featheredMask = await sharp(maskSvg).blur(18).png().toBuffer();
   const cleanOverlay = await sharp(baseBuffer)
-    .blur(54)
+    .blur(38)
     .modulate({ saturation: 0.88, brightness: 1.02 })
-    .composite([{ input: maskSvg, blend: "dest-in" }])
+    .composite([{ input: featheredMask, blend: "dest-in" }])
     .png()
     .toBuffer();
   return sharp(baseBuffer)
@@ -5073,7 +5076,7 @@ async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targ
   const outputPath = path.join(STORAGE_DIR, outputFilename);
   const backgroundPath = staticUrlToLocalPath(backgroundStatic);
   const backgroundBuffer = options.cleanLeftInfoArea
-    ? await buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight)
+    ? await buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight, layerItems)
     : await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
   await sharp(backgroundBuffer)
     .composite(composites)
