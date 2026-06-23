@@ -226,8 +226,7 @@ const pendantMotionNotes = {
 const CANVAS_W = 1440;
 const CANVAS_H = 2340;
 const PENDANT_SIZE = 450;
-const PENDANT_PREVIEW_SIZE_RATIO = 0.7;
-const PENDANT_PREVIEW_SIZE_JITTERS = [0.9, 1.15, 0.78, 1.04, 0.86, 1.22, 0.96, 0.82];
+const PENDANT_PREVIEW_SIZE_RATIO = 0.55;
 const PENDANT_GROUP_START_Y = -CANVAS_H - PENDANT_SIZE;
 const PENDANT_GROUP_END_Y = CANVAS_H + PENDANT_SIZE * 1.25;
 const MAGAZINE_MIN_ASSETS = 3;
@@ -509,13 +508,11 @@ const getPendantGroupPreviewStyle = (): React.CSSProperties => ({
 
 const getPendantPreviewStyle = (
     seed: PendantSeed,
-    index = 0,
 ): React.CSSProperties => {
-    const previewScale = PENDANT_PREVIEW_SIZE_RATIO * PENDANT_PREVIEW_SIZE_JITTERS[index % PENDANT_PREVIEW_SIZE_JITTERS.length];
     return {
         left: `${(seed.x / CANVAS_W) * 100}%`,
         top: `${(seed.y / CANVAS_H) * 100}%`,
-        width: `${(PENDANT_SIZE / CANVAS_W) * 100 * seed.scale * previewScale}%`,
+        width: `${(PENDANT_SIZE / CANVAS_W) * 100 * seed.scale * PENDANT_PREVIEW_SIZE_RATIO}%`,
         opacity: 1,
     };
 };
@@ -6080,7 +6077,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                 key={`pendant-group-${index}`}
                                                                 src={asset.url}
                                                                 alt="挂件预览"
-                                                                style={getPendantPreviewStyle(seed, index)}
+                                                                style={getPendantPreviewStyle(seed)}
                                                                 className="absolute object-contain drop-shadow-2xl"
                                                             />
                                                         ))}
