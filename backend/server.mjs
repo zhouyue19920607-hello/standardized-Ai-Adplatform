@@ -2741,6 +2741,10 @@ function normalizeProviderMessage(raw) {
   return raw?.message || raw?.error_msg || raw?.msg || raw?.data?.message || raw?.data?.error_msg || raw?.data?.msg || "";
 }
 
+function isTransientUpstreamMessage(message = "") {
+  return /upstream connect error|disconnect\/reset before headers|connection termination|connection reset|reset reason|econnreset|socket hang up|gateway timeout|bad gateway|service unavailable|temporarily unavailable/i.test(String(message || ""));
+}
+
 function extractOpenapiTaskTraceId(raw) {
   return raw?.data?.task_id
     || raw?.task_id
@@ -2776,6 +2780,7 @@ function createProviderError(stage, endpoint, raw) {
   error.endpoint = endpoint;
   error.providerRaw = raw;
   error.permission = isProviderPermissionError(raw);
+  error.transientUpstream = isTransientUpstreamMessage(message);
   return error;
 }
 
@@ -3757,41 +3762,55 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
   if (!endpoint) throw new Error(`未知算法 endpoint: ${apiStyle}/${endpointName}`);
   const isAsync = apiStyle === ADAPT_API_STYLES.aiPlatform ? true : endpoint.endsWith("_async");
   const useTaskGateway = apiStyle === ADAPT_API_STYLES.openapi && isAsync;
+  const maxAttempts = Math.max(1, Number(options.providerAttempts || 3));
   console.log("[AdaptImage] request", JSON.stringify({
     endpointName,
     apiStyle,
     endpoint,
     isAsync,
     useTaskGateway,
+    maxAttempts,
     payload: summarizeAdaptPayload(payload)
   }));
-  try {
-    const raw = apiStyle === ADAPT_API_STYLES.aiPlatform
-      ? await runPlatformTask(endpoint, payload, { ...options, config })
-      : useTaskGateway
-        ? await callOpenapiTaskGateway(endpoint, payload, { ...options, config })
-        : isAsync
-        ? await callOpenapiV3Async(endpoint, payload, { ...options, config })
-        : await callOpenapiV3Sync(endpoint, payload, { ...options, config });
-    console.log("[AdaptImage] response", JSON.stringify({
-      endpointName,
-      apiStyle,
-      endpoint,
-      ...summarizeProviderRaw(raw)
-    }));
-    return raw;
-  } catch (err) {
-    console.warn("[AdaptImage] failed", JSON.stringify({
-      endpointName,
-      apiStyle,
-      endpoint,
-      isAsync,
-      message: err?.message || String(err),
-      stage: err?.stage || "",
-      provider: err?.providerRaw ? summarizeProviderRaw(err.providerRaw) : null
-    }));
-    throw err;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const raw = apiStyle === ADAPT_API_STYLES.aiPlatform
+        ? await runPlatformTask(endpoint, payload, { ...options, config })
+        : useTaskGateway
+          ? await callOpenapiTaskGateway(endpoint, payload, { ...options, config })
+          : isAsync
+          ? await callOpenapiV3Async(endpoint, payload, { ...options, config })
+          : await callOpenapiV3Sync(endpoint, payload, { ...options, config });
+      console.log("[AdaptImage] response", JSON.stringify({
+        endpointName,
+        apiStyle,
+        endpoint,
+        attempt,
+        ...summarizeProviderRaw(raw)
+      }));
+      return raw;
+    } catch (err) {
+      lastError = err;
+      const message = err?.message || String(err);
+      const shouldRetry = attempt < maxAttempts && (err?.transientUpstream || isTransientUpstreamMessage(message));
+      console.warn("[AdaptImage] failed", JSON.stringify({
+        endpointName,
+        apiStyle,
+        endpoint,
+        isAsync,
+        attempt,
+        maxAttempts,
+        retrying: shouldRetry,
+        message,
+        stage: err?.stage || "",
+        provider: err?.providerRaw ? summarizeProviderRaw(err.providerRaw) : null
+      }));
+      if (!shouldRetry) throw err;
+      await sleep(Math.min(6000, 1000 * attempt));
+    }
   }
+  throw lastError;
 }
 
 function extractResultUrls(raw) {
@@ -4842,6 +4861,35 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
     .toBuffer();
 }
 
+async function buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight) {
+  const baseBuffer = await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
+  const leftWidth = Math.round(targetWidth * 0.48);
+  const featherWidth = Math.round(targetWidth * 0.10);
+  const gradientStop = Math.max(0, Math.min(100, (leftWidth / Math.max(1, leftWidth + featherWidth)) * 100));
+  const maskSvg = Buffer.from(`
+    <svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fade" x1="0" x2="${leftWidth + featherWidth}" y1="0" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="white" stop-opacity="1"/>
+          <stop offset="${gradientStop.toFixed(2)}%" stop-color="white" stop-opacity="1"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="${leftWidth + featherWidth}" height="${targetHeight}" fill="url(#fade)"/>
+    </svg>
+  `);
+  const cleanOverlay = await sharp(baseBuffer)
+    .blur(54)
+    .modulate({ saturation: 0.88, brightness: 1.02 })
+    .composite([{ input: maskSvg, blend: "dest-in" }])
+    .png()
+    .toBuffer();
+  return sharp(baseBuffer)
+    .composite([{ input: cleanOverlay, left: 0, top: 0, blend: "over" }])
+    .jpeg({ quality: 91, mozjpeg: true })
+    .toBuffer();
+}
+
 function isStandardFocalWindowTemplateForAdapt(context = {}) {
   const templateId = String(context.templateId || "").toLowerCase();
   const templateName = String(context.templateName || "");
@@ -4989,7 +5037,7 @@ function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, 
   };
 }
 
-async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targetWidth, targetHeight) {
+async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targetWidth, targetHeight, options = {}) {
   const backgroundStatic = await ensureStaticImageUrlForResize(backgroundUrl);
   if (!backgroundStatic?.startsWith("/static/")) {
     throw new Error("multi-layer relayout requires a local static background layer");
@@ -5023,7 +5071,10 @@ async function composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, targ
   await ensureDir(STORAGE_DIR);
   const outputFilename = `aigc_multilayer_relayout_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, outputFilename);
-  const backgroundBuffer = await buildRelayoutBackgroundBuffer(staticUrlToLocalPath(backgroundStatic), targetWidth, targetHeight);
+  const backgroundPath = staticUrlToLocalPath(backgroundStatic);
+  const backgroundBuffer = options.cleanLeftInfoArea
+    ? await buildFocalLeftCleanBackgroundBuffer(backgroundPath, targetWidth, targetHeight)
+    : await buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, targetHeight);
   await sharp(backgroundBuffer)
     .composite(composites)
     .flatten({ background: "#ffffff" })
@@ -5388,7 +5439,9 @@ async function executeLayeredRelayoutForAdapt(imageUrl, targetWidth, targetHeigh
   });
   const hasIndependentInfoLayer = multiLayerItems.some(item => item.type === "logo" || item.type === "text" || item.type === "info");
   if (multiLayerItems.length >= 1 && hasIndependentInfoLayer) {
-    const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight);
+    const resultUrl = await composeMultiLayerRelayoutForAdapt(backgroundUrl, multiLayerItems, targetWidth, targetHeight, {
+      cleanLeftInfoArea: useFocalLeftRightLayout
+    });
     return {
       resultUrl,
       layerBox,
