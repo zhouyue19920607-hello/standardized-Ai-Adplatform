@@ -70,6 +70,12 @@ const platformOptions = [
     { id: 'wink', label: 'Wink', icon: '/icons/wink_mask_icon.png' },
 ] as const;
 
+const dynamicSplashPlatformMasks: Record<CreativeTemplateSettings['platforms'][number], string> = {
+    xiuxiu: '/creative-masks/dynamic-splash-xiuxiu.png',
+    meiyan: '/creative-masks/dynamic-splash-meiyan.png',
+    wink: '/creative-masks/dynamic-splash-wink.png',
+};
+
 const SHOW_REFRESH_BOTTOM_NAV_UPLOAD = false;
 
 const defaultCreativeCategories = [
@@ -3883,6 +3889,7 @@ const ConfigWorkspace: React.FC = () => {
     const selectedTemplateName = categories
         .flatMap((cat) => cat.templates)
         .find((tpl) => tpl.id === expandedTemplate)?.label || '炫动开屏';
+    const isDynamicSplashTemplate = expandedTemplate === 'dynamic-splash';
     const isMagazineTemplate = expandedTemplate === 'magazine-flip';
     const isSpotlightTemplate = expandedTemplate === 'slide-splash';
     const isBreakFocalTemplate = isBreakFrameLikeTemplateId(expandedTemplate);
@@ -3890,6 +3897,8 @@ const ConfigWorkspace: React.FC = () => {
     const isJumpingFocalTemplate = expandedTemplate === 'jumping-focal-window';
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
+    const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
+    const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
     const outputSpec = isMagazineTemplate
         ? '输出规格 1440 x 2340 / 鼠标拖动滑动翻页'
             : isSpotlightTemplate
@@ -5702,7 +5711,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 />
                                                 <button
                                                     onClick={togglePreviewPlayback}
-                                                    className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/55 text-white backdrop-blur-md opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center border border-white/20"
+                                                    className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/55 text-white backdrop-blur-md opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center border border-white/20 z-[120]"
                                                     aria-label={isPreviewPlaying ? '暂停视频' : '播放视频'}
                                                 >
                                                     <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
@@ -6096,9 +6105,16 @@ const ConfigWorkspace: React.FC = () => {
                                                 )}
                                             </>
                                         )}
+                                        {isDynamicSplashTemplate && !hoveredPreviewVideoUrl && activeDynamicSplashMask && (
+                                            <img
+                                                src={activeDynamicSplashMask}
+                                                alt="气泡滑动平台遮罩"
+                                                className="absolute inset-0 z-[90] h-full w-full object-contain pointer-events-none"
+                                            />
+                                        )}
                                         {cropAreaEnabled && !hoveredPreviewVideoUrl && (
                                             <div
-                                                className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
+                                                className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] z-[100] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
                                             >
                                                 <span className="absolute left-2 top-2 text-[8px] font-black text-emerald-200 uppercase tracking-widest">裁剪安全区</span>
                                             </div>
