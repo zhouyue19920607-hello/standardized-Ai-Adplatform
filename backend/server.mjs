@@ -6575,10 +6575,83 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       nanobannerBaseUrl: "",
       tongyiExpandPrompt: ""
     });
-    const shouldUseNanoBannerAdapt =
-      Boolean(settings.aiEnhancedMode) &&
-      settings.aiProvider === "nanobanner" &&
-      Boolean(settings.nanobannerApiKey);
+    if (settings.aiProvider !== "nanobanner" || !settings.nanobannerApiKey) {
+      return res.status(400).json({
+        ok: false,
+        error: "标准素材看板已切换为 Gemini / Nano Banner 外采适配，请先在后台配置 Nano Banner API Key，并选择 Nano Banner API 服务商。"
+      });
+    }
+    try {
+      const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
+      const sourcePath = sourceStaticUrl?.startsWith("/static/") ? staticUrlToLocalPath(sourceStaticUrl) : "";
+      if (!sourcePath) throw new Error("Nano Banner 需要可读取的本地输入图片");
+      const nanoPrompt = [
+        AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+        "Adapt this exact original poster to the target ad size.",
+        "Preserve the original product, subject, readable text, slogan, logo and brand marks as much as possible.",
+        "Do not add unrelated objects, new text, fake letters, fake logos, labels, stickers, UI buttons or marketing copy.",
+        "Extend or arrange the existing poster content only for the target ad format.",
+        settings.tongyiExpandPrompt || "",
+        prompt || ""
+      ].filter(Boolean).join(" ");
+      console.log("[AdaptImage] NanoBanner external-only enabled", JSON.stringify({
+        targetWidth: width,
+        targetHeight: height,
+        templateId,
+        templateName
+      }));
+      const nanoResult = await nanobannerOutpaint(
+        sourcePath,
+        width,
+        height,
+        settings.nanobannerApiKey,
+        settings.nanobannerBaseUrl,
+        nanoPrompt
+      );
+      const finalUrl = await ensureFinalAdaptSize(nanoResult.url, width, height, context, null);
+      console.log("[AdaptImage] NanoBanner external-only done", JSON.stringify({ resultUrl: finalUrl }));
+      return res.json({
+        ok: true,
+        provider: "nanobanner",
+        endpoint: "/api/aigc/adapt-image",
+        resultUrl: finalUrl,
+        strategy: "nanobanner-outpaint",
+        target: { width, height },
+        template: { id: templateId, name: templateName, app: appName },
+        analysis: {
+          source: { width: sourceWidth, height: sourceHeight },
+          subject: null,
+          logo: null,
+          text: null,
+          warnings: ["标准素材看板当前使用 Gemini / Nano Banner 外采适配，已跳过美图检测与智能排版链路。"]
+        },
+        masks: await buildProtectedMaskFallback(),
+        plan: {
+          strategy: "nanobanner-outpaint",
+          steps: ["nanobanner_external_adapt", "local_size_normalize"],
+          reasons: ["标准素材看板临时切换为 Gemini / Nano Banner 外采模型适配"]
+        },
+        layeredRelayout: {
+          failed: false,
+          status: "nanobanner_external_only",
+          layout: { mode: "nanobanner-outpaint", provider: "nanobanner" },
+          layers: { mode: "nanobanner-outpaint", provider: "nanobanner" }
+        },
+        fallbackWarnings: [],
+        qa: { passed: true, warnings: [] },
+        limitations: [
+          "当前标准素材看板已跳过美图检测、Logo/文字分层、扩图和 QA 链路，只调用 Gemini / Nano Banner 外采模型做图像适配。",
+          "如果效果不符合预期，需要调整 Nano Banner Prompt 或 API Base URL 对应的模型能力。"
+        ]
+      });
+    } catch (err) {
+      console.error("[AdaptImage] NanoBanner external-only failed:", err.response?.data || err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "Gemini / Nano Banner 外采适配失败",
+        details: err.response?.data?.error?.message || err.response?.data?.message || err.message
+      });
+    }
     const analysis = await analyzeAdImageForAdapt(imageUrl, context);
     const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
     const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);

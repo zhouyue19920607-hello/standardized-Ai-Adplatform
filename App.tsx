@@ -15,8 +15,9 @@ import fallbackTemplates from './backend/data/templates.json';
 
 const HEADER_HEIGHT = 73;
 const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
-// 临时停用标准素材看板的美图 AI 适配链路。后续恢复时改回 true 即可。
-const STANDARD_BOARD_AIGC_ADAPTATION_ENABLED = false;
+// 标准素材看板临时切到外采 Gemini / Nano Banner 图像适配；视频 AI 扩展仍关闭，避免触发美图视频链路。
+const STANDARD_BOARD_EXTERNAL_IMAGE_ADAPTATION_ENABLED = true;
+const STANDARD_BOARD_AIGC_VIDEO_ADAPTATION_ENABLED = false;
 
 const parseTemplateDimensions = (value?: string) => {
   const match = value?.match(/(\d+)\s*x\s*(\d+)/i);
@@ -764,7 +765,7 @@ const App: React.FC = () => {
         };
 
         const shouldUseAigcForImageAdaptation =
-          STANDARD_BOARD_AIGC_ADAPTATION_ENABLED &&
+          STANDARD_BOARD_EXTERNAL_IMAGE_ADAPTATION_ENABLED &&
           raw.file.type.startsWith('image/') &&
           requiresAiAdaptation &&
           !shouldBypassAiForExactImage;
@@ -774,7 +775,7 @@ const App: React.FC = () => {
         // Special handling: If splash frame capture is enabled, skip workflow entirely
         const shouldCaptureFrame = isSplash && isVideo && (config.captureFirstFrame || config.captureLastFrameSplash);
         const shouldUseAigcForVideoAdaptation =
-          STANDARD_BOARD_AIGC_ADAPTATION_ENABLED &&
+          STANDARD_BOARD_AIGC_VIDEO_ADAPTATION_ENABLED &&
           isVideo &&
           Boolean(aigcTarget) &&
           !shouldCaptureFrame &&
