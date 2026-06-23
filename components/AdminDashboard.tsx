@@ -37,6 +37,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         tongyiApiKey: '',
         nanobannerApiKey: '',
         nanobannerBaseUrl: '',
+        nanobannerModel: 'gpt-image-2-vip',
         comfyuiUrl: 'http://127.0.0.1:8188'
     });
     const [aiSettingsSaving, setAiSettingsSaving] = useState(false);
@@ -69,6 +70,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 nanobannerBaseUrl: /^sk-[A-Za-z0-9_-]+$/.test((aiSettings.nanobannerBaseUrl || '').trim())
                     ? ''
                     : aiSettings.nanobannerBaseUrl,
+                nanobannerModel: (aiSettings.nanobannerModel || 'gpt-image-2-vip').trim(),
             };
             await updateSettings(normalizedSettings);
             setAiSettings(normalizedSettings);
@@ -1141,6 +1143,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                     className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
                                                 />
                                                 <p className="text-xs text-slate-400 mt-1.5">这里填写接口地址，不要填写 API Key；留空时默认使用 OpenAI 兼容地址。</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                    Nano Banner Model
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="例如: gpt-image-2-vip 或 gpt-image-2"
+                                                    value={aiSettings.nanobannerModel || ''}
+                                                    onChange={e => {
+                                                        setAiSettings(prev => ({ ...prev, nanobannerModel: e.target.value }));
+                                                        setTestStatus('idle');
+                                                    }}
+                                                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+                                                />
+                                                <p className="text-xs text-slate-400 mt-1.5">老张 GPT Image 2 文档里的模型名是 gpt-image-2 / gpt-image-2-vip；如果令牌分组不同，请填该 Key 已授权的模型名。</p>
                                             </div>
 
                                             {/* 测试连接按钮 */}

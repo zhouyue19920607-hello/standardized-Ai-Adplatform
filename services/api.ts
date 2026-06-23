@@ -447,6 +447,7 @@ export interface SystemSettings {
     tongyiApiKeyConfigured?: boolean;
     nanobannerApiKey: string;
     nanobannerBaseUrl: string;
+    nanobannerModel?: string;
     nanobannerApiKeyConfigured?: boolean;
     comfyuiUrl: string;
     /** 通义万象/美图/Nano Banner 扩图时的 Prompt */

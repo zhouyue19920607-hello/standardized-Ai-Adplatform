@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -183,8 +184,17 @@ function firstConfiguredEnv(...names) {
   return "";
 }
 
+function normalizeNanoBannerModelName(modelName = "") {
+  const raw = String(modelName || "").trim();
+  if (!raw) return "gpt-image-2-vip";
+  const compact = raw.toLowerCase();
+  if (compact === "gpt-image2") return "gpt-image-2";
+  if (compact === "gpt-image2-vip") return "gpt-image-2-vip";
+  return raw;
+}
+
 function getNanoBannerModel() {
-  return firstConfiguredEnv("NANO_BANNER_MODEL", "NANOBANNER_MODEL") || "gpt-image2";
+  return normalizeNanoBannerModelName(firstConfiguredEnv("NANO_BANNER_MODEL", "NANOBANNER_MODEL"));
 }
 
 function getDefaultSystemSettings() {
@@ -195,6 +205,7 @@ function getDefaultSystemSettings() {
     tongyiApiKey: firstConfiguredEnv("TONGYI_API_KEY", "DASHSCOPE_API_KEY"),
     nanobannerApiKey,
     nanobannerBaseUrl: firstConfiguredEnv("NANO_BANNER_BASE_URL", "NANO_BANNER_API_BASE_URL", "NANOBANNER_BASE_URL"),
+    nanobannerModel: getNanoBannerModel(),
     comfyuiUrl: firstConfiguredEnv("COMFYUI_BASE_URL") || "http://127.0.0.1:8188",
     tongyiExpandPrompt: firstConfiguredEnv("NANO_BANNER_PROMPT", "TONGYI_EXPAND_PROMPT")
   };
@@ -207,6 +218,7 @@ async function readSystemSettings() {
   if (!settings.tongyiApiKey) settings.tongyiApiKey = defaults.tongyiApiKey;
   if (!settings.nanobannerApiKey) settings.nanobannerApiKey = defaults.nanobannerApiKey;
   if (!settings.nanobannerBaseUrl) settings.nanobannerBaseUrl = defaults.nanobannerBaseUrl;
+  settings.nanobannerModel = normalizeNanoBannerModelName(settings.nanobannerModel || defaults.nanobannerModel);
   if (!settings.comfyuiUrl) settings.comfyuiUrl = defaults.comfyuiUrl;
   if (!settings.tongyiExpandPrompt) settings.tongyiExpandPrompt = defaults.tongyiExpandPrompt;
   if (!settings.aiProvider && settings.nanobannerApiKey) settings.aiProvider = "nanobanner";
@@ -6633,7 +6645,8 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         height,
         settings.nanobannerApiKey,
         settings.nanobannerBaseUrl,
-        nanoPrompt
+        nanoPrompt,
+        settings.nanobannerModel
       );
       const finalUrl = await ensureFinalAdaptSize(nanoResult.url, width, height, context, null);
       console.log("[AdaptImage] NanoBanner external-only done", JSON.stringify({ resultUrl: finalUrl }));
@@ -6718,7 +6731,8 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
           height,
           settings.nanobannerApiKey,
           settings.nanobannerBaseUrl,
-          nanoPrompt
+          nanoPrompt,
+          settings.nanobannerModel
         );
         resultUrl = nanoResult.url;
         context.layeredRelayout = {
@@ -7558,6 +7572,7 @@ app.get("/api/settings", async (req, res) => {
     tongyiApiKeyConfigured: !!settings.tongyiApiKey,
     nanobannerApiKey: settings.nanobannerApiKey ? "***configured***" : "",
     nanobannerBaseUrl: settings.nanobannerBaseUrl ? "***configured***" : "",
+    nanobannerModel: settings.nanobannerModel || getNanoBannerModel(),
     nanobannerApiKeyConfigured: !!settings.nanobannerApiKey
   });
 });
@@ -7581,6 +7596,7 @@ app.put("/api/settings", async (req, res) => {
     ...current,
     ...payload
   };
+  updated.nanobannerModel = normalizeNanoBannerModelName(updated.nanobannerModel);
   delete updated.creativeTemplateSettings;
   await writeJson(SETTINGS_FILE, updated);
   res.json({ success: true });
@@ -7790,46 +7806,34 @@ async function tongyiOutpaint(inputImagePath, targetWidth, targetHeight, apiKey,
   throw new Error(`[TongyiOutpaint] 超时：任务 ${taskId} 在 ${maxWait / 1000} 秒内未完成`);
 }
 
-async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, baseUrl, customPrompt = "") {
+async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, apiKey, baseUrl, customPrompt = "", modelName = "") {
   try {
     console.log(`[NanoBanner] 开始处理: ${targetWidth}x${targetHeight}...`);
     if (!baseUrl) {
       baseUrl = "https://api.openai.com/v1";
     }
     baseUrl = baseUrl.replace(/\/$/, "");
-    const apiEndpoint = `${baseUrl}/chat/completions`;
+    const apiEndpoint = `${baseUrl}/images/edits`;
 
-    // 1. 读取原图做 base64 组合
-    const inputExt = path.extname(inputImagePath).toLowerCase();
-    const mimeType = inputExt === '.png' ? 'image/png' : 'image/jpeg';
-    const inputBuffer = await fs.readFile(inputImagePath);
-    const inputBase64 = inputBuffer.toString('base64');
-    const imageUri = `data:${mimeType};base64,${inputBase64}`;
-
-    // 2. 组装请求指令
+    // 1. 组装请求指令
     const extendPrompt = `请根据这张图片进行自然无缝向外扩充延展，生成 ${targetWidth}x${targetHeight} 等比例的完整图像。主体保持不变与居中。${customPrompt}`;
 
-    // NOTE: 对于此类高级代理商，将图片作为 vision 发到 chat/completions 会通过底层映射触发他们的特定修图工作流
-    const nanoBannerModel = getNanoBannerModel();
-    const payload = {
-      model: nanoBannerModel,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "text", text: extendPrompt },
-          { type: "image_url", image_url: { url: imageUri } }
-        ]
-      }]
-    };
+    // NOTE: 老张 GPT Image 2 文档要求图改图使用 Images Edits，不走 chat/completions。
+    const nanoBannerModel = String(modelName || "").trim() || getNanoBannerModel();
+    const FormData = (await import("form-data")).default;
+    const formData = new FormData();
+    formData.append("model", normalizeNanoBannerModelName(nanoBannerModel));
+    formData.append("prompt", extendPrompt);
+    formData.append("image", createReadStream(inputImagePath));
 
     const headers = {
       "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+      ...formData.getHeaders()
     };
 
-    console.log(`[NanoBanner] 发起图生图合并请求到: ${apiEndpoint}, model=${nanoBannerModel}`);
+    console.log(`[NanoBanner] 发起 Images Edits 请求到: ${apiEndpoint}, model=${normalizeNanoBannerModelName(nanoBannerModel)}`);
     // 允许大底图的长连接时长
-    const submitResp = await axios.post(apiEndpoint, payload, {
+    const submitResp = await axios.post(apiEndpoint, formData, {
       headers,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
@@ -7840,39 +7844,33 @@ async function nanobannerOutpaint(inputImagePath, targetWidth, targetHeight, api
       throw new Error(`Nano Banner API Base URL 返回了网页 HTML，不是接口 JSON。请把 API BASE URL 填为接口根地址，例如 https://api.laozhang.ai/v1，不要填官网/落地页；当前请求地址：${apiEndpoint}`);
     }
 
-    const rawContent = submitResp.data?.choices?.[0]?.message?.content;
-    const contentReturn = Array.isArray(rawContent)
-      ? rawContent.map((item) => item?.text || item?.image_url?.url || "").join("\n")
-      : rawContent;
-    if (!contentReturn) {
-      throw new Error(`无文本结果返回: ${JSON.stringify(submitResp.data).substring(0, 200)}`);
+    const imageItem = submitResp.data?.data?.[0];
+    const b64Json = imageItem?.b64_json || imageItem?.b64 || "";
+    const resultUrl = imageItem?.url || imageItem?.image_url || "";
+    if (!b64Json && !resultUrl) {
+      throw new Error(`无图片结果返回: ${JSON.stringify(submitResp.data).substring(0, 200)}`);
     }
-
-    // 3. 从 Markdown 返回值提取图片（第三方中转站通常在 Markdown 里返回 data:image 或 URL）
-    const base64Match = contentReturn.match(/data:image\/[^;]+;base64,([^\)]+)/);
-    const urlMatch = contentReturn.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
 
     let imgBuffer;
-    if (base64Match && base64Match[1]) {
-      imgBuffer = Buffer.from(base64Match[1], 'base64');
-    } else if (urlMatch && urlMatch[1]) {
-      const imgResponse = await axios.get(urlMatch[1], { responseType: "arraybuffer", timeout: 60000 });
-      imgBuffer = Buffer.from(imgResponse.data);
+    if (b64Json) {
+      const cleanB64 = String(b64Json).replace(/^data:image\/[^;]+;base64,/, "").replace(/\s/g, "");
+      imgBuffer = Buffer.from(cleanB64 + "=".repeat((4 - cleanB64.length % 4) % 4), "base64");
     } else {
-      console.warn("[NanoBanner] 找不到 Markdown 图片正则匹配，打印原文：", contentReturn.substring(0, 200));
-      throw new Error("未能从其返回值中提取到生成后的图片数据");
+      const imgResponse = await axios.get(resultUrl, { responseType: "arraybuffer", timeout: 60000 });
+      imgBuffer = Buffer.from(imgResponse.data);
     }
 
-    // 4. 保存文件并输出
-    const outFilename = `nanobanner_edit_${Date.now()}.jpg`;
+    // 2. 统一落成本地 PNG，后续再由本地模板流程归一化到目标尺寸。
+    const normalizedBuffer = await sharp(imgBuffer).png().toBuffer();
+    const outFilename = `nanobanner_edit_${Date.now()}.png`;
     const outPath = path.join(STORAGE_DIR, outFilename);
-    await fs.writeFile(outPath, imgBuffer);
+    await fs.writeFile(outPath, normalizedBuffer);
 
     return {
       url: `/static/${outFilename}`,
       width: targetWidth,
       height: targetHeight,
-      size: imgBuffer.length
+      size: normalizedBuffer.length
     };
 
   } catch (err) {
