@@ -563,18 +563,39 @@ const loadImage = (url: string): Promise<HTMLImageElement> => (
     })
 );
 
-const loadVideoElement = async (url: string): Promise<HTMLVideoElement> => {
+const loadVideoElement = async (url: string, shouldPlay = true): Promise<HTMLVideoElement> => {
     const video = document.createElement('video');
     video.src = url;
     video.muted = true;
     video.playsInline = true;
-    video.loop = true;
+    video.loop = shouldPlay;
     await new Promise<void>((resolve, reject) => {
         video.onloadeddata = () => resolve();
         video.onerror = () => reject(new Error('视频素材加载失败'));
     });
-    await video.play().catch(() => undefined);
+    if (shouldPlay) {
+        await video.play().catch(() => undefined);
+    } else {
+        video.pause();
+        try {
+            video.currentTime = 0;
+        } catch {
+            // Some browsers disallow seeking before the first frame is fully ready.
+        }
+    }
     return video;
+};
+
+const freezeVideoOnFirstFrame = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    video.pause();
+    if (video.currentTime !== 0) {
+        try {
+            video.currentTime = 0;
+        } catch {
+            // Keep the currently loaded frame if seeking is not available.
+        }
+    }
 };
 
 const drawCover = (
@@ -2345,7 +2366,7 @@ const ConfigWorkspace: React.FC = () => {
 
             const layer = getRefreshIconLayerFrame();
             const source = refreshIconSheet.file.type.startsWith('video/')
-                ? await loadVideoElement(refreshIconSheet.url)
+                ? await loadVideoElement(refreshIconSheet.url, false)
                 : await loadImage(refreshIconSheet.url);
             const scaleX = canvas.width / slot.width;
             const scaleY = canvas.height / slot.height;
@@ -3655,13 +3676,13 @@ const ConfigWorkspace: React.FC = () => {
 
             const iconSheetIsVideo = refreshIconSheet.file.type.startsWith('video/');
             const iconSheetImage = iconSheetIsVideo ? null : await loadImage(refreshIconSheet.url);
-            const iconSheetVideo = iconSheetIsVideo ? await loadVideoElement(refreshIconSheet.url) : null;
+            const iconSheetVideo = iconSheetIsVideo ? await loadVideoElement(refreshIconSheet.url, false) : null;
             const bottomNavIsVideo = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.file ? refreshBottomNav.file.type.startsWith('video/') : false;
             const bottomNavImage = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.url && !bottomNavIsVideo ? await loadImage(refreshBottomNav.url) : null;
-            const bottomNavVideo = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.url && bottomNavIsVideo ? await loadVideoElement(refreshBottomNav.url) : null;
+            const bottomNavVideo = SHOW_REFRESH_BOTTOM_NAV_UPLOAD && refreshBottomNav.url && bottomNavIsVideo ? await loadVideoElement(refreshBottomNav.url, false) : null;
             const focalIsVideo = breakFocal.file.type.startsWith('video/');
             const focalImage = focalIsVideo ? null : await loadImage(breakFocal.url);
-            const focalVideo = focalIsVideo ? await loadVideoElement(breakFocal.url) : null;
+            const focalVideo = focalIsVideo ? await loadVideoElement(breakFocal.url, false) : null;
             const [focalBg1, focalBg2, focalGradientLayer] = await Promise.all([
                 loadImage('/focal-window/fixed_bg_1.png'),
                 loadImage('/focal-window/fixed_bg_2.png'),
@@ -3688,7 +3709,7 @@ const ConfigWorkspace: React.FC = () => {
 
             const drawFrame = (now: number) => {
                 const elapsed = Math.min(now - start, BREAK_DURATION);
-                const entrance = easeOutCubic(Math.min(1, elapsed / 700));
+                const entrance = 1;
 
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
@@ -3894,6 +3915,7 @@ const ConfigWorkspace: React.FC = () => {
     const isJumpingFocalTemplate = expandedTemplate === 'jumping-focal-window';
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
+    const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
     const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
     const outputSpec = isMagazineTemplate
@@ -4898,7 +4920,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     {refreshIconSheet.url && refreshIconSheet.status === 'valid' ? (
                                                         refreshIconSheet.file?.type.startsWith('video/') ? (
-                                                            <video src={refreshIconSheet.url} className="h-36 w-full object-contain bg-black/30 rounded-xl" muted loop playsInline autoPlay />
+                                                            <video src={refreshIconSheet.url} className="h-36 w-full object-contain bg-black/30 rounded-xl" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                         ) : (
                                                             <img src={refreshIconSheet.url} alt="icon 底图预览" className="h-36 w-full object-contain bg-black/30 rounded-xl" />
                                                         )
@@ -5013,7 +5035,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                     }}
                                                                 >
                                                                     {refreshIconSheet.file?.type.startsWith('video/') ? (
-                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted loop playsInline autoPlay />
+                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                                     ) : (
                                                                         <img src={refreshIconSheet.url!} alt={`上方 ${index + 1}`} style={getRefreshSheetPreviewImageStyle(slot)} />
                                                                     )}
@@ -5045,7 +5067,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                     }}
                                                                 >
                                                                     {refreshIconSheet.file?.type.startsWith('video/') ? (
-                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted loop playsInline autoPlay />
+                                                                        <video src={refreshIconSheet.url!} style={getRefreshSheetPreviewImageStyle(slot)} muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                                     ) : (
                                                                         <img src={refreshIconSheet.url!} alt={`下方 ${index + 1}`} style={getRefreshSheetPreviewImageStyle(slot)} />
                                                                     )}
@@ -5104,7 +5126,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     >
                                                         {refreshBottomNav.url ? (
                                                             refreshBottomNav.file?.type.startsWith('video/') ? (
-                                                                <video src={refreshBottomNav.url} className="h-20 w-full object-contain rounded-xl bg-zinc-950" muted loop playsInline autoPlay />
+                                                                <video src={refreshBottomNav.url} className="h-20 w-full object-contain rounded-xl bg-zinc-950" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                             ) : (
                                                                 <img src={refreshBottomNav.url} alt="底导素材预览" className="h-20 w-full object-contain rounded-xl bg-zinc-950" />
                                                             )
@@ -5701,18 +5723,24 @@ const ConfigWorkspace: React.FC = () => {
                                                     ref={previewVideoRef}
                                                     src={generatedVideoUrl}
                                                     className="w-full h-full object-cover"
-                                                    autoPlay
-                                                    loop={expandedTemplate !== 'dynamic-splash'}
+                                                    autoPlay={!shouldFreezeRefreshPreviewVideo}
+                                                    loop={expandedTemplate !== 'dynamic-splash' && !shouldFreezeRefreshPreviewVideo}
+                                                    muted
+                                                    playsInline
+                                                    preload={shouldFreezeRefreshPreviewVideo ? 'metadata' : undefined}
+                                                    onLoadedData={shouldFreezeRefreshPreviewVideo ? freezeVideoOnFirstFrame : undefined}
                                                     onPlay={() => setIsPreviewPlaying(true)}
                                                     onPause={() => setIsPreviewPlaying(false)}
                                                 />
-                                                <button
-                                                    onClick={togglePreviewPlayback}
-                                                    className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/55 text-white backdrop-blur-md opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center border border-white/20 z-[120]"
-                                                    aria-label={isPreviewPlaying ? '暂停视频' : '播放视频'}
-                                                >
-                                                    <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
-                                                </button>
+                                                {!shouldFreezeRefreshPreviewVideo && (
+                                                    <button
+                                                        onClick={togglePreviewPlayback}
+                                                        className="absolute inset-0 m-auto h-16 w-16 rounded-full bg-black/55 text-white backdrop-blur-md opacity-0 group-hover/preview:opacity-100 transition-all flex items-center justify-center border border-white/20 z-[120]"
+                                                        aria-label={isPreviewPlaying ? '暂停视频' : '播放视频'}
+                                                    >
+                                                        <span className="material-symbols-outlined text-4xl">{isPreviewPlaying ? 'pause' : 'play_arrow'}</span>
+                                                    </button>
+                                                )}
                                             </>
                                         ) : (
                                             <>
@@ -5888,7 +5916,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             >
                                                                 {breakFocal.url ? (
                                                                     breakFocal.file?.type.startsWith('video/') ? (
-                                                                        <video src={breakFocal.url} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                                                                        <video src={breakFocal.url} className="w-full h-full object-cover" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                                     ) : (
                                                                         <img src={breakFocal.url} alt="焦点视窗预览" className="w-full h-full object-cover" />
                                                                     )
@@ -5903,7 +5931,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             {refreshIconSheet.url && (
                                                                 <div className="absolute z-[25] overflow-hidden shadow-2xl" style={getRefreshIconLayerPreviewStyle()}>
                                                                     {refreshIconSheet.file?.type.startsWith('video/') ? (
-                                                                        <video src={refreshIconSheet.url} className="h-full w-full object-fill" muted loop playsInline autoPlay />
+                                                                        <video src={refreshIconSheet.url} className="h-full w-full object-fill" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                                     ) : (
                                                                         <img src={refreshIconSheet.url} alt="icon 底图联合遮罩预览" className="h-full w-full object-fill" />
                                                                     )}
@@ -5919,9 +5947,9 @@ const ConfigWorkspace: React.FC = () => {
                                                                                 className="absolute left-0 bottom-0 w-full object-cover"
                                                                                 style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
                                                                                 muted
-                                                                                loop
                                                                                 playsInline
-                                                                                autoPlay
+                                                                                preload="metadata"
+                                                                                onLoadedData={freezeVideoOnFirstFrame}
                                                                             />
                                                                         ) : (
                                                                             <img
