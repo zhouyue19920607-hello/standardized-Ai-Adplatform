@@ -639,6 +639,12 @@ const App: React.FC = () => {
     const placeholders: AdAsset[] = [];
     for (const raw of rawFiles) {
       for (const template of activeTemplates) {
+        const target = getTemplateOutputDimensions(template);
+        const shouldShowAiLoading =
+          STANDARD_BOARD_EXTERNAL_IMAGE_ADAPTATION_ENABLED &&
+          raw.file.type.startsWith('image/') &&
+          requiresAiAdaptation &&
+          !(activeTemplates.length === 1 && isRawImageMatchingTemplate(raw, template));
         placeholders.push({
           id: `${raw.id}-${template.id}`,
           url: '',
@@ -651,6 +657,11 @@ const App: React.FC = () => {
           templateName: template.name,
           dimensions: template.dimensions || '1080 x 1920',
           isLoading: true,
+          loadingMode: shouldShowAiLoading ? 'ai' : 'standard',
+          loadingLabel: shouldShowAiLoading ? 'AI 正在智能排版' : '正在生成预览',
+          loadingHint: shouldShowAiLoading
+            ? `拆解画面、延展背景，适配 ${target ? `${target.width} x ${target.height}` : (template.dimensions || '目标尺寸')}`
+            : `${template.app}${template.name}`,
         });
       }
     }

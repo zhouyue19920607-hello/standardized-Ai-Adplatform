@@ -260,6 +260,11 @@ const BREAK_FOCAL_Y = 0;
 const BREAK_FRAME_Y = 0;
 const BREAK_DURATION = 5000;
 const BREAK_AI_DURATION_RULE = '每一破框只能维持1.5s';
+const getCreativePreviewAspectRatio = (templateId?: string | null) => (
+    isBreakFrameLikeTemplateId(templateId)
+        ? `${BREAK_CANVAS_W} / ${BREAK_CANVAS_H}`
+        : `${CANVAS_W} / ${CANVAS_H}`
+);
 const FOCAL_UI_SOURCE_W = 473;
 const FOCAL_UI_SOURCE_H = 1024;
 const FOCAL_UI_SCALE_X = BREAK_CANVAS_W / FOCAL_UI_SOURCE_W;
@@ -3916,6 +3921,9 @@ const ConfigWorkspace: React.FC = () => {
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
+    const previewFrameAspectRatio = hoveredPreviewVideoUrl
+        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(activePreviewTemplate?.id))
+        : getCreativePreviewAspectRatio(expandedTemplate);
     const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
     const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
     const outputSpec = isMagazineTemplate
@@ -5693,7 +5701,7 @@ const ConfigWorkspace: React.FC = () => {
                                 <div className="flex-1 flex items-center justify-center min-h-0">
                                     <div
                                         className={`relative h-full max-h-[68vh] rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
-                                        style={{ aspectRatio: (isBreakFocalTemplate || isJumpingFocalTemplate || isRefreshUiBottomNavTemplate || isPolymorphicFlipCardTemplate) ? '1126 / 2436' : '1440 / 2340' }}
+                                        style={{ aspectRatio: previewFrameAspectRatio }}
                                         onPointerDown={handleMagazinePointerDown}
                                         onPointerMove={handleMagazinePointerMove}
                                         onPointerUp={handleMagazinePointerUp}
@@ -5707,7 +5715,6 @@ const ConfigWorkspace: React.FC = () => {
                                                 <video
                                                     src={resolveApiAssetUrl(hoveredPreviewVideoUrl)}
                                                     className="absolute inset-0 w-full h-full object-contain"
-                                                    style={hoveredPreviewAspectRatio ? { aspectRatio: hoveredPreviewAspectRatio } : undefined}
                                                     autoPlay
                                                     loop
                                                     muted

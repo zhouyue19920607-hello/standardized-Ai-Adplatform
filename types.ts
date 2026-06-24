@@ -38,6 +38,9 @@ export interface AdAsset {
   templateName: string;
   // NOTE: 生成等待占位状态，为 true 时卡片显示 loading 动画
   isLoading?: boolean;
+  loadingMode?: 'ai' | 'standard';
+  loadingLabel?: string;
+  loadingHint?: string;
   aiExtractedColor?: string;
   gradientColor?: string;
   aiExtractedColors?: ColorScheme[];

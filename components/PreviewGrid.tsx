@@ -247,17 +247,52 @@ const AdCard: React.FC<{
           <div className="w-full h-full relative transition-transform duration-700 group-hover/preview:scale-[1.02]">
             {/* NOTE: 生成等待时显示骨架屏动画 */}
             {asset.isLoading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
-                <div className="relative">
-                  <div className="w-10 h-10 border-3 border-slate-300 border-t-primary rounded-full animate-spin" style={{ borderWidth: '3px' }} />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-4 h-4 bg-primary/20 rounded-full animate-pulse" />
+              asset.loadingMode === 'ai' ? (
+                <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_50%_18%,rgba(129,140,248,0.28),transparent_34%),linear-gradient(145deg,#f8fafc_0%,#eef2ff_50%,#fdf2f8_100%)]">
+                  <div className="absolute inset-0 opacity-55 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:22px_22px]" />
+                  <div className="absolute inset-x-8 top-8 h-[1px] bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent animate-ai-scan-y" />
+                  <div className="absolute left-1/2 top-[42%] h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70 shadow-[0_20px_60px_rgba(99,102,241,0.22)] border border-white/80 flex items-center justify-center animate-ai-bob">
+                    <div className="absolute inset-2 rounded-full border border-indigo-200/80" />
+                    <div className="absolute inset-0 rounded-full border border-dashed border-indigo-300/70 animate-ai-orbit" />
+                    <span className="material-symbols-outlined text-[34px] text-indigo-500 drop-shadow-sm">auto_awesome</span>
+                    <span className="absolute -right-1 top-5 h-3 w-3 rounded-full bg-fuchsia-400 shadow-[0_0_18px_rgba(217,70,239,0.65)] animate-pulse" />
+                    <span className="absolute bottom-1 left-4 h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_16px_rgba(56,189,248,0.65)] animate-pulse" />
                   </div>
+                  <div className="absolute left-5 right-5 bottom-5 rounded-[18px] border border-white/70 bg-white/72 px-4 py-3 shadow-lg backdrop-blur-md">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-black text-slate-800">{asset.loadingLabel || 'AI 正在智能排版'}</p>
+                        <p className="mt-0.5 line-clamp-2 text-[10px] font-bold leading-snug text-slate-500">{asset.loadingHint || '正在拆解主体、文案与安全区'}</p>
+                      </div>
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-white shadow-lg shadow-indigo-500/25">
+                        <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-1.5">
+                      {['读图', '扩图', '排版'].map((step, index) => (
+                        <div key={step} className="h-1.5 overflow-hidden rounded-full bg-slate-200/80">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-fuchsia-400 to-sky-400 animate-ai-progress"
+                            style={{ animationDelay: `${index * 0.35}s` }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
                 </div>
-                <p className="text-[10px] text-slate-400 font-bold mt-3 animate-pulse tracking-widest uppercase">生成中</p>
-                {/* 闪烁光效 */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
-              </div>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                  <div className="relative">
+                    <div className="w-10 h-10 border-3 border-slate-300 border-t-primary rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-4 h-4 bg-primary/20 rounded-full animate-pulse" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold mt-3 animate-pulse tracking-widest uppercase">{asset.loadingLabel || '生成中'}</p>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                </div>
+              )
             ) : asset.type.startsWith('video') && !(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) ? (
               <video
                 src={asset.url}
