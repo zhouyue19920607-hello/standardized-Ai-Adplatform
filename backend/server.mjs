@@ -50,6 +50,7 @@ await loadLocalEnvFile();
 // NOTE: 生产部署时可通过 DATA_DIR / STORAGE_DIR 指向挂载卷，让访问统计、模板配置和上传资产跨容器重启保留。
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "data");
 const STORAGE_DIR = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : path.join(__dirname, "storage");
+const DEFAULT_ASSETS_DIR = path.join(__dirname, "default-assets");
 const MASKS_DIR = path.join(STORAGE_DIR, "masks");
 const WORKFLOWS_DIR = path.join(STORAGE_DIR, "workflows");
 const BADGES_DIR = path.join(STORAGE_DIR, "badges");
@@ -85,6 +86,14 @@ const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 // 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path, preview_video_path } }
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
 const ASSET_OVERRIDE_FIELDS = ["maskPath", "mask_path", "maskUrl", "crop_overlay_path", "badge_overlay_path", "preview_video_path"];
+const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
+  "mt-p-1": {
+    maskPath: "backend/default-assets/standard/mt-p-1-mask.jpg",
+    mask_path: "/default-assets/standard/mt-p-1-mask.jpg",
+    maskUrl: "/default-assets/standard/mt-p-1-mask.jpg",
+    badge_overlay_path: "/default-assets/standard/mt-p-1-badge.png"
+  }
+};
 
 const getShanghaiDateKey = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -242,6 +251,45 @@ async function persistTemplateAssetOverrides(templates = []) {
   if (changed) await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
 }
 
+async function isMissingUploadedAssetPath(assetPath = "") {
+  const normalized = String(assetPath || "").trim();
+  if (!normalized) return true;
+
+  let localPath = "";
+  if (normalized.startsWith("/static/")) {
+    localPath = path.join(STORAGE_DIR, normalized.replace(/^\/static\//, ""));
+  } else if (normalized.startsWith("backend/storage/")) {
+    localPath = path.join(ROOT_DIR, normalized);
+  }
+
+  if (!localPath) return false;
+
+  try {
+    await fs.access(localPath);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+async function ensureDefaultTemplateAssetOverrides() {
+  const assetOverrides = await readJson(ASSET_OVERRIDES_FILE, {});
+  let changed = false;
+
+  for (const [templateId, defaults] of Object.entries(DEFAULT_TEMPLATE_ASSET_OVERRIDES)) {
+    const current = { ...(assetOverrides[templateId] || {}) };
+    for (const [field, value] of Object.entries(defaults)) {
+      if (await isMissingUploadedAssetPath(current[field])) {
+        current[field] = value;
+        changed = true;
+      }
+    }
+    assetOverrides[templateId] = current;
+  }
+
+  if (changed) await writeJson(ASSET_OVERRIDES_FILE, assetOverrides);
+}
+
 // 初始化：保证数据文件存在
 async function ensureDataFiles() {
   const templates = await readJson(TEMPLATES_FILE, null);
@@ -264,7 +312,7 @@ async function ensureDataFiles() {
       { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1126 x 640" },
       { id: "mt-ib-4", app: "美图秀秀", category: "icon/banner", name: "话题页banner", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "960 x 1440" },
+      { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "960 x 1440", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-p-1"] },
       { id: "mt-p-2", app: "美图秀秀", category: "弹窗", name: "首页弹窗", checked: false, dimensions: "1080 x 1920" },
       { id: "mt-p-3", app: "美图秀秀", category: "弹窗", name: "首页弹窗异形", checked: false, dimensions: "1080 x 1920" },
 
@@ -324,6 +372,7 @@ async function ensureDataFiles() {
   await ensureDir(BADGES_DIR);
   await ensureDir(PREVIEWS_DIR);
   await ensureDir(AIGC_INPUTS_DIR);
+  await ensureDefaultTemplateAssetOverrides();
 }
 
 // ---- Multer 上传：遮罩 PNG & Workflow JSON ----
@@ -357,6 +406,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use("/static", express.static(STORAGE_DIR));
+app.use("/default-assets", express.static(DEFAULT_ASSETS_DIR));
 
 // 生产环境下静态服务 Vue/React 构建出来的 dist 目录
 const DIST_DIR = path.join(ROOT_DIR, "dist");

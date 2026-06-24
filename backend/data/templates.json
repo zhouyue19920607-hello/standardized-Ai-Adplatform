@@ -211,10 +211,10 @@
     "name": "保分页弹窗",
     "checked": false,
     "dimensions": "960 x 1440",
-    "maskPath": "backend/storage/masks/1771985640223_________________.jpg",
-    "mask_path": "/static/masks/1771985640223_________________.jpg",
-    "maskUrl": "/static/masks/1771985640223_________________.jpg",
-    "badge_overlay_path": "/static/badges/mt-p-1_badge.png",
+    "maskPath": "backend/default-assets/standard/mt-p-1-mask.jpg",
+    "mask_path": "/default-assets/standard/mt-p-1-mask.jpg",
+    "maskUrl": "/default-assets/standard/mt-p-1-mask.jpg",
+    "badge_overlay_path": "/default-assets/standard/mt-p-1-badge.png",
     "processedCount": 10
   },
   {
