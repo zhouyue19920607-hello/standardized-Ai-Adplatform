@@ -197,7 +197,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         const isMeiyan = asset.app === '美颜';
         // Correct target dimensions
         const targetW = showMask ? 1126 : (isImmersiveFocal ? 1440 : (isMeiyan ? 1284 : 1126));
-        const targetH = showMask ? (isWink ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
+        const targetH = showMask ? ((isWink || isMeiyan) ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
 
         canvas.width = targetW;
         canvas.height = targetH;

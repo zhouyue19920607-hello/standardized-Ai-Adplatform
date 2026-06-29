@@ -346,9 +346,10 @@
     "name": "焦点视窗",
     "checked": true,
     "dimensions": "1284 x 1128",
-    "maskPath": "backend/storage/masks/1777270597630_______-____________.png",
-    "mask_path": "/static/masks/1777270597630_______-____________.png",
-    "maskUrl": "/static/masks/1777270597630_______-____________.png",
+    "maskPath": "backend/default-assets/standard/my-f-1-mask.png",
+    "mask_path": "/default-assets/standard/my-f-1-mask.png",
+    "maskUrl": "/default-assets/standard/my-f-1-mask.png",
+    "badge_overlay_path": "/default-assets/standard/my-f-1-badge.png",
     "preview_video_path": "/static/previews/meiyan-focal-window_preview.mp4"
   },
   {

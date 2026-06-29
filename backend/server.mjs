@@ -92,7 +92,20 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
     mask_path: "/default-assets/standard/mt-p-1-mask.jpg",
     maskUrl: "/default-assets/standard/mt-p-1-mask.jpg",
     badge_overlay_path: "/default-assets/standard/mt-p-1-badge.png"
+  },
+  "my-f-1": {
+    maskPath: "backend/default-assets/standard/my-f-1-mask.png",
+    mask_path: "/default-assets/standard/my-f-1-mask.png",
+    maskUrl: "/default-assets/standard/my-f-1-mask.png",
+    badge_overlay_path: "/default-assets/standard/my-f-1-badge.png",
+    preview_video_path: "/static/previews/meiyan-focal-window_preview.mp4"
   }
+};
+const DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS = {
+  "my-f-1": [
+    "backend/storage/masks/1777270597630_______-____________.png",
+    "/static/masks/1777270597630_______-____________.png"
+  ]
 };
 
 const getShanghaiDateKey = (date = new Date()) => {
@@ -278,8 +291,10 @@ async function ensureDefaultTemplateAssetOverrides() {
 
   for (const [templateId, defaults] of Object.entries(DEFAULT_TEMPLATE_ASSET_OVERRIDES)) {
     const current = { ...(assetOverrides[templateId] || {}) };
+    const legacyPaths = DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS[templateId] || [];
     for (const [field, value] of Object.entries(defaults)) {
-      if (await isMissingUploadedAssetPath(current[field])) {
+      const currentValue = String(current[field] || "");
+      if (legacyPaths.includes(currentValue) || await isMissingUploadedAssetPath(current[field])) {
         current[field] = value;
         changed = true;
       }
@@ -325,7 +340,7 @@ async function ensureDataFiles() {
       { id: "my-s-7", app: "美颜", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
       { id: "my-s-8", app: "美颜", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
       { id: "my-s-9", app: "美颜", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
-      { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436" },
+      { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1284 x 1128", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["my-f-1"] },
       { id: "my-p-1", app: "美颜", category: "弹窗", name: "弹窗精图", checked: false, dimensions: "1080 x 1920" },
       { id: "my-ib-1", app: "美颜", category: "icon/banner", name: "百宝箱顶部banner", checked: false, dimensions: "1080 x 1920" },
 

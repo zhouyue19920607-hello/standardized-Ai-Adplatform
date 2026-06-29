@@ -352,7 +352,7 @@ const App: React.FC = () => {
     });
   };
   const [config, setConfig] = useState<AdConfig>({
-    showMask: false,
+    showMask: true,
     showCrop: false,
     splashText: '跳转至第三方平台',
     captureFirstFrame: false,
@@ -1239,6 +1239,7 @@ const App: React.FC = () => {
           maskUrl: template.mask_path ? `${template.mask_path}?v=${config.assetsVersion}` : null,
           cropOverlayUrl: template.crop_overlay_path ? `${template.crop_overlay_path}?v=${config.assetsVersion}` : null,
           badgeOverlayUrl: template.badge_overlay_path ? `${template.badge_overlay_path}?v=${config.assetsVersion}` : null,
+          showBadge: template.category === '焦点视窗' && !!template.badge_overlay_path,
           aiAdaptation,
           // NOTE: 三平台开屏样式 — 查找同 splashGroup 的三个平台蒙版路径
           ...(template.category === '开屏' && template.splashGroup ? (() => {

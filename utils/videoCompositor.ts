@@ -69,7 +69,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
     if (asset.category === '焦点视窗') {
         const isMeiyan = asset.app === '美颜';
         targetW = showMask ? 1126 : (isImmersiveFocal ? 1440 : (isMeiyan ? 1284 : 1126));
-        targetH = showMask ? (isWink ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
+        targetH = showMask ? ((isWink || isMeiyan) ? 2438 : 2436) : (isImmersiveFocal ? 2340 : (isWink ? 1410 : (isMeiyan ? 1128 : 900)));
     } else if (isHotRecommend && !showMask) {
         targetW = 720; targetH = 960;
     } else if (isScorePopup && !showMask) {
