@@ -178,8 +178,13 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
             videoRect = {x:0, y:0, w:targetW, h:targetH};
         }
         if (showBadge && badgeImg) {
-            const bH = (showMask && isImmersiveFocal) ? 2436 : ((showMask && !isWink) ? 900 : targetH);
-            drawImageContain(fgCtx, badgeImg, 0, 0, targetW, bH, 'top');
+            const isMeiyan = asset.app === '美颜';
+            if (showMask && isMeiyan && maskImg) {
+                fgCtx.drawImage(badgeImg, videoRect.x, videoRect.y, videoRect.w, videoRect.h);
+            } else {
+                const bH = (showMask && isImmersiveFocal) ? 2436 : ((showMask && !isWink) ? 900 : targetH);
+                drawImageContain(fgCtx, badgeImg, 0, 0, targetW, bH, 'top');
+            }
         }
 
     } else if (isHotRecommend) {

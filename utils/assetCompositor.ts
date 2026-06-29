@@ -207,15 +207,18 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
+        let focalContentRect = { x: 0, y: 0, w: targetW, h: targetH };
+
         if (showMask) {
             const dw = targetW;
             const dh = (mainImg.naturalHeight / mainImg.naturalWidth) * targetW;
             const baseColor = asset.aiExtractedColor || '#FF00FF';
             const finalGradientColor = asset.gradientColor || getDerivedGradientColor(baseColor);
+            const contentY = isMeiyan ? -97 : 0;
+            focalContentRect = { x: 0, y: contentY, w: dw, h: dh };
 
             if ((isWink || isMeiyan) && maskImg) {
                 // Meiyan & Wink Focal Window: Image FIRST, then Mask (on top)
-                const contentY = isMeiyan ? -97 : 0;
                 ctx.drawImage(mainImg, 0, contentY, dw, dh);
                 ctx.drawImage(maskImg, 0, 0, targetW, targetH);
             } else if (isImmersiveFocal) {
@@ -284,7 +287,9 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         }
 
         if (showBadge && badgeImg) {
-            if (showMask && isImmersiveFocal) {
+            if (showMask && isMeiyan && maskImg) {
+                ctx.drawImage(badgeImg, focalContentRect.x, focalContentRect.y, focalContentRect.w, focalContentRect.h);
+            } else if (showMask && isImmersiveFocal) {
                 // 对于沉浸式，角标应与主图对齐 (主图是 dw, dh 绘制)
                 // 沉浸式焦点视窗的角标是 object-cover object-top
                 drawImageCover(ctx, badgeImg, 0, 0, targetW, (badgeImg.naturalHeight / badgeImg.naturalWidth) * targetW);
