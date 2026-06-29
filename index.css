@@ -115,6 +115,314 @@ samp {
   background-size: 200% 100%;
 }
 
+/* 创新形式看板：SideRays 背景光束 */
+.side-rays-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.creative-board-side-rays {
+  position: absolute;
+  inset: -12% -8% -6% -8%;
+  z-index: 0;
+  opacity: 0.9;
+  mix-blend-mode: screen;
+  filter: saturate(1.08);
+}
+
+.creative-board-side-rays canvas {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creative-board-side-rays {
+    display: none;
+  }
+}
+
+/* 创新形式看板：左侧模板名称轻量互动卡片 */
+.creative-template-card {
+  --template-card-x: 50%;
+  --template-card-y: 50%;
+  --template-card-click-x: 50%;
+  --template-card-click-y: 50%;
+  --template-glow-rgb: 99, 102, 241;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.creative-template-card > :not(.creative-template-card__effect) {
+  position: relative;
+  z-index: 2;
+}
+
+.creative-template-card__effect {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.creative-template-card__spotlight {
+  background:
+    radial-gradient(
+      115px circle at var(--template-card-x) var(--template-card-y),
+      rgba(var(--template-glow-rgb), 0.23),
+      rgba(255, 255, 255, 0.055) 34%,
+      transparent 68%
+    );
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.creative-template-card::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(var(--template-glow-rgb), 0.62),
+      rgba(255, 255, 255, 0.18),
+      rgba(45, 212, 191, 0.2)
+    );
+  opacity: 0;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 220ms ease;
+}
+
+.creative-template-card::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), transparent 42%),
+    radial-gradient(circle at 20% 0%, rgba(var(--template-glow-rgb), 0.16), transparent 38%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.creative-template-card:hover,
+.creative-template-card--active {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(var(--template-glow-rgb), 0.1),
+    0 0 30px rgba(var(--template-glow-rgb), 0.12);
+}
+
+.creative-template-card:hover .creative-template-card__spotlight,
+.creative-template-card:hover::before,
+.creative-template-card:hover::after,
+.creative-template-card--active::before,
+.creative-template-card--active::after {
+  opacity: 1;
+}
+
+.creative-template-card__ripple {
+  left: var(--template-card-click-x);
+  top: var(--template-card-click-y);
+  inset: auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(var(--template-glow-rgb), 0.42);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0);
+}
+
+.creative-template-card--clicked .creative-template-card__ripple {
+  animation: creative-template-ripple 520ms ease-out;
+}
+
+.creative-template-card__stars i {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 12px rgba(var(--template-glow-rgb), 0.75);
+  opacity: 0;
+  transform: scale(0.2);
+}
+
+.creative-template-card__stars i:nth-child(1) {
+  top: 22%;
+  left: 18%;
+}
+
+.creative-template-card__stars i:nth-child(2) {
+  top: 18%;
+  right: 22%;
+  animation-delay: 160ms;
+}
+
+.creative-template-card__stars i:nth-child(3) {
+  right: 18%;
+  bottom: 24%;
+  animation-delay: 320ms;
+}
+
+.creative-template-card__stars i:nth-child(4) {
+  bottom: 18%;
+  left: 30%;
+  animation-delay: 480ms;
+}
+
+.creative-template-card:hover .creative-template-card__stars i {
+  animation: creative-template-star 1.35s ease-in-out infinite;
+}
+
+@keyframes creative-template-ripple {
+  0% {
+    opacity: 0.42;
+    transform: translate(-50%, -50%) scale(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(28);
+  }
+}
+
+@keyframes creative-template-star {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.2) translateY(0);
+  }
+
+  45% {
+    opacity: 0.92;
+    transform: scale(1) translateY(-2px);
+  }
+}
+
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .creative-template-card {
+    transform: none !important;
+  }
+
+  .creative-template-card__stars,
+  .creative-template-card__ripple {
+    display: none;
+  }
+}
+
+/* 标准素材看板：左侧模板名称轻量胶囊互动 */
+.standard-template-pill {
+  --standard-pill-x: 50%;
+  --standard-pill-y: 50%;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.standard-template-pill > :not(.standard-template-pill__fill):not(.standard-template-pill__shine) {
+  position: relative;
+  z-index: 2;
+}
+
+.standard-template-pill__fill {
+  position: absolute;
+  left: 50%;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 50% 26%, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08) 28%, transparent 38%),
+    linear-gradient(135deg, rgba(5, 8, 15, 0.98), rgba(24, 24, 27, 0.96));
+  opacity: 0.96;
+  transform: translateX(-50%) scale(0);
+  will-change: transform;
+}
+
+.standard-template-pill__shine {
+  display: none;
+}
+
+.standard-template-pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.standard-template-pill:hover,
+.standard-template-pill--active {
+  box-shadow:
+    0 14px 28px rgba(15, 23, 42, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.65) inset;
+}
+
+.standard-template-pill:hover .standard-template-pill__fill {
+  transform: translateX(-50%) scale(1.08);
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.standard-template-pill:hover::after {
+  opacity: 1;
+}
+
+.standard-template-pill:hover .text-slate-800,
+.standard-template-pill:hover .text-slate-500,
+.standard-template-pill:hover .text-ios-gray-4,
+.standard-template-pill:hover .text-slate-400 {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.standard-template-pill:hover .text-primary,
+.standard-template-pill:hover .text-primary\/80 {
+  color: #fff !important;
+}
+
+.standard-template-pill:hover .bg-primary\/10,
+.standard-template-pill:hover .bg-blue-50 {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.standard-template-pill:hover .material-symbols-outlined.fill,
+.standard-template-pill--active .material-symbols-outlined.fill {
+  filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.22));
+}
+
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .standard-template-pill {
+    transform: none !important;
+  }
+
+  .standard-template-pill__fill {
+    display: none;
+  }
+}
+
 @keyframes ai-orbit {
   0% {
     transform: rotate(0deg);

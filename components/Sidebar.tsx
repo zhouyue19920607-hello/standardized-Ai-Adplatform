@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdTemplate, AdConfig } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import StandardTemplatePillOption from './StandardTemplatePillOption';
 
 interface SidebarProps {
   templates: AdTemplate[];
@@ -116,7 +117,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <div className="bg-ios-gray-6/30 p-1.5 space-y-1 rounded-xl mx-2">
                     {meituSplashTemplates.map(tpl => (
                       <div key={tpl.id} className="px-1 relative group/template">
-                        <label
+                        <StandardTemplatePillOption
+                          active={tpl.checked}
                           onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
                           onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
                           onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
@@ -147,7 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               </span>
                             </div>
                           </div>
-                        </label>
+                        </StandardTemplatePillOption>
                         <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
                           支持图片或视频素材；可用 AI 扩图适配尺寸；视频自动压缩至 3MB 以内。
                         </div>
@@ -236,7 +238,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onFocus={() => handleTemplatePreviewEnter(focalTpl)}
                     onBlur={() => handleTemplatePreviewLeave(focalTpl)}
                   >
-                    <label
+                    <StandardTemplatePillOption
+                      active={focalTpl.checked}
                       className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
                         ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                       }
@@ -269,7 +272,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           </span>
                         </div>
                       </div>
-                    </label>
+                    </StandardTemplatePillOption>
                     <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
                       支持图片或视频素材；可智能配色，也可用 AI 扩图适配尺寸；视频自动压缩至 10MB 以内。
                     </div>
@@ -402,7 +405,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                             <div className="bg-ios-gray-6/30 p-1.5 space-y-1">
                               {subTemplates.map(tpl => (
                                 <div key={tpl.id} className="px-1 relative group/template">
-                                  <label
+                                  <StandardTemplatePillOption
+                                    active={tpl.checked}
                                     onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
                                     onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
                                     onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
@@ -440,7 +444,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                         </span>
                                       </div>
                                     </div>
-                                  </label>
+                                  </StandardTemplatePillOption>
                                   {tpl.id === 'mt-f-1' && (
                                     <div className="pointer-events-none absolute left-3 right-3 top-[calc(100%-2px)] z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-bold leading-relaxed text-slate-600 shadow-xl opacity-0 translate-y-1 group-hover/template:opacity-100 group-hover/template:translate-y-0 transition-all duration-100">
                                       支持图片或视频素材；可智能配色，也可用 AI 扩图适配尺寸；视频自动压缩至 10MB 以内。

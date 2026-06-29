@@ -15,6 +15,8 @@ import {
     uploadRawAsset,
 } from '../services/api';
 import { extractSmartPalette } from '../utils/smartColor';
+import CreativeTemplateHoverCard from './CreativeTemplateHoverCard';
+import SideRays from './SideRays';
 
 type UploadStatus = 'idle' | 'valid' | 'adapted' | 'invalid';
 
@@ -4033,6 +4035,21 @@ const ConfigWorkspace: React.FC = () => {
 
     return (
         <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
+            <SideRays
+                className="creative-board-side-rays"
+                speed={1.7}
+                rayColor1="#8B5CF6"
+                rayColor2="#38BDF8"
+                intensity={1.15}
+                spread={1.75}
+                origin="top-right"
+                tilt={-8}
+                saturation={1.25}
+                blend={0.68}
+                falloff={1.85}
+                opacity={0.58}
+            />
+            <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_18%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_88%_78%,rgba(14,165,233,0.12),transparent_30%),linear-gradient(180deg,rgba(10,10,10,0.25),rgba(10,10,10,0.72))]" />
             {aiGeneratingKey && (
                 <div className="fixed right-8 bottom-8 z-[90] pointer-events-none rounded-[24px] border border-primary/20 bg-zinc-950/90 px-5 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-white/[0.03] to-cyan-300/10 animate-pulse" />
@@ -4049,7 +4066,7 @@ const ConfigWorkspace: React.FC = () => {
                     </div>
                 </div>
             )}
-            <div className="flex h-full gap-6 p-6">
+            <div className="relative z-10 flex h-full gap-6 p-6">
                 <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
@@ -4079,17 +4096,19 @@ const ConfigWorkspace: React.FC = () => {
                                     <div className="pl-4 space-y-3 py-2 animate-in fade-in slide-in-from-top-4 duration-500">
                                         {cat.templates.map((tpl) => (
                                             <div key={tpl.id} className="space-y-2">
-                                                <button
+                                                <CreativeTemplateHoverCard
+                                                    active={expandedTemplate === tpl.id}
                                                     onClick={() => handleTemplateSelect(tpl.id)}
                                                     onMouseEnter={() => setHoveredTemplateId(tpl.id)}
                                                     onMouseLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
                                                     onPointerEnter={() => setHoveredTemplateId(tpl.id)}
+                                                    onPointerMove={() => setHoveredTemplateId(tpl.id)}
                                                     onPointerLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
                                                     className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-white/15 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
                                                 >
                                                     <span>{tpl.label}</span>
                                                     <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${expandedTemplate === tpl.id ? 'bg-primary shadow-[0_0_10px_#FF2E63]' : 'bg-zinc-800'}`} />
-                                                </button>
+                                                </CreativeTemplateHoverCard>
                                                 {isBreakFrameLikeTemplateId(tpl.id) && expandedTemplate === tpl.id && tpl.id !== 'meiyan-break-frame-focal-3d' && tpl.id !== 'refresh-ui-bottom-nav' && (
                                                     <div className="ml-2 rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
                                                         <div className="flex items-start justify-between gap-2">
