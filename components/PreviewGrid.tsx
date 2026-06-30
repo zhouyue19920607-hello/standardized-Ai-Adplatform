@@ -232,7 +232,7 @@ const AdCard: React.FC<{
   };
 
   return (
-    <div className="bg-[#F4F5F7] group hover:shadow-2xl transition-all duration-500 overflow-hidden flex flex-col h-full border border-slate-200/60 rounded-[20px] pb-3 relative shadow-md">
+    <div className="standard-preview-card group transition-all duration-300 overflow-hidden flex flex-col h-full pb-2 relative">
       <div className="px-3 pt-3 pb-2 flex flex-col items-center justify-center gap-1 bg-transparent shrink-0">
         {/* Dimension Text */}
         <span className="text-[12px] text-slate-400 font-bold font-mono tracking-[0.1em] shrink min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-center">
@@ -242,7 +242,7 @@ const AdCard: React.FC<{
         </span>
       </div>
       <div
-        className="relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0 border-b border-t border-slate-100"
+        className="standard-preview-media relative bg-white overflow-hidden cursor-zoom-in w-full group/preview shrink-0"
         style={{ aspectRatio, containerType: 'size' }}
         onDoubleClick={() => onZoom({ ...asset, splashText: localSplashText }, localShowMask, localShowCrop, localShowBadge)}
       >
@@ -669,21 +669,21 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
   if (assets.length === 0 && !isGenerating) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-start pt-4 p-6 h-full min-h-[450px]">
-        <div className="max-w-3xl w-full space-y-0 animate-in fade-in slide-in-from-top-4 duration-1000 font-medium tracking-wide">
+      <div className="standard-empty-guide flex-1 flex flex-col items-center justify-start pt-3 p-4 h-full min-h-[430px]">
+        <div className="standard-empty-guide-inner max-w-4xl w-full space-y-0 animate-in fade-in slide-in-from-top-4 duration-700 font-medium tracking-wide">
           {/* Top Border */}
           <div className="h-[1px] w-full bg-slate-200/40 mb-4"></div>
 
           {/* Title */}
-          <div className="text-center py-2 mb-6">
-            <h2 className="text-lg font-bold text-slate-500/80 tracking-[0.6em] uppercase drop-shadow-sm">操作说明与素材限制</h2>
+          <div className="text-center py-1 mb-5">
+            <h2 className="standard-empty-title text-base font-black text-slate-500/80 tracking-[0.24em] uppercase">操作说明与素材限制</h2>
           </div>
 
           {/* Main Grid Content (Two columns for two situations) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pb-6">
 
             {/* Situation 1 */}
-            <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-slate-100/80 hover:bg-white hover:shadow-lg hover:border-blue-100 transition-all duration-300 group">
+            <div className="standard-empty-card standard-empty-card--blue space-y-4 p-5 rounded-2xl transition-all duration-300 group">
               <div className="flex items-center gap-3 text-slate-700 border-b border-slate-200 pb-3">
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined text-[18px]">rule</span>
@@ -731,7 +731,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             </div>
 
             {/* Situation 2 */}
-            <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-slate-100/80 hover:bg-white hover:shadow-lg hover:border-purple-100 transition-all duration-300 group">
+            <div className="standard-empty-card standard-empty-card--purple space-y-4 p-5 rounded-2xl transition-all duration-300 group">
               <div className="flex items-center gap-3 text-slate-700 border-b border-slate-200 pb-3">
                 <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
@@ -800,14 +800,14 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
   return (
     <div className="w-full">
-      <div className="p-6 pt-0 relative">
+      <div className="standard-preview-grid-shell p-5 pt-0 relative">
         {isGenerating && assets.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-md z-20">
             <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
             <p className="text-slate-800 font-bold tracking-widest text-xs uppercase animate-pulse">{t('preview.generating')}</p>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 pb-20">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-20">
           {filteredAssets.map(asset => (
             <AdCard key={asset.id} asset={asset} globalShowMask={config.showMask} config={config} onZoom={(a, showMask, showCrop, showBadge) => setSelectedAssetInfo({ asset: a, showMask, showCrop, showBadge })} onUpdate={updates => onUpdateAsset?.(asset.id, updates)} />
           ))}

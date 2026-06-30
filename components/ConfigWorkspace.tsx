@@ -112,7 +112,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '开屏创意模版',
         name: '炫动开屏',
         dimensions: '1440 x 2340 / 5s',
-        preview_video_path: '/static/previews/dynamic-splash_preview.mp4',
+        preview_video_path: '/template-previews/dynamic-splash.mp4',
         enabled: true,
     },
     {
@@ -121,7 +121,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '开屏创意模版',
         name: '杂志翻页',
         dimensions: '1440 x 2340 / 3-5素材',
-        preview_video_path: '/static/previews/magazine-flip_preview.mp4',
+        preview_video_path: '/template-previews/magazine-flip.mp4',
         enabled: true,
     },
     {
@@ -130,7 +130,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '开屏创意模版',
         name: '聚光开屏',
         dimensions: '小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340',
-        preview_video_path: '/static/previews/slide-splash_preview.mp4',
+        preview_video_path: '/template-previews/slide-splash.mp4',
         enabled: true,
     },
     {
@@ -139,7 +139,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '首页创意模版',
         name: '秀秀-破框焦点视窗3D',
         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
-        preview_video_path: '/static/previews/break-frame-focal-3d_preview.mp4',
+        preview_video_path: '/template-previews/break-frame-focal-3d.mp4',
         enabled: true,
     },
     {
@@ -148,7 +148,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '首页创意模版',
         name: '美颜-破框焦点视窗3D',
         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
-        preview_video_path: '/static/previews/meiyan-break-frame-focal-3d_preview.mp4',
+        preview_video_path: '/template-previews/meiyan-break-frame-focal-3d.mp4',
         enabled: true,
     },
     {
@@ -157,7 +157,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '首页创意模版',
         name: '多态翻卡',
         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
-        preview_video_path: '/static/previews/polymorphic-flip-card_preview.mp4',
+        preview_video_path: '/template-previews/polymorphic-flip-card.mp4',
         enabled: true,
     },
     {
@@ -166,7 +166,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '首页创意模版',
         name: '跃动焦点视窗',
         dimensions: '预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900',
-        preview_video_path: '/static/previews/jumping-focal-window_preview.mp4',
+        preview_video_path: '/template-previews/jumping-focal-window.mp4',
         enabled: true,
     },
     {
@@ -175,7 +175,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '首页创意模版',
         name: '焕新UI',
         dimensions: 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon',
-        preview_video_path: '/static/previews/refresh-ui-bottom-nav_preview.mp4',
+        preview_video_path: '/template-previews/refresh-ui-bottom-nav.mp4',
         enabled: true,
     },
 ];
@@ -935,9 +935,7 @@ const ConfigWorkspace: React.FC = () => {
     }, []);
 
     const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === hoveredTemplateId) || null;
-    const selectedPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === expandedTemplate) || null;
-    const activePreviewTemplate = hoveredPreviewTemplate || (!generatedVideoUrl ? selectedPreviewTemplate : null);
-    const hoveredPreviewVideoUrl = activePreviewTemplate?.preview_video_path || null;
+    const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
 
     useEffect(() => {
         if (!hoveredPreviewVideoUrl) {
@@ -3924,7 +3922,7 @@ const ConfigWorkspace: React.FC = () => {
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
-        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(activePreviewTemplate?.id))
+        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(hoveredPreviewTemplate?.id))
         : getCreativePreviewAspectRatio(expandedTemplate);
     const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
     const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
@@ -4034,7 +4032,7 @@ const ConfigWorkspace: React.FC = () => {
     const breakFramePreviewStarted = breakPreviewPhase !== null;
 
     return (
-        <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
+        <div className="creative-board-shell fixed inset-0 z-0 overflow-hidden text-zinc-300 pt-[73px]">
             <SideRays
                 className="creative-board-side-rays"
                 speed={1.7}
@@ -4049,7 +4047,7 @@ const ConfigWorkspace: React.FC = () => {
                 falloff={1.85}
                 opacity={0.58}
             />
-            <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_18%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_88%_78%,rgba(14,165,233,0.12),transparent_30%),linear-gradient(180deg,rgba(10,10,10,0.25),rgba(10,10,10,0.72))]" />
+            <div className="creative-board-atmosphere pointer-events-none absolute inset-0 z-[1]" />
             {aiGeneratingKey && (
                 <div className="fixed right-8 bottom-8 z-[90] pointer-events-none rounded-[24px] border border-primary/20 bg-zinc-950/90 px-5 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-white/[0.03] to-cyan-300/10 animate-pulse" />
@@ -4066,8 +4064,8 @@ const ConfigWorkspace: React.FC = () => {
                     </div>
                 </div>
             )}
-            <div className="relative z-10 flex h-full gap-6 p-6">
-                <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+            <div className="creative-board-stage relative z-10 flex h-full gap-6 p-6">
+                <aside className="creative-board-glass creative-board-sidebar w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
                             <span className="material-symbols-outlined text-white text-2xl">auto_awesome_motion</span>
@@ -4083,7 +4081,7 @@ const ConfigWorkspace: React.FC = () => {
                             <div key={cat.id} className="space-y-2">
                                 <button
                                     onClick={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
-                                    className={`w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
+                                    className={`creative-category-trigger w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'creative-category-trigger--active bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
                                 >
                                     <div className="flex items-center gap-3">
                                         <span className="material-symbols-outlined text-[20px] font-light">{cat.icon}</span>
@@ -4104,7 +4102,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     onPointerEnter={() => setHoveredTemplateId(tpl.id)}
                                                     onPointerMove={() => setHoveredTemplateId(tpl.id)}
                                                     onPointerLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
-                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-white/15 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
+                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-black/60 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
                                                 >
                                                     <span>{tpl.label}</span>
                                                     <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${expandedTemplate === tpl.id ? 'bg-primary shadow-[0_0_10px_#FF2E63]' : 'bg-zinc-800'}`} />
@@ -4168,43 +4166,25 @@ const ConfigWorkspace: React.FC = () => {
                             </div>
                         ))}
                     </div>
-
-                    <div className="mt-6 pt-6 border-t border-white/5 shrink-0">
-                        <button
-                            onClick={buildVideo}
-                            disabled={isGenerating}
-                            className="w-full bg-white text-black py-5 rounded-[20px] font-black text-[11px] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-[0.2em] group disabled:opacity-50"
-                        >
-                            <span className={`material-symbols-outlined text-xl ${isGenerating ? 'animate-spin' : 'group-hover:animate-bounce'}`}>{isGenerating ? 'sync' : 'bolt'}</span>
-                            {isGenerating ? '正在生成视频' : '生成合成视频'}
-                        </button>
-                    </div>
                 </aside>
 
-                <main className="relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                <main className="creative-board-glass creative-board-main relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
                     {renderAiLoadingOverlay('*')}
-                    <header className="px-10 py-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-center shrink-0">
+                    <header className="creative-board-main-header px-10 pt-10 pb-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-start shrink-0">
                         <div>
-                            <div className="flex items-center gap-3 mb-2">
-                                <span className="px-3 py-1 rounded-[20px] bg-white/5 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-white/5">MR STANDARD</span>
-                                <div className="flex items-center gap-1.5 antialiased">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#10B981]" />
-                                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-tight">{isMagazineTemplate ? 'Magazine Flip' : isSpotlightTemplate ? 'Spotlight Splash' : isPolymorphicFlipCardTemplate ? 'Polymorphic Flip Card' : isBreakFocalTemplate ? 'Break Frame Focal' : isJumpingFocalTemplate ? 'Jumping Focal' : isRefreshUiBottomNavTemplate ? 'Refresh UI Nav' : 'Dynamic Splash'}</span>
-                                </div>
-                            </div>
-                            <h1 className="text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
+                            <h1 className="creative-board-title text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
                         </div>
                         <div className="flex items-center gap-3">
                             {saveMessage && <span className="text-[10px] font-bold text-zinc-500">{saveMessage}</span>}
-                            <div className="px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
+                            <div className="creative-board-output-pill px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
                                 {outputSpec}
                             </div>
                         </div>
                     </header>
 
-                    <div className="flex-1 overflow-auto p-10 custom-scrollbar">
+                    <div className="creative-board-content flex-1 overflow-auto p-10 custom-scrollbar">
                         <div className="grid min-w-[900px] grid-cols-[420px_minmax(420px,1fr)] gap-8 min-h-full">
-                            <section className="space-y-5">
+                            <section className="creative-workflow-column space-y-5">
                                 {isMagazineTemplate ? (
                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                         <div className="flex items-center justify-between">
@@ -5530,7 +5510,7 @@ const ConfigWorkspace: React.FC = () => {
                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h2 className="text-white text-sm font-black">挂件素材</h2>
+                                            <h2 className="text-white text-sm font-black">①上传挂件素材</h2>
                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">PNG / 450 x 450px / MR 标准</p>
                                         </div>
                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(asset.status)}`}>{asset.message}</span>
@@ -5626,7 +5606,7 @@ const ConfigWorkspace: React.FC = () => {
                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <h2 className="text-white text-sm font-black">开屏素材上传</h2>
+                                            <h2 className="text-white text-sm font-black">②上传开屏素材</h2>
                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 1440 x 2340px / 视频 5s 内</p>
                                         </div>
                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(splash.status)}`}>{splash.message}</span>
@@ -5677,7 +5657,7 @@ const ConfigWorkspace: React.FC = () => {
                                 )}
                             </section>
 
-                            <section className="bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
+                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
                                 <div className="flex items-center justify-between gap-4 mb-4">
                                     <div>
                                         <h2 className="text-white text-sm font-black">合成预览</h2>
@@ -5699,21 +5679,22 @@ const ConfigWorkspace: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                         {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
+                                        <button
+                                            onClick={buildVideo}
+                                            disabled={isGenerating}
+                                            className="h-9 px-5 rounded-[14px] bg-white text-black text-[11px] font-black hover:bg-zinc-200 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-[0_12px_36px_rgba(255,255,255,0.12)]"
+                                        >
+                                            <span className={`material-symbols-outlined text-[15px] ${isGenerating ? 'animate-spin' : ''}`}>{isGenerating ? 'sync' : 'bolt'}</span>
+                                            {isGenerating ? '生成中' : '③生成视频'}
+                                        </button>
                                         <a
                                             href={generatedVideoUrl || undefined}
                                             download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
-                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all ${generatedVideoUrl ? 'bg-white text-black hover:bg-zinc-200' : 'bg-white/5 text-zinc-700 pointer-events-none'}`}
+                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
                                         >
                                             <span className="material-symbols-outlined text-base">download</span>
                                             下载
                                         </a>
-                                        <button
-                                            onClick={buildVideo}
-                                            disabled={isGenerating}
-                                            className="h-9 px-4 rounded-[14px] bg-primary/90 text-white text-[11px] font-black hover:bg-primary transition-all disabled:opacity-50"
-                                        >
-                                            {isGenerating ? '生成中' : '重新生成'}
-                                        </button>
                                     </div>
                                 </div>
 
@@ -6173,7 +6154,7 @@ const ConfigWorkspace: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className={`mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                     {!isBreakFocalTemplate && (
                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
                                             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">交互形式</p>

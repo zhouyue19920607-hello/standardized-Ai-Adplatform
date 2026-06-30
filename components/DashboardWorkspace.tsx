@@ -163,10 +163,10 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
 
     return (
         <>
-            <main className="flex pt-6 px-6 gap-6 transition-all duration-500">
+            <main className="standard-board-shell flex pt-5 px-5 gap-4 transition-all duration-500">
                 {/* Left Sidebar */}
-                <aside className="w-[340px] sticky top-[97px] h-[calc(100vh-170px)] transition-all duration-300">
-                    <div className="h-full liquid-glass rounded-[2rem] border border-white/20 shadow-xl overflow-hidden flex flex-col">
+                <aside className="w-[304px] sticky top-[92px] h-[calc(100vh-156px)] transition-all duration-300">
+                    <div className="standard-board-sidebar-shell h-full overflow-hidden flex flex-col">
                         <Sidebar
                             templates={templates}
                             config={config}
@@ -183,13 +183,13 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                 </aside>
 
                 {/* Main Content Area */}
-                <div className="flex-1 flex flex-col gap-2">
+                <div className="standard-board-main flex-1 flex flex-col gap-2">
                     {/* Drag-and-drop / Upload Section */}
                     <section
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
-                        className={`relative px-6 pt-3 pb-3 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[96px] overflow-hidden' : 'opacity-100 max-h-[160px] overflow-y-auto custom-scrollbar'}`}
+                        className={`standard-upload-section relative px-4 pt-2 pb-2 shrink-0 transition-all duration-400 ease-in-out origin-top ${isCollapsed ? 'opacity-20 scale-[0.95] max-h-[82px] overflow-hidden' : 'opacity-100 max-h-[142px] overflow-y-auto custom-scrollbar'}`}
                     >
                         <input
                             type="file"
@@ -213,9 +213,9 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                         {rawFiles.length === 0 ? (
                             <div
                                 onClick={() => fileInputRef.current?.click()}
-                                className="group relative flex items-center justify-center gap-4 min-h-[96px] border-2 border-dashed border-white/20 bg-white/10 hover:bg-white/20 rounded-[24px] px-6 py-4 transition-all cursor-pointer shadow-inner liquid-glass"
+                                className="standard-upload-dropzone group relative flex items-center justify-center gap-4 min-h-[82px] rounded-[20px] px-6 py-3 transition-all cursor-pointer"
                             >
-                                <div className="h-11 w-11 liquid-glass flex items-center justify-center text-primary group-hover:scale-110 transition-transform shrink-0">
+                                <div className="standard-upload-icon h-11 w-11 flex items-center justify-center text-primary group-hover:scale-110 transition-transform shrink-0">
                                     <span className="material-symbols-outlined text-[28px]">cloud_upload</span>
                                 </div>
                                 <div className="min-w-0">
@@ -259,8 +259,8 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                                 ? 'bg-amber-50 text-amber-700 border-amber-100'
                                                 : 'bg-slate-50 text-slate-500 border-slate-100';
                                         return (
-                                            <div key={raw.id} className="group flex items-center gap-3 rounded-[20px] bg-white/60 border border-white/60 px-4 py-3 min-h-[84px] shadow-ios lens-effect">
-                                                <div className="relative w-16 h-16 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
+                                            <div key={raw.id} className="standard-asset-row group flex items-center gap-3 rounded-[18px] px-4 py-3 min-h-[76px]">
+                                                <div className="relative w-14 h-14 rounded-[14px] bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
                                                     {raw.file.type.startsWith('video/') ? (
                                                         <>
                                                             {raw.thumbnailUrl ? (
@@ -300,11 +300,11 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     </section>
 
                     {/* Sticky Controller Header */}
-                    <div className="px-6 pt-1 pb-3 sticky top-[76px] z-30 pointer-events-none transition-all duration-300">
-                        <div className="flex items-center justify-between px-6 py-4 liquid-glass border border-white/30 shadow-sm pointer-events-auto">
+                    <div className="standard-preview-toolbar-wrap px-4 pt-1 pb-3 sticky top-[74px] z-30 pointer-events-none transition-all duration-300">
+                        <div className="standard-preview-toolbar flex items-center justify-between px-5 py-3 pointer-events-auto">
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 liquid-glass flex items-center justify-center text-primary shadow-inner">
+                                    <div className="standard-preview-toolbar-icon w-10 h-10 flex items-center justify-center text-primary">
                                         <span className="material-symbols-outlined text-[24px]">grid_view</span>
                                     </div>
                                     <h2 className="text-base font-bold text-slate-800">生成预览</h2>
@@ -328,7 +328,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                             </div>
 
                             <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
+                                <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
                                     <span className="text-[11px] font-bold text-slate-500">全显遮罩</span>
                                     <label className="relative inline-flex items-center cursor-pointer">
                                         <input
@@ -341,7 +341,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                     </label>
                                 </div>
 
-                                <div className="flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
+                                <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
                                     <span className="text-[11px] font-bold text-slate-500">全显裁剪</span>
                                     <label className="relative inline-flex items-center cursor-pointer">
                                         <input
@@ -368,7 +368,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     </div>
 
                     {/* Processed Previews Section */}
-                    <div className="w-full pb-24 relative">
+                    <div className="standard-preview-stage w-full pb-24 relative">
                         <PreviewGrid
                             assets={previewAssets}
                             config={config}

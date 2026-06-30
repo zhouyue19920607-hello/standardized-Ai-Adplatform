@@ -60,8 +60,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [templates.length]);
 
   return (
-    <aside className="h-full flex flex-col overflow-hidden">
-      <div className="px-6 py-4 shrink-0 flex items-center">
+    <aside className="standard-sidebar h-full flex flex-col overflow-hidden">
+      <div className="standard-sidebar-heading px-6 py-4 shrink-0 flex items-center">
         <p className="text-sm text-slate-900 font-bold">{t('sidebar.selectCat')}</p>
       </div>
 
@@ -78,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex flex-col border-b border-ios-gray-6 pb-2 last:border-0">
                 {/* Category header row */}
                 <div
-                  className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
+                  className="standard-sidebar-category flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
                   onClick={() => toggleCat(expandKey)}
                 >
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -123,7 +123,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
                           onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
                           onPointerLeave={() => handleTemplatePreviewLeave(tpl)}
-                          className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
+                          className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`}
                         >
                           <div className="flex items-center justify-center">
                             {tpl.checked ? (
@@ -240,7 +240,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <StandardTemplatePillOption
                       active={focalTpl.checked}
-                      className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
+                      className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer
                         ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                       }
                     >
@@ -368,7 +368,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <div key={cat} className="border-b border-ios-gray-6 last:border-0">
                           {/* Category Header */}
                           <div
-                            className="flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
+                            className="standard-sidebar-category flex items-center justify-between p-3.5 cursor-pointer hover:bg-white/20 transition-colors select-none rounded-xl"
                             onClick={() => toggleCat(expandKey)}
                           >
                             <div className="flex items-center gap-2">
@@ -412,7 +412,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
                                     onPointerLeave={() => handleTemplatePreviewLeave(tpl)}
                                     title={tpl.name === '动态开屏' ? t('sidebar.cardPreviewOnly') : undefined}
-                                    className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer shadow-sm lens-effect
+                                    className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer
                                                             ${tpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                                     }
                                   >

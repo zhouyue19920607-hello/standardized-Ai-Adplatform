@@ -12,7 +12,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
   const isConfigPage = location.pathname === '/config';
 
   return (
-    <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
+    <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
       <div className="flex items-center justify-between">
         <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
           <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>

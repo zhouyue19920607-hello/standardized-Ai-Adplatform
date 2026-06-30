@@ -94,15 +94,19 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
     badge_overlay_path: "/default-assets/standard/mt-p-1-badge.png"
   },
   "my-f-1": {
-    maskPath: "backend/default-assets/standard/my-f-1-mask.png",
-    mask_path: "/default-assets/standard/my-f-1-mask.png",
-    maskUrl: "/default-assets/standard/my-f-1-mask.png",
-    badge_overlay_path: "/default-assets/standard/my-f-1-badge.png",
-    preview_video_path: "/static/previews/meiyan-focal-window_preview.mp4"
+    maskPath: "backend/storage/masks/my_focal_window_mask.png",
+    mask_path: "/static/masks/my_focal_window_mask.png",
+    maskUrl: "/static/masks/my_focal_window_mask.png",
+    badge_overlay_path: "/static/badges/my_focal_window_badge.png",
+    preview_video_path: "/template-previews/meiyan-focal-window.mp4"
   }
 };
 const DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS = {
   "my-f-1": [
+    "backend/default-assets/standard/my-f-1-mask.png",
+    "/default-assets/standard/my-f-1-mask.png",
+    "backend/default-assets/standard/my-f-1-badge.png",
+    "/default-assets/standard/my-f-1-badge.png",
     "backend/storage/masks/1777270597630_______-____________.png",
     "/static/masks/1777270597630_______-____________.png"
   ]
@@ -196,6 +200,42 @@ async function readJson(filePath, defaultValue) {
 async function writeJson(filePath, data) {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+}
+
+async function md5File(filePath) {
+  const content = await fs.readFile(filePath);
+  return crypto.createHash("md5").update(content).digest("hex");
+}
+
+async function ensureDefaultStaticAssetCopies() {
+  const copies = [
+    {
+      source: path.join(DEFAULT_ASSETS_DIR, "standard", "my-f-1-mask.png"),
+      target: path.join(MASKS_DIR, "my_focal_window_mask.png")
+    },
+    {
+      source: path.join(DEFAULT_ASSETS_DIR, "standard", "my-f-1-badge.png"),
+      target: path.join(BADGES_DIR, "my_focal_window_badge.png")
+    }
+  ];
+
+  for (const { source, target } of copies) {
+    try {
+      await fs.access(source);
+      let shouldCopy = true;
+      try {
+        shouldCopy = await md5File(source) !== await md5File(target);
+      } catch {
+        shouldCopy = true;
+      }
+      if (shouldCopy) {
+        await ensureDir(path.dirname(target));
+        await fs.copyFile(source, target);
+      }
+    } catch (err) {
+      console.warn("[DefaultAssets] skip static asset sync:", err.message);
+    }
+  }
 }
 
 function firstConfiguredEnv(...names) {
@@ -353,7 +393,7 @@ async function ensureDataFiles() {
       { id: "wk-s-7", app: "wink", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
       { id: "wk-s-8", app: "wink", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
       { id: "wk-s-9", app: "wink", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
-      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436", preview_video_path: "/static/previews/wink-focal-window_preview.mp4" }
+      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436", preview_video_path: "/template-previews/wink-focal-window.mp4" }
     ];
 
     await writeJson(TEMPLATES_FILE, initialTemplates);
@@ -387,6 +427,7 @@ async function ensureDataFiles() {
   await ensureDir(BADGES_DIR);
   await ensureDir(PREVIEWS_DIR);
   await ensureDir(AIGC_INPUTS_DIR);
+  await ensureDefaultStaticAssetCopies();
   await ensureDefaultTemplateAssetOverrides();
 }
 
