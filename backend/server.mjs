@@ -3863,24 +3863,46 @@ function computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight)
 function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight) {
   const ratioDelta = computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight);
   const exactSize = sourceWidth === targetWidth && sourceHeight === targetHeight;
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  const sourceOrientation = sourceRatio > 1.08 ? "landscape" : sourceRatio < 0.92 ? "portrait" : "square";
+  const targetOrientation = targetRatio > 1.08 ? "landscape" : targetRatio < 0.92 ? "portrait" : "square";
+  const isSameDirectionalAdapt =
+    sourceOrientation !== "square" &&
+    targetOrientation !== "square" &&
+    sourceOrientation === targetOrientation;
+  const isCrossDirectionalAdapt =
+    sourceOrientation !== "square" &&
+    targetOrientation !== "square" &&
+    sourceOrientation !== targetOrientation;
   let strategy = "crop";
   if (exactSize) strategy = "direct";
+  else if (isSameDirectionalAdapt) strategy = "outpaint";
+  else if (isCrossDirectionalAdapt) strategy = "relayout";
   else if (ratioDelta < 0.05) strategy = "crop";
   else if (ratioDelta < 0.35) strategy = "outpaint";
   else strategy = "relayout";
   return {
     strategy,
     ratioDelta,
-    sourceRatio: sourceWidth / sourceHeight,
-    targetRatio: targetWidth / targetHeight,
+    sourceRatio,
+    targetRatio,
+    sourceOrientation,
+    targetOrientation,
+    orientationChange: exactSize ? "exact" : isSameDirectionalAdapt ? "same-direction" : isCrossDirectionalAdapt ? "cross-direction" : "neutral",
+    layoutIntent: isSameDirectionalAdapt ? "center_expand_only" : isCrossDirectionalAdapt ? "cross_direction_relayout" : "ratio_based",
     steps: strategy === "direct"
       ? ["resize"]
       : strategy === "crop"
         ? ["detect", "merge_masks", "ai_crop", "qa"]
-        : ["detect", "merge_masks", "preserve_expand", "protected_crop", "qa"],
+        : isCrossDirectionalAdapt
+          ? ["detect", "merge_masks", "split_text_logo_layers", "cross_direction_relayout", "background_extension", "qa"]
+          : ["detect", "merge_masks", "center_original", "background_extension", "protected_crop", "qa"],
     reasons: [
       exactSize ? "源图尺寸与目标尺寸一致" : `比例差异 ${(ratioDelta * 100).toFixed(1)}%`,
-      strategy === "relayout" ? "比例跨度较大，优先保留原 Logo/文案完整，再做背景延展和保护裁剪" : ""
+      isSameDirectionalAdapt ? "源图与目标模板同为横版或同为竖版，优先整图居中并只向四周扩图，不拆文案和 Logo" : "",
+      isCrossDirectionalAdapt ? "源图与目标模板横竖方向互转，才进入智能排版" : "",
+      strategy === "relayout" ? "跨方向适配时优先保留原 Logo/文案完整，再做背景延展和图层排版" : ""
     ].filter(Boolean)
   };
 }
@@ -5842,6 +5864,9 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   ].filter(Boolean).join("");
   const enhancedPrompt = [
     AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+    plan.layoutIntent === "center_expand_only"
+      ? "Same-orientation adaptation: keep the entire original poster as the core centered composition. Do not split, move, rewrite, redraw, translate, or regenerate any text, logo, product, subject, button, or brand mark. Only extend the canvas outward around the original image with seamless background continuation."
+      : "",
     plan.strategy === "relayout"
       ? "For large ratio changes, preserve the original logo and all readable text exactly. Keep every brand mark, slogan, button copy, and title visible and uncropped. Extend the background and improve composition without deleting or rewriting text."
       : "For moderate ratio changes, keep the original logo and text intact and only fill missing background area. Do not redesign the poster.",
@@ -6820,7 +6845,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       const analysis = await analyzeAdImageForAdapt(imageUrl, meituContext);
       const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
       const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
-      if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.strategy !== "direct" && allowRelayout) {
+      if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
         plan.strategy = "relayout";
         plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
         plan.reasons.push("标准焦点视窗模板强制使用左右智能排版：左侧文案/Logo，右侧主体物");
