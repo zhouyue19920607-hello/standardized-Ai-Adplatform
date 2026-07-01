@@ -3772,6 +3772,19 @@ function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
   );
 }
 
+const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 215;
+
+function isBoxInsidePixelSafeArea(box, width, height, marginPx = STANDARD_SPLASH_INFO_SAFE_MARGIN_PX) {
+  if (!box || !width || !height) return true;
+  const margin = Math.min(Number(marginPx) || 0, width / 2, height / 2);
+  return (
+    box.x >= margin &&
+    box.y >= margin &&
+    box.x + box.width <= width - margin &&
+    box.y + box.height <= height - margin
+  );
+}
+
 function textRecall(beforeTexts = [], afterTexts = []) {
   const before = beforeTexts.join("").replace(/\s/g, "");
   const after = afterTexts.join("").replace(/\s/g, "");
@@ -3860,13 +3873,22 @@ function computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight)
   return Math.abs(Math.log2(sourceRatio / targetRatio));
 }
 
-function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight, options = {}) {
   const ratioDelta = computeRatioDelta(sourceWidth, sourceHeight, targetWidth, targetHeight);
   const exactSize = sourceWidth === targetWidth && sourceHeight === targetHeight;
   const sourceRatio = sourceWidth / sourceHeight;
   const targetRatio = targetWidth / targetHeight;
+  const { analysis = null, context = {} } = options;
   const sourceOrientation = sourceRatio > 1.08 ? "landscape" : sourceRatio < 0.92 ? "portrait" : "square";
   const targetOrientation = targetRatio > 1.08 ? "landscape" : targetRatio < 0.92 ? "portrait" : "square";
+  const infoSafeArea = evaluateSplashInfoSafeAreaForAdapt(
+    analysis,
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    context
+  );
   const isSameDirectionalAdapt =
     sourceOrientation !== "square" &&
     targetOrientation !== "square" &&
@@ -3882,6 +3904,13 @@ function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight)
   else if (ratioDelta < 0.05) strategy = "crop";
   else if (ratioDelta < 0.35) strategy = "outpaint";
   else strategy = "relayout";
+  const layoutIntent = isSameDirectionalAdapt && infoSafeArea?.passed
+    ? "center_expand_safe_info_only"
+    : isSameDirectionalAdapt
+      ? "center_expand_only"
+      : isCrossDirectionalAdapt
+        ? "cross_direction_relayout"
+        : "ratio_based";
   return {
     strategy,
     ratioDelta,
@@ -3890,17 +3919,22 @@ function planAdaptStrategy(sourceWidth, sourceHeight, targetWidth, targetHeight)
     sourceOrientation,
     targetOrientation,
     orientationChange: exactSize ? "exact" : isSameDirectionalAdapt ? "same-direction" : isCrossDirectionalAdapt ? "cross-direction" : "neutral",
-    layoutIntent: isSameDirectionalAdapt ? "center_expand_only" : isCrossDirectionalAdapt ? "cross_direction_relayout" : "ratio_based",
+    layoutIntent,
+    infoSafeArea,
     steps: strategy === "direct"
       ? ["resize"]
       : strategy === "crop"
         ? ["detect", "merge_masks", "ai_crop", "qa"]
         : isCrossDirectionalAdapt
           ? ["detect", "merge_masks", "split_text_logo_layers", "cross_direction_relayout", "background_extension", "qa"]
-          : ["detect", "merge_masks", "center_original", "background_extension", "protected_crop", "qa"],
+          : infoSafeArea?.passed
+            ? ["detect", "text_logo_safe_area_check", "center_original", "background_extension", "final_safe_area_qa"]
+            : ["detect", "merge_masks", "center_original", "background_extension", "protected_crop", "qa"],
     reasons: [
       exactSize ? "源图尺寸与目标尺寸一致" : `比例差异 ${(ratioDelta * 100).toFixed(1)}%`,
       isSameDirectionalAdapt ? "源图与目标模板同为横版或同为竖版，优先整图居中并只向四周扩图，不拆文案和 Logo" : "",
+      isSameDirectionalAdapt && infoSafeArea?.passed ? `开屏文字/Logo 已满足 ${infoSafeArea.marginPx}px 安全边距，只扩展背景` : "",
+      isSameDirectionalAdapt && infoSafeArea && !infoSafeArea.passed ? `开屏文字/Logo 未满足 ${infoSafeArea.marginPx}px 安全边距，需要安全区调整` : "",
       isCrossDirectionalAdapt ? "源图与目标模板横竖方向互转，才进入智能排版" : "",
       strategy === "relayout" ? "跨方向适配时优先保留原 Logo/文案完整，再做背景延展和图层排版" : ""
     ].filter(Boolean)
@@ -5051,6 +5085,56 @@ function isStandardFocalWindowTemplateForAdapt(context = {}) {
   return !/(破框|3d|多态|跃动|焕新|翻卡|画廊|break|refresh|polymorphic|gallery)/i.test(text);
 }
 
+function isStandardSplashTemplateForAdapt(context = {}) {
+  const templateId = String(context.templateId || "").toLowerCase();
+  const templateName = String(context.templateName || "");
+  const appName = String(context.appName || "");
+  if (/^(mt|my|wk)-s-\d+/.test(templateId)) return true;
+  const text = `${appName}${templateName}${templateId}`.toLowerCase();
+  return /(开屏|splash)/i.test(text) && !/(炫动|杂志|聚光|创新|dynamic|magazine|gallery)/i.test(text);
+}
+
+function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight, targetWidth, targetHeight, context = {}) {
+  if (!isStandardSplashTemplateForAdapt(context)) return null;
+  const sourceBoxes = [
+    ...(analysis?.logo?.boxes || []).map(box => ({ type: "logo", box })),
+    ...(analysis?.text?.boxes || []).map(box => ({ type: "text", box }))
+  ];
+  const boxes = sourceBoxes
+    .map(item => ({
+      type: item.type,
+      box: normalizeBox(item.box, sourceWidth, sourceHeight, targetWidth, targetHeight)
+    }))
+    .filter(item => Boolean(item.box));
+  const unsafeBoxes = boxes.filter(item => !isBoxInsidePixelSafeArea(
+    item.box,
+    targetWidth,
+    targetHeight,
+    STANDARD_SPLASH_INFO_SAFE_MARGIN_PX
+  ));
+  return {
+    applies: true,
+    marginPx: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+    boxCount: boxes.length,
+    unsafeCount: unsafeBoxes.length,
+    passed: unsafeBoxes.length === 0,
+    safeArea: {
+      left: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+      top: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+      right: Math.max(STANDARD_SPLASH_INFO_SAFE_MARGIN_PX, targetWidth - STANDARD_SPLASH_INFO_SAFE_MARGIN_PX),
+      bottom: Math.max(STANDARD_SPLASH_INFO_SAFE_MARGIN_PX, targetHeight - STANDARD_SPLASH_INFO_SAFE_MARGIN_PX)
+    },
+    boxes: boxes.map(item => ({
+      type: item.type,
+      x: Math.round(item.box.x),
+      y: Math.round(item.box.y),
+      width: Math.round(item.box.width),
+      height: Math.round(item.box.height),
+      inside: isBoxInsidePixelSafeArea(item.box, targetWidth, targetHeight, STANDARD_SPLASH_INFO_SAFE_MARGIN_PX)
+    }))
+  };
+}
+
 function planZonePlacementForAdapt(zone, sourceMeta, targetWidth, targetHeight, indexByType = 0, sourceCanvasWidth = 0, sourceCanvasHeight = 0, context = {}) {
   const sourceWidth = Math.max(1, sourceMeta?.width || zone.box?.width || targetWidth);
   const sourceHeight = Math.max(1, sourceMeta?.height || zone.box?.height || targetHeight);
@@ -5864,6 +5948,9 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   ].filter(Boolean).join("");
   const enhancedPrompt = [
     AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+    plan.layoutIntent === "center_expand_safe_info_only"
+      ? `Same-orientation standard splash adaptation: the original text/logo already satisfy the ${STANDARD_SPLASH_INFO_SAFE_MARGIN_PX}px target safe margin. Keep the entire original poster centered and unchanged. Only extend the surrounding background naturally to the target canvas. Do not split, move, rewrite, redraw, translate, duplicate, or regenerate any text, logo, product, subject, button, or brand mark.`
+      : "",
     plan.layoutIntent === "center_expand_only"
       ? "Same-orientation adaptation: keep the entire original poster as the core centered composition. Do not split, move, rewrite, redraw, translate, or regenerate any text, logo, product, subject, button, or brand mark. Only extend the canvas outward around the original image with seamless background continuation."
       : "",
@@ -5953,8 +6040,22 @@ let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidt
   const normalizedBoxes = protectedBoxes
     .map(box => normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight))
     .filter(Boolean);
-  const safeAreaPassed = normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
-  if (!safeAreaPassed) warnings.push("部分受保护区域按比例映射后接近或超出安全区，MVP 无法保证模型输出中完全安全");
+  const splashInfoSafeArea = evaluateSplashInfoSafeAreaForAdapt(
+    analysis,
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    context
+  );
+  const safeAreaPassed = splashInfoSafeArea?.applies
+    ? splashInfoSafeArea.passed
+    : normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
+  if (!safeAreaPassed) {
+    warnings.push(splashInfoSafeArea?.applies
+      ? `开屏文案/Logo 未满足 ${splashInfoSafeArea.marginPx}px 安全边距`
+      : "部分受保护区域按比例映射后接近或超出安全区，MVP 无法保证模型输出中完全安全");
+  }
   if (analysis.warnings?.length) warnings.push(...analysis.warnings);
   if (plan.strategy === "relayout") warnings.push("智能重排当前为降级实现，尚未执行主体/文字/Logo 分层重新排版");
 
@@ -6026,8 +6127,22 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   const normalizedBoxes = protectedBoxes
     .map(box => normalizeBox(box, sourceWidth, sourceHeight, targetWidth, targetHeight))
     .filter(Boolean);
-  const safeAreaPassed = normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
-  if (!safeAreaPassed) warnings.push("some protected regions are too close to the output safe-area edge");
+  const splashInfoSafeArea = evaluateSplashInfoSafeAreaForAdapt(
+    analysis,
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    context
+  );
+  const safeAreaPassed = splashInfoSafeArea?.applies
+    ? splashInfoSafeArea.passed
+    : normalizedBoxes.every(box => isBoxInsideSafeArea(box, targetWidth, targetHeight, 0.08));
+  if (!safeAreaPassed) {
+    warnings.push(splashInfoSafeArea?.applies
+      ? `standard splash text/logo safe margin ${splashInfoSafeArea.marginPx}px failed`
+      : "some protected regions are too close to the output safe-area edge");
+  }
   if (analysis.warnings?.length) warnings.push(...analysis.warnings);
   if (plan.strategy === "relayout" && context.layeredRelayout?.failed) {
     warnings.push(`layered relayout failed: ${context.layeredRelayout.error}`);
@@ -6086,6 +6201,7 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
     textPreserved,
     logoPreserved,
     safeAreaPassed,
+    splashInfoSafeArea,
     textRecall: textRecallScore,
     logoSimilarity,
     warnings
@@ -6844,7 +6960,10 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       };
       const analysis = await analyzeAdImageForAdapt(imageUrl, meituContext);
       const masks = await buildProtectedMaskForAdapt(analysis, sourceWidth, sourceHeight) || await buildProtectedMaskFallback();
-      const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height);
+      const plan = planAdaptStrategy(sourceWidth, sourceHeight, width, height, {
+        analysis,
+        context: meituContext
+      });
       if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
         plan.strategy = "relayout";
         plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
