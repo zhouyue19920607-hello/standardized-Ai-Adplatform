@@ -3772,7 +3772,7 @@ function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
   );
 }
 
-const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 215;
+const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 346;
 
 function isBoxInsidePixelSafeArea(box, width, height, marginPx = STANDARD_SPLASH_INFO_SAFE_MARGIN_PX) {
   if (!box || !width || !height) return true;
