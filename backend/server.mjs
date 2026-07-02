@@ -5096,6 +5096,9 @@ function isStandardSplashTemplateForAdapt(context = {}) {
 
 function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight, targetWidth, targetHeight, context = {}) {
   if (!isStandardSplashTemplateForAdapt(context)) return null;
+  if (context.splashSafeAreaAdjustment?.infoSafeArea?.applies) {
+    return context.splashSafeAreaAdjustment.infoSafeArea;
+  }
   const sourceBoxes = [
     ...(analysis?.logo?.boxes || []).map(box => ({ type: "logo", box })),
     ...(analysis?.text?.boxes || []).map(box => ({ type: "text", box }))
@@ -5132,6 +5135,170 @@ function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight,
       height: Math.round(item.box.height),
       inside: isBoxInsidePixelSafeArea(item.box, targetWidth, targetHeight, STANDARD_SPLASH_INFO_SAFE_MARGIN_PX)
     }))
+  };
+}
+
+function collectSplashInfoSourceBoxesForAdapt(analysis, sourceWidth, sourceHeight) {
+  const sourceBoxes = [
+    ...(analysis?.logo?.boxes || []).map(box => ({ type: "logo", box })),
+    ...(analysis?.text?.boxes || []).map(box => ({ type: "text", box }))
+  ];
+  return sourceBoxes
+    .map(item => ({
+      type: item.type,
+      box: clampBoxToImage(denormalizeBox(item.box, sourceWidth, sourceHeight), sourceWidth, sourceHeight)
+    }))
+    .filter(item => Boolean(item.box));
+}
+
+function chooseSplashSafeAreaTransformForAdapt(sourceWidth, sourceHeight, targetWidth, targetHeight, boxes, marginPx) {
+  if (!sourceWidth || !sourceHeight || !targetWidth || !targetHeight || !boxes.length) return null;
+  const maxScale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  if (!Number.isFinite(maxScale) || maxScale <= 0) return null;
+  const minScale = Math.min(maxScale, 0.12);
+  const margin = Math.min(Number(marginPx) || 0, targetWidth / 2, targetHeight / 2);
+
+  const findTransform = (scale) => {
+    const scaledWidth = sourceWidth * scale;
+    const scaledHeight = sourceHeight * scale;
+    let minX = 0;
+    let maxX = targetWidth - scaledWidth;
+    let minY = 0;
+    let maxY = targetHeight - scaledHeight;
+
+    for (const item of boxes) {
+      const box = item.box;
+      minX = Math.max(minX, margin - box.x * scale);
+      maxX = Math.min(maxX, targetWidth - margin - (box.x + box.width) * scale);
+      minY = Math.max(minY, margin - box.y * scale);
+      maxY = Math.min(maxY, targetHeight - margin - (box.y + box.height) * scale);
+    }
+
+    if (minX > maxX || minY > maxY) return null;
+    const centeredX = (targetWidth - scaledWidth) / 2;
+    const centeredY = (targetHeight - scaledHeight) / 2;
+    return {
+      scale,
+      width: Math.max(1, Math.round(scaledWidth)),
+      height: Math.max(1, Math.round(scaledHeight)),
+      x: Math.round(clampNumber(centeredX, minX, maxX)),
+      y: Math.round(clampNumber(centeredY, minY, maxY))
+    };
+  };
+
+  const fullFit = findTransform(maxScale);
+  if (fullFit) return fullFit;
+
+  let low = minScale;
+  let high = maxScale;
+  let best = null;
+  for (let index = 0; index < 32; index += 1) {
+    const mid = (low + high) / 2;
+    const candidate = findTransform(mid);
+    if (candidate) {
+      best = candidate;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  return best || findTransform(minScale);
+}
+
+async function buildSplashSafeAreaCanvasForAdapt(imageUrl, targetWidth, targetHeight, context, analysis) {
+  if (!isStandardSplashTemplateForAdapt(context)) return null;
+  const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
+  const sourcePath = sourceStaticUrl?.startsWith("/static/") ? staticUrlToLocalPath(sourceStaticUrl) : "";
+  if (!sourcePath) return null;
+  const sourceMeta = await sharp(sourcePath).metadata();
+  const sourceWidth = sourceMeta.width || context.sourceWidth || targetWidth;
+  const sourceHeight = sourceMeta.height || context.sourceHeight || targetHeight;
+  const boxes = collectSplashInfoSourceBoxesForAdapt(analysis, sourceWidth, sourceHeight);
+  if (!boxes.length) return null;
+
+  const transform = chooseSplashSafeAreaTransformForAdapt(
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    boxes,
+    STANDARD_SPLASH_INFO_SAFE_MARGIN_PX
+  );
+  if (!transform) return null;
+
+  const mappedBoxes = boxes.map(item => ({
+    type: item.type,
+    box: {
+      x: item.box.x * transform.scale + transform.x,
+      y: item.box.y * transform.scale + transform.y,
+      width: item.box.width * transform.scale,
+      height: item.box.height * transform.scale
+    }
+  }));
+  const unsafeBoxes = mappedBoxes.filter(item => !isBoxInsidePixelSafeArea(
+    item.box,
+    targetWidth,
+    targetHeight,
+    STANDARD_SPLASH_INFO_SAFE_MARGIN_PX
+  ));
+
+  await ensureDir(STORAGE_DIR);
+  const filename = `splash_safe_area_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, filename);
+  const foregroundBuffer = await sharp(sourcePath)
+    .rotate()
+    .resize({
+      width: transform.width,
+      height: transform.height,
+      fit: "fill",
+      kernel: sharp.kernel.lanczos3
+    })
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+
+  await sharp(sourcePath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .blur(14)
+    .modulate({ saturation: 0.92, brightness: 0.98 })
+    .jpeg({ quality: 92, mozjpeg: true })
+    .composite([{ input: foregroundBuffer, left: transform.x, top: transform.y }])
+    .toFile(outputPath);
+
+  const infoSafeArea = {
+    applies: true,
+    marginPx: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+    adjusted: true,
+    boxCount: mappedBoxes.length,
+    unsafeCount: unsafeBoxes.length,
+    passed: unsafeBoxes.length === 0,
+    safeArea: {
+      left: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+      top: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+      right: Math.max(STANDARD_SPLASH_INFO_SAFE_MARGIN_PX, targetWidth - STANDARD_SPLASH_INFO_SAFE_MARGIN_PX),
+      bottom: Math.max(STANDARD_SPLASH_INFO_SAFE_MARGIN_PX, targetHeight - STANDARD_SPLASH_INFO_SAFE_MARGIN_PX)
+    },
+    boxes: mappedBoxes.map(item => ({
+      type: item.type,
+      x: Math.round(item.box.x),
+      y: Math.round(item.box.y),
+      width: Math.round(item.box.width),
+      height: Math.round(item.box.height),
+      inside: isBoxInsidePixelSafeArea(item.box, targetWidth, targetHeight, STANDARD_SPLASH_INFO_SAFE_MARGIN_PX)
+    }))
+  };
+
+  return {
+    url: `/static/${filename}`,
+    sourceUrl: sourceStaticUrl,
+    transform,
+    infoSafeArea
   };
 }
 
@@ -5961,6 +6128,40 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   ].filter(Boolean).join(" ");
   let workingUrl = imageUrl;
 
+  if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
+    try {
+      const adjusted = await buildSplashSafeAreaCanvasForAdapt(workingUrl, targetWidth, targetHeight, context, analysis);
+      if (adjusted?.url) {
+        context.splashSafeAreaAdjustment = {
+          applied: true,
+          marginPx: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX,
+          ...adjusted
+        };
+        plan.layoutIntent = "same_direction_safe_area_adjusted";
+        plan.steps = ["detect", "text_logo_safe_area_adjust", "compose_target_canvas", "final_safe_area_qa"];
+        plan.reasons = [
+          ...(plan.reasons || []),
+          `已通过整体缩放/位移将开屏文案/Logo 放入 ${STANDARD_SPLASH_INFO_SAFE_MARGIN_PX}px 安全边距`
+        ];
+        console.log("[AdaptImage] splash safe-area canvas done", JSON.stringify({
+          resultUrl: adjusted.url,
+          transform: adjusted.transform,
+          infoSafeArea: adjusted.infoSafeArea
+        }));
+        return ensureFinalAdaptSize(adjusted.url, targetWidth, targetHeight, context, analysis);
+      }
+      console.warn("[AdaptImage] splash safe-area canvas skipped: no adjusted URL");
+    } catch (err) {
+      console.warn("[AdaptImage] splash safe-area canvas failed:", err.message);
+      context.splashSafeAreaAdjustment = {
+        applied: false,
+        failed: true,
+        error: err.message,
+        marginPx: STANDARD_SPLASH_INFO_SAFE_MARGIN_PX
+      };
+    }
+  }
+
   const isFocalLeftRightRelayout = isStandardFocalWindowTemplateForAdapt(context);
   const layeredRelayoutEnabled = context.config?.layeredRelayoutMode === "layered" || isFocalLeftRightRelayout;
   if (plan.strategy === "relayout" && layeredRelayoutEnabled) {
@@ -6018,6 +6219,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
 
 let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidth, targetHeight, sourceWidth, sourceHeight, context, originalImageUrl, masks) {
   const warnings = [];
+  const deterministicSplashSafeAreaAdjustment = Boolean(context.splashSafeAreaAdjustment?.applied);
   let actualWidth = null;
   let actualHeight = null;
   try {
@@ -6072,7 +6274,7 @@ let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidt
   }
 
   let logoSimilarity = null;
-  if (analysis.logo?.maskUrl && masks?.protectedMaskUrl) {
+  if (analysis.logo?.maskUrl && masks?.protectedMaskUrl && !deterministicSplashSafeAreaAdjustment) {
     try {
       const originalStaticUrl = await ensureStaticImageUrlForResize(originalImageUrl);
       const resizedOriginal = originalStaticUrl?.startsWith("/static/")
@@ -6102,6 +6304,7 @@ let runAdaptQa = async function runAdaptQa(resultUrl, analysis, plan, targetWidt
 
 runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth, targetHeight, sourceWidth, sourceHeight, context, originalImageUrl, masks) {
   const warnings = [];
+  const deterministicSplashSafeAreaAdjustment = Boolean(context.splashSafeAreaAdjustment?.applied);
   let actualWidth = null;
   let actualHeight = null;
   try {
@@ -6151,7 +6354,7 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   }
 
   let subjectIou = null;
-  if (analysis.subject?.maskUrl) {
+  if (analysis.subject?.maskUrl && !deterministicSplashSafeAreaAdjustment) {
     try {
       const afterSubject = await detectSaliencyForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
       subjectIou = await maskIouFromUrls(analysis.subject.maskUrl, afterSubject.maskUrl, targetWidth, targetHeight);
@@ -6174,7 +6377,7 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   }
 
   let logoSimilarity = null;
-  if (analysis.logo?.maskUrl) {
+  if (analysis.logo?.maskUrl && !deterministicSplashSafeAreaAdjustment) {
     try {
       const originalStaticUrl = await ensureStaticImageUrlForResize(originalImageUrl);
       const resizedOriginal = originalStaticUrl?.startsWith("/static/")
