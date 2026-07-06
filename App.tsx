@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit, getMeituAuthState, getMeituLoginUrl, MeituAuthState } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -73,6 +73,63 @@ const getRequestErrorMessage = (error: unknown) => {
   }
   if (error instanceof Error) return error.message;
   return '美图 AI 适配失败';
+};
+
+const AuthGateScreen: React.FC<{
+  loading?: boolean;
+  configured?: boolean;
+  error?: string;
+}> = ({ loading = false, configured = true, error }) => {
+  const returnTo = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/';
+  return (
+    <div className="min-h-screen bg-[#F7F8FC] flex items-center justify-center px-6">
+      <div className="relative w-full max-w-[520px] overflow-hidden rounded-[32px] border border-white/70 bg-white/85 p-8 shadow-[0_24px_80px_rgba(31,41,55,0.12)] backdrop-blur-xl">
+        <div className="absolute -right-24 -top-24 h-56 w-56 rounded-full bg-primary/15 blur-3xl" />
+        <div className="absolute -bottom-28 -left-24 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+        <div className="relative">
+          <div className="mb-7 flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[16px] bg-slate-950 text-white shadow-ios">
+              <span className="material-symbols-outlined text-[26px]">verified_user</span>
+            </div>
+            <div>
+              <p className="text-sm font-black text-slate-500">标准化 AI 广告素材看板</p>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950">OA 登录后进入</h1>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full w-1/2 animate-[loading-bar_1.2s_ease-in-out_infinite] rounded-full bg-slate-950" />
+              </div>
+              <p className="text-sm font-bold text-slate-500">正在确认登录状态...</p>
+            </div>
+          ) : configured ? (
+            <>
+              <p className="mb-6 text-sm font-semibold leading-6 text-slate-500">
+                为了保护素材、接口和后台配置，请先使用美图 OA 登录。登录成功后会自动回到当前页面。
+              </p>
+              <a
+                href={getMeituLoginUrl(returnTo)}
+                className="flex h-12 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white shadow-ios transition-all hover:-translate-y-0.5 hover:bg-slate-800 active:scale-95"
+              >
+                使用 OA 登录
+              </a>
+              {error && <p className="mt-4 text-xs font-semibold text-red-500">{error}</p>}
+            </>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <p className="text-sm font-black text-amber-900">OA 登录还没有完成环境配置</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-amber-700">
+                请在后端运行环境中配置 MEITU_OAUTH_APPID、MEITU_OAUTH_APPKEY、MEITU_OAUTH_REDIRECT_URI 和 MEITU_OAUTH_SESSION_SECRET 后重新部署。
+              </p>
+              {error && <p className="mt-3 text-xs font-semibold text-amber-700">{error}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const describeAdaptImageResult = (result: {
@@ -314,6 +371,8 @@ const getVideoMeta = (file: File): Promise<{ width: number; height: number; dura
 
 const App: React.FC = () => {
   const { t } = useLanguage();
+  const [authState, setAuthState] = useState<MeituAuthState | null>(null);
+  const [authError, setAuthError] = useState('');
   const [templates, setTemplates] = useState<AdTemplate[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
   // NOTE: 后台密码验证弹窗状态
@@ -322,9 +381,31 @@ const App: React.FC = () => {
   const [adminPasswordError, setAdminPasswordError] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  const hasAppAccess = Boolean(authState?.configured && authState.authenticated);
+
   useEffect(() => {
-    loadTemplates();
+    let cancelled = false;
+    getMeituAuthState()
+      .then(state => {
+        if (!cancelled) {
+          setAuthState(state);
+          setAuthError('');
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setAuthState({ configured: false, authenticated: false, user: null });
+          setAuthError(getRequestErrorMessage(error));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (hasAppAccess) loadTemplates();
+  }, [hasAppAccess]);
 
   const loadTemplates = async () => {
     try {
@@ -374,12 +455,13 @@ const App: React.FC = () => {
   const visitReportedRef = useRef(false);
 
   useEffect(() => {
+    if (!hasAppAccess) return;
     if (visitReportedRef.current) return;
     visitReportedRef.current = true;
     reportVisit(getVisitorId(), window.location.pathname.startsWith('/config') ? 'creative' : 'standard', window.location.pathname).catch(error => {
       console.error('Failed to report visit', error);
     });
-  }, []);
+  }, [hasAppAccess]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1396,6 +1478,14 @@ const App: React.FC = () => {
       alert(t('common.failZip'));
     }
   };
+
+  if (!authState) {
+    return <AuthGateScreen loading />;
+  }
+
+  if (!authState.configured || !authState.authenticated) {
+    return <AuthGateScreen configured={authState.configured} error={authError} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] selection:bg-primary/10 selection:text-primary">

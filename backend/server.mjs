@@ -459,7 +459,7 @@ const upload = multer({ storage });
 // ---- 初始化 Express 应用 ----
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "20mb" }));
 app.use("/static", express.static(STORAGE_DIR));
 app.use("/default-assets", express.static(DEFAULT_ASSETS_DIR));
@@ -468,10 +468,277 @@ app.use("/default-assets", express.static(DEFAULT_ASSETS_DIR));
 const DIST_DIR = path.join(ROOT_DIR, "dist");
 app.use(express.static(DIST_DIR));
 
+// ---- API：美图 OAuth 登录 ----
+const MEITU_OAUTH_SESSION_COOKIE = "saap_meitu_oauth_session";
+const MEITU_OAUTH_STATE_COOKIE = "saap_meitu_oauth_state";
+const MEITU_OAUTH_DEFAULT_BASE_URL = "https://oauth.meitu.com";
+
+function getMeituOAuthConfig() {
+  const appid = process.env.MEITU_OAUTH_APPID || process.env.MEITU_OAUTH_APP_ID || "";
+  const appkey = process.env.MEITU_OAUTH_APPKEY || process.env.MEITU_OAUTH_APPSECRET || process.env.MEITU_OAUTH_APP_SECRET || "";
+  const baseUrl = (process.env.MEITU_OAUTH_BASE_URL || MEITU_OAUTH_DEFAULT_BASE_URL).replace(/\/$/, "");
+  const redirectUri = process.env.MEITU_OAUTH_REDIRECT_URI || "";
+  const sessionSecret = process.env.MEITU_OAUTH_SESSION_SECRET || process.env.SESSION_SECRET || appkey;
+  return {
+    appid,
+    appkey,
+    baseUrl,
+    redirectUri,
+    sessionSecret,
+    configured: Boolean(appid && appkey && redirectUri && sessionSecret)
+  };
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie || "")
+      .split(";")
+      .map(item => item.trim())
+      .filter(Boolean)
+      .map(item => {
+        const separatorIndex = item.indexOf("=");
+        if (separatorIndex < 0) return [item, ""];
+        return [decodeURIComponent(item.slice(0, separatorIndex)), decodeURIComponent(item.slice(separatorIndex + 1))];
+      })
+  );
+}
+
+function toBase64Url(value) {
+  return Buffer.from(value, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(normalized, "base64").toString("utf8");
+}
+
+function signPayload(payload, secret) {
+  return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function encodeSignedCookie(data, secret) {
+  const payload = toBase64Url(JSON.stringify(data));
+  return `${payload}.${signPayload(payload, secret)}`;
+}
+
+function decodeSignedCookie(value, secret) {
+  if (!value || !secret) return null;
+  const [payload, signature] = String(value).split(".");
+  if (!payload || !signature) return null;
+  const expected = signPayload(payload, secret);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return null;
+  try {
+    return JSON.parse(fromBase64Url(payload));
+  } catch {
+    return null;
+  }
+}
+
+function setCookie(res, name, value, options = {}) {
+  const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+  if (options.maxAge != null) parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+  parts.push(`Path=${options.path || "/"}`);
+  parts.push(`SameSite=${options.sameSite || "Lax"}`);
+  if (options.httpOnly !== false) parts.push("HttpOnly");
+  if (options.secure) parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
+}
+
+function clearCookie(res, name) {
+  setCookie(res, name, "", { maxAge: 0 });
+}
+
+function useSecureOAuthCookie(config) {
+  return /^https:\/\//i.test(config.redirectUri || "");
+}
+
+function sanitizeReturnTo(value) {
+  const returnTo = typeof value === "string" ? value : "/";
+  if (!returnTo.startsWith("/") || returnTo.startsWith("//") || returnTo.includes("://")) return "/";
+  return returnTo;
+}
+
+function parseMeituOAuthJson(raw, label) {
+  if (raw && typeof raw === "object") return raw;
+  const text = String(raw || "").trim();
+  if (!text) throw new Error(`${label} 返回为空`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${label} 返回非 JSON：${text.slice(0, 160)}`);
+  }
+}
+
+function normalizeMeituUser(userInfo, tokenInfo) {
+  const openid = String(userInfo.openid || tokenInfo.openid || "");
+  const displayName = userInfo.name || userInfo.display_name || userInfo.name_en || userInfo.login_email || openid || "美图用户";
+  return {
+    openid,
+    name: userInfo.name || "",
+    displayName,
+    display_name: userInfo.display_name || "",
+    name_en: userInfo.name_en || "",
+    login_email: userInfo.login_email || "",
+    email: userInfo.login_email || userInfo.email || "",
+    feishu_user_id: userInfo.feishu_user_id || "",
+    avatar: userInfo.avatar || userInfo.head_url || "",
+    podium_id: userInfo.podium_id ?? null
+  };
+}
+
+async function exchangeMeituOAuthToken(config, code) {
+  const body = new URLSearchParams({
+    code,
+    appid: config.appid,
+    appsecret: config.appkey,
+    redirect_uri: config.redirectUri,
+    grant_type: "auth_code"
+  });
+  const response = await axios.post(`${config.baseUrl}/oauth2/token`, body.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    responseType: "text",
+    transformResponse: [data => data],
+    timeout: 15000
+  });
+  const parsed = parseMeituOAuthJson(response.data, "OAuth Token");
+  if (!parsed.access_token || !parsed.openid) {
+    throw new Error(parsed.error_msg || parsed.msg || parsed.error || "OAuth Token 未返回 access_token/openid");
+  }
+  return parsed;
+}
+
+async function fetchMeituOAuthUser(config, tokenInfo) {
+  const body = new URLSearchParams({
+    appid: config.appid,
+    access_token: tokenInfo.access_token,
+    openid: tokenInfo.openid
+  });
+  const response = await axios.post(`${config.baseUrl}/user/get_user_info`, body.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    responseType: "text",
+    transformResponse: [data => data],
+    timeout: 15000
+  });
+  const parsed = parseMeituOAuthJson(response.data, "OAuth UserInfo");
+  if (String(parsed.code) !== "0") {
+    throw new Error(parsed.msg || parsed.error_msg || `OAuth UserInfo 返回 code=${parsed.code}`);
+  }
+  return parsed;
+}
+
+function getMeituOAuthSession(req) {
+  const config = getMeituOAuthConfig();
+  const cookies = parseCookies(req);
+  const session = decodeSignedCookie(cookies[MEITU_OAUTH_SESSION_COOKIE], config.sessionSecret);
+  if (!session?.user || !session?.expiresAt || Date.now() > session.expiresAt) return null;
+  return session.user;
+}
+
+app.get("/api/auth/meitu/me", (req, res) => {
+  const config = getMeituOAuthConfig();
+  const user = config.configured ? getMeituOAuthSession(req) : null;
+  res.json({
+    configured: config.configured,
+    authenticated: Boolean(user),
+    user
+  });
+});
+
+app.get("/api/auth/meitu/login", (req, res) => {
+  const config = getMeituOAuthConfig();
+  if (!config.configured) {
+    return res.status(500).send("美图 OAuth 未配置：缺少 MEITU_OAUTH_APPID / MEITU_OAUTH_APPKEY / MEITU_OAUTH_REDIRECT_URI");
+  }
+  const state = crypto.randomBytes(18).toString("hex");
+  const returnTo = sanitizeReturnTo(req.query.returnTo);
+  const secure = useSecureOAuthCookie(config);
+  setCookie(
+    res,
+    MEITU_OAUTH_STATE_COOKIE,
+    encodeSignedCookie({ state, returnTo, createdAt: Date.now() }, config.sessionSecret),
+    { maxAge: 10 * 60, secure }
+  );
+  const authorizeUrl = new URL(`${config.baseUrl}/oauth2/authorize_new`);
+  authorizeUrl.searchParams.set("appid", config.appid);
+  authorizeUrl.searchParams.set("response_type", "code");
+  authorizeUrl.searchParams.set("redirect_uri", config.redirectUri);
+  authorizeUrl.searchParams.set("scope", "user_info");
+  authorizeUrl.searchParams.set("state", state);
+  res.redirect(authorizeUrl.toString());
+});
+
+app.get("/api/auth/meitu/callback", async (req, res) => {
+  const config = getMeituOAuthConfig();
+  if (!config.configured) {
+    return res.status(500).send("美图 OAuth 未配置");
+  }
+  const { code, state, error, error_description: errorDescription } = req.query;
+  if (error) {
+    return res.status(400).send(`美图 OAuth 授权失败：${errorDescription || error}`);
+  }
+  if (!code || !state) {
+    return res.status(400).send("美图 OAuth 回调缺少 code/state");
+  }
+  const cookies = parseCookies(req);
+  const statePayload = decodeSignedCookie(cookies[MEITU_OAUTH_STATE_COOKIE], config.sessionSecret);
+  clearCookie(res, MEITU_OAUTH_STATE_COOKIE);
+  if (!statePayload?.state || statePayload.state !== state || Date.now() - Number(statePayload.createdAt || 0) > 10 * 60 * 1000) {
+    return res.status(400).send("美图 OAuth state 校验失败，请重新登录");
+  }
+
+  try {
+    const tokenInfo = await exchangeMeituOAuthToken(config, String(code));
+    const userInfo = await fetchMeituOAuthUser(config, tokenInfo);
+    const user = normalizeMeituUser(userInfo, tokenInfo);
+    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+    setCookie(
+      res,
+      MEITU_OAUTH_SESSION_COOKIE,
+      encodeSignedCookie({ user, expiresAt }, config.sessionSecret),
+      { maxAge: 7 * 24 * 60 * 60, secure: useSecureOAuthCookie(config) }
+    );
+    res.redirect(sanitizeReturnTo(statePayload.returnTo));
+  } catch (err) {
+    console.error("[MeituOAuth] callback failed:", err);
+    res.status(500).send(`美图 OAuth 登录失败：${err.message}`);
+  }
+});
+
+app.post("/api/auth/meitu/logout", (req, res) => {
+  clearCookie(res, MEITU_OAUTH_SESSION_COOKIE);
+  res.json({ ok: true });
+});
+
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", last_updated: "2026-02-25 10:35", feature: "png_transparency_v7_mtp1_text" });
 });
+
+function requireMeituOAuthApi(req, res, next) {
+  if (req.method === "OPTIONS") return next();
+  const config = getMeituOAuthConfig();
+  if (!config.configured) {
+    return res.status(503).json({
+      error: "meitu_oauth_not_configured",
+      message: "美图 OAuth 未配置，暂时不能访问业务接口"
+    });
+  }
+  const user = getMeituOAuthSession(req);
+  if (!user) {
+    return res.status(401).json({
+      error: "meitu_oauth_required",
+      message: "请先使用 OA 登录",
+      loginUrl: "/api/auth/meitu/login"
+    });
+  }
+  req.meituUser = user;
+  next();
+}
+
+// 登录、回调、状态查询和健康检查保持公开；后续业务接口统一要求 OA 登录。
+app.use("/api", requireMeituOAuthApi);
 
 app.get("/api/templates", async (req, res) => {
   const templates = await readJson(TEMPLATES_FILE, []);

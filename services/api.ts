@@ -6,6 +6,7 @@ export const ASSETS_URL = API_URL.replace('/api', '');
 
 export const api = axios.create({
     baseURL: API_URL,
+    withCredentials: true,
 });
 
 api.interceptors.response.use(
@@ -55,6 +56,38 @@ export const reportVisit = async (visitorId: string, board: 'standard' | 'creati
 export const getAnalyticsSummary = async (): Promise<AnalyticsSummary> => {
     const response = await api.get<AnalyticsSummary>('/analytics/summary');
     return response.data;
+};
+
+export interface MeituAuthUser {
+    openid: string;
+    name?: string;
+    displayName?: string;
+    display_name?: string;
+    name_en?: string;
+    login_email?: string;
+    email?: string;
+    feishu_user_id?: string;
+    avatar?: string;
+    podium_id?: number | null;
+}
+
+export interface MeituAuthState {
+    configured: boolean;
+    authenticated: boolean;
+    user: MeituAuthUser | null;
+}
+
+export const getMeituAuthState = async (): Promise<MeituAuthState> => {
+    const response = await api.get<MeituAuthState>('/auth/meitu/me');
+    return response.data;
+};
+
+export const logoutMeituAuth = async (): Promise<void> => {
+    await api.post('/auth/meitu/logout');
+};
+
+export const getMeituLoginUrl = (returnTo = `${window.location.pathname}${window.location.search}`) => {
+    return `${API_URL}/auth/meitu/login?returnTo=${encodeURIComponent(returnTo)}`;
 };
 
 export const uploadMask = async (id: string, file: File): Promise<{ mask_path: string }> => {
