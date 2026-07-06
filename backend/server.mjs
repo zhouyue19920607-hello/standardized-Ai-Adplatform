@@ -5205,6 +5205,63 @@ function chooseSplashSafeAreaTransformForAdapt(sourceWidth, sourceHeight, target
   return best || findTransform(minScale);
 }
 
+async function buildEdgeExtendedCanvasBufferForAdapt(foregroundBuffer, transform, targetWidth, targetHeight) {
+  const edgeSize = Math.max(2, Math.min(8, Math.floor(Math.min(transform.width, transform.height) * 0.012)));
+  const rightGap = Math.max(0, targetWidth - transform.x - transform.width);
+  const bottomGap = Math.max(0, targetHeight - transform.y - transform.height);
+  const composites = [];
+
+  if (transform.y > 0) {
+    const topStrip = await sharp(foregroundBuffer)
+      .extract({ left: 0, top: 0, width: transform.width, height: edgeSize })
+      .resize({ width: targetWidth, height: transform.y, fit: "fill", kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 91, mozjpeg: true })
+      .toBuffer();
+    composites.push({ input: topStrip, left: 0, top: 0 });
+  }
+
+  if (bottomGap > 0) {
+    const bottomStrip = await sharp(foregroundBuffer)
+      .extract({ left: 0, top: Math.max(0, transform.height - edgeSize), width: transform.width, height: edgeSize })
+      .resize({ width: targetWidth, height: bottomGap, fit: "fill", kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 91, mozjpeg: true })
+      .toBuffer();
+    composites.push({ input: bottomStrip, left: 0, top: transform.y + transform.height });
+  }
+
+  if (transform.x > 0) {
+    const leftStrip = await sharp(foregroundBuffer)
+      .extract({ left: 0, top: 0, width: edgeSize, height: transform.height })
+      .resize({ width: transform.x, height: transform.height, fit: "fill", kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 91, mozjpeg: true })
+      .toBuffer();
+    composites.push({ input: leftStrip, left: 0, top: transform.y });
+  }
+
+  if (rightGap > 0) {
+    const rightStrip = await sharp(foregroundBuffer)
+      .extract({ left: Math.max(0, transform.width - edgeSize), top: 0, width: edgeSize, height: transform.height })
+      .resize({ width: rightGap, height: transform.height, fit: "fill", kernel: sharp.kernel.lanczos3 })
+      .jpeg({ quality: 91, mozjpeg: true })
+      .toBuffer();
+    composites.push({ input: rightStrip, left: transform.x + transform.width, top: transform.y });
+  }
+
+  composites.push({ input: foregroundBuffer, left: transform.x, top: transform.y });
+
+  return sharp({
+    create: {
+      width: targetWidth,
+      height: targetHeight,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 }
+    }
+  })
+    .composite(composites)
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+}
+
 async function buildSplashSafeAreaCanvasForAdapt(imageUrl, targetWidth, targetHeight, context, analysis) {
   if (!isStandardSplashTemplateForAdapt(context)) return null;
   const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
@@ -5253,23 +5310,15 @@ async function buildSplashSafeAreaCanvasForAdapt(imageUrl, targetWidth, targetHe
       fit: "fill",
       kernel: sharp.kernel.lanczos3
     })
-    .jpeg({ quality: 94, mozjpeg: true })
+    .jpeg({ quality: 95, mozjpeg: true })
     .toBuffer();
-
-  await sharp(sourcePath)
-    .rotate()
-    .resize({
-      width: targetWidth,
-      height: targetHeight,
-      fit: "cover",
-      position: "center",
-      kernel: sharp.kernel.lanczos3
-    })
-    .blur(14)
-    .modulate({ saturation: 0.92, brightness: 0.98 })
-    .jpeg({ quality: 92, mozjpeg: true })
-    .composite([{ input: foregroundBuffer, left: transform.x, top: transform.y }])
-    .toFile(outputPath);
+  const edgeExtendedCanvas = await buildEdgeExtendedCanvasBufferForAdapt(
+    foregroundBuffer,
+    transform,
+    targetWidth,
+    targetHeight
+  );
+  await sharp(edgeExtendedCanvas).toFile(outputPath);
 
   const infoSafeArea = {
     applies: true,
