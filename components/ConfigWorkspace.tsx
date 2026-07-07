@@ -823,6 +823,7 @@ const ConfigWorkspace: React.FC = () => {
     const [categories, setCategories] = useState(defaultCreativeCategories);
     const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>(defaultCreativeTemplates);
     const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
+    const [lockedPreviewTemplateId, setLockedPreviewTemplateId] = useState<string | null>(null);
     const [hoveredPreviewAspectRatio, setHoveredPreviewAspectRatio] = useState<string | null>(null);
     const [asset, setAsset] = useState<UploadState>(emptyUpload);
     const [pendantReference, setPendantReference] = useState<UploadState>(emptyUpload);
@@ -934,7 +935,8 @@ const ConfigWorkspace: React.FC = () => {
         };
     }, []);
 
-    const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === hoveredTemplateId) || null;
+    const activePreviewTemplateId = hoveredTemplateId || lockedPreviewTemplateId;
+    const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === activePreviewTemplateId) || null;
     const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
 
     useEffect(() => {
@@ -1110,6 +1112,7 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const handleTemplateSelect = (templateId: string) => {
+        setLockedPreviewTemplateId(templateId);
         if (templateId === expandedTemplate) return;
         resetOutput();
         setError('');
@@ -3768,6 +3771,8 @@ const ConfigWorkspace: React.FC = () => {
 
     const buildVideo = async () => {
         setError('');
+        setHoveredTemplateId(null);
+        setLockedPreviewTemplateId(null);
         resetOutput();
 
         if (expandedTemplate === 'magazine-flip') {
@@ -4071,8 +4076,8 @@ const ConfigWorkspace: React.FC = () => {
                             <span className="material-symbols-outlined text-white text-2xl">auto_awesome_motion</span>
                         </div>
                         <div>
-                            <h2 className="text-sm font-black text-white tracking-widest uppercase">模版管理</h2>
-                            <p className="text-[10px] text-zinc-600 font-bold tracking-tighter">TEMPLATE MANAGER</p>
+                            <h2 className="text-sm font-black text-white tracking-normal text-left">模版管理</h2>
+                            <p className="mt-1 text-[10px] text-zinc-600 font-bold tracking-normal text-left leading-none">TEMPLATE MANAGER</p>
                         </div>
                     </div>
 
@@ -4172,7 +4177,7 @@ const ConfigWorkspace: React.FC = () => {
                     {renderAiLoadingOverlay('*')}
                     <header className="creative-board-main-header px-10 pt-10 pb-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-start shrink-0">
                         <div>
-                            <h1 className="creative-board-title text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
+                            <h1 className="creative-board-title text-3xl font-black text-white tracking-normal text-left antialiased">{selectedTemplateName}模版</h1>
                         </div>
                         <div className="flex items-center gap-3">
                             {saveMessage && <span className="text-[10px] font-bold text-zinc-500">{saveMessage}</span>}
@@ -4441,7 +4446,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 文生图 / 图生图</p>
+                                                        <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">AI 文生图 / 图生图</p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightAiTarget ? 'border-primary/30 bg-primary/10 text-primary' : 'border-amber-400/25 bg-amber-400/10 text-amber-200'}`}>{getSpotlightAiTargetLabel(spotlightAiTarget)}</span>
@@ -4736,7 +4741,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成底图 / 翻卡图片</p>
+                                                        <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">AI 生成底图 / 翻卡图片</p>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${polyAiTarget ? 'border-primary/30 bg-primary/10 text-primary' : 'border-amber-400/25 bg-amber-400/10 text-amber-200'}`}>{getPolyAiTargetLabel(polyAiTarget)}</span>
@@ -4967,7 +4972,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                        <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                        <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">AI 生成</p>
                                                     </div>
                                                     <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
                                                 </div>
@@ -5156,7 +5161,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div className="flex items-center gap-2">
                                                             <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
-                                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">AI 生成</p>
+                                                            <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">AI 生成</p>
                                                         </div>
                                                         <p className="text-[9px] font-bold text-zinc-600">文生图 / 图生图 / 图生视频</p>
                                                     </div>
@@ -5371,7 +5376,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         <div className="flex items-center justify-between gap-3">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="material-symbols-outlined text-[18px] text-zinc-500">movie_edit</span>
-                                                                <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{item.title}</p>
+                                                                <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">{item.title}</p>
                                                             </div>
                                                             <span className="text-[9px] text-zinc-700 font-black">{isJumpingFocalTemplate ? '1126 x 906 / 第0秒播放' : BREAK_AI_DURATION_RULE}</span>
                                                         </div>
@@ -5778,7 +5783,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     ) : (
                                                         <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
                                                             <span className="material-symbols-outlined text-6xl">auto_stories</span>
-                                                            <span className="mt-3 text-[10px] font-black tracking-widest uppercase">3-5 Assets / Drag Slide</span>
+                                                            <span className="mt-3 text-[10px] font-black tracking-normal text-left">3-5 Assets / Drag Slide</span>
                                                         </div>
                                                     )
                                                 ) : isSpotlightTemplate ? (
@@ -5792,7 +5797,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         ) : (
                                                             <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
                                                                 <span className="material-symbols-outlined text-6xl">highlight</span>
-                                                                <span className="mt-3 text-[10px] font-black tracking-widest uppercase">Spotlight Splash</span>
+                                                                <span className="mt-3 text-[10px] font-black tracking-normal text-left">Spotlight Splash</span>
                                                             </div>
                                                         )}
                                                         {spotlightSmallCards.map((item, index) => (
@@ -5864,7 +5869,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                             )
                                                                         ) : (
                                                                             <div className="h-full w-full flex items-center justify-center bg-zinc-950 text-emerald-200">
-                                                                                <span className="text-[10px] font-black tracking-widest">1126 x 900 / FOCAL</span>
+                                                                                <span className="text-[10px] font-black tracking-normal text-left">1126 x 900 / FOCAL</span>
                                                                             </div>
                                                                         )}
                                                                     </div>
@@ -5880,7 +5885,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                         height: `${(POLY_CARD_H / BREAK_FOCAL_H) * 100}%`,
                                                                     }}
                                                                 >
-                                                                    <span className="text-[9px] font-black text-emerald-200 tracking-widest">840 x 360 / CARD</span>
+                                                                    <span className="text-[9px] font-black text-emerald-200 tracking-normal text-left">840 x 360 / CARD</span>
                                                                 </div>
                                                             )}
                                                         </div>
@@ -5971,7 +5976,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                             className="absolute left-0 bottom-0 w-full border border-dashed border-emerald-300/70 bg-emerald-300/5 flex items-center justify-center"
                                                                             style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
                                                                         >
-                                                                            <span className="text-[9px] font-black text-emerald-200 tracking-widest">1126 x 252 / BOTTOM NAV</span>
+                                                                            <span className="text-[9px] font-black text-emerald-200 tracking-normal text-left">1126 x 252 / BOTTOM NAV</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -6069,7 +6074,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                 )
                                                             ) : !activeBreakFrameAsset.url ? (
                                                                 <div className="w-full h-full border border-dashed border-fuchsia-300/60 bg-fuchsia-300/5 flex items-center justify-center">
-                                                                    <span className="text-[9px] font-black text-fuchsia-200 tracking-widest">{isJumpingFocalTemplate ? '1126 x 906 / TRANSPARENT' : '1126 x 1890 / TRANSPARENT'}</span>
+                                                                    <span className="text-[9px] font-black text-fuchsia-200 tracking-normal text-left">{isJumpingFocalTemplate ? '1126 x 906 / TRANSPARENT' : '1126 x 1890 / TRANSPARENT'}</span>
                                                                 </div>
                                                             ) : null}
                                                         </div>
@@ -6077,7 +6082,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 ) : isJumpingFocalTemplate || isRefreshUiBottomNavTemplate ? (
                                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
                                                         <span className="material-symbols-outlined text-6xl">{isJumpingFocalTemplate ? 'motion_photos_auto' : 'auto_awesome_mosaic'}</span>
-                                                        <span className="mt-3 text-[10px] font-black tracking-widest uppercase">{isJumpingFocalTemplate ? 'Jumping Focal Window' : 'Refresh UI'}</span>
+                                                        <span className="mt-3 text-[10px] font-black tracking-normal text-left">{isJumpingFocalTemplate ? 'Jumping Focal Window' : 'Refresh UI'}</span>
                                                     </div>
                                                 ) : splash.url ? (
                                                     splash.file?.type.startsWith('video/') ? (
@@ -6124,7 +6129,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-x-0 bottom-8 text-center">
-                                                    <span className="text-[8px] font-black text-white/50 uppercase tracking-[0.3em]">1440 x 2340 / FINAL VIDEO</span>
+                                                    <span className="text-[8px] font-black text-white/50 tracking-normal text-left">1440 x 2340 / FINAL VIDEO</span>
                                                 </div>
                                                 {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && splash.file?.type.startsWith('video/') && (
                                                     <button
@@ -6148,7 +6153,7 @@ const ConfigWorkspace: React.FC = () => {
                                             <div
                                                 className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] z-[100] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
                                             >
-                                                <span className="absolute left-2 top-2 text-[8px] font-black text-emerald-200 uppercase tracking-widest">裁剪安全区</span>
+                                                <span className="absolute left-2 top-2 text-[8px] font-black text-emerald-200 tracking-normal text-left">裁剪安全区</span>
                                             </div>
                                         )}
                                     </div>
@@ -6157,7 +6162,7 @@ const ConfigWorkspace: React.FC = () => {
                                 <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                     {!isBreakFocalTemplate && (
                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
-                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">交互形式</p>
+                                            <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">交互形式</p>
                                             {isMagazineTemplate ? (
                                                 <div className="h-9 rounded-[12px] bg-white text-black text-[11px] font-black flex items-center justify-center">
                                                     鼠标拖动滑动
@@ -6180,7 +6185,7 @@ const ConfigWorkspace: React.FC = () => {
 
                                     <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 flex items-center justify-between gap-3">
                                         <div className="flex items-center justify-between">
-                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">裁剪区域</p>
+                                            <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">裁剪区域</p>
                                         </div>
                                         <button
                                             onClick={() => setCropAreaEnabled((current) => !current)}
@@ -6192,7 +6197,7 @@ const ConfigWorkspace: React.FC = () => {
 
                                     {!isBreakFocalTemplate && (
                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
-                                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">平台选择</p>
+                                            <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">平台选择</p>
                                             <div className="grid grid-cols-3 gap-2">
                                                 {platformOptions.map((item) => (
                                                     <button

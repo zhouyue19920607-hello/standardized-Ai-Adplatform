@@ -292,7 +292,7 @@ const AdCard: React.FC<{
                       <div className="w-4 h-4 bg-primary/20 rounded-full animate-pulse" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-bold mt-3 animate-pulse tracking-widest uppercase">{asset.loadingLabel || '生成中'}</p>
+                  <p className="text-[10px] text-slate-400 font-bold mt-3 animate-pulse tracking-normal text-left">{asset.loadingLabel || '生成中'}</p>
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
                 </div>
               )
@@ -676,7 +676,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
 
           {/* Title */}
           <div className="text-center py-1 mb-5">
-            <h2 className="standard-empty-title text-base font-black text-slate-500/80 tracking-[0.24em] uppercase">操作说明与素材限制</h2>
+            <h2 className="standard-empty-title text-base font-black text-slate-500/80 tracking-normal text-left">操作说明与素材限制</h2>
           </div>
 
           {/* Main Grid Content (Two columns for two situations) */}
@@ -804,7 +804,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
         {isGenerating && assets.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 backdrop-blur-md z-20">
             <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-800 font-bold tracking-widest text-xs uppercase animate-pulse">{t('preview.generating')}</p>
+            <p className="text-slate-800 font-bold tracking-normal text-left text-xs animate-pulse">{t('preview.generating')}</p>
           </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 pb-20">

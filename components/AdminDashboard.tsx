@@ -926,6 +926,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 ))}
                             </div>
 
+                            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h4 className="text-base font-black text-slate-800">AI 使用次数</h4>
+                                        <p className="text-xs font-bold text-slate-400 mt-1">仅统计标准素材看板 AI 适配成功返回的路线</p>
+                                    </div>
+                                    <span className="material-symbols-outlined h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">auto_awesome</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                                    {[
+                                        { label: '今日美图 API', value: analytics?.today.aiUsage?.meituApi ?? 0, sub: '常规智能排版路线' },
+                                        { label: '今日 GPT Image 2', value: analytics?.today.aiUsage?.gptImage2 ?? 0, sub: 'AI 增强 / 兜底路线' },
+                                        { label: '累计美图 API', value: analytics?.totals.aiUsage?.meituApi ?? 0, sub: '跨日期累计' },
+                                        { label: '累计 GPT Image 2', value: analytics?.totals.aiUsage?.gptImage2 ?? 0, sub: '跨日期累计' },
+                                    ].map(item => (
+                                        <div key={item.label} className="rounded-2xl bg-slate-50 border border-slate-100 px-5 py-4">
+                                            <p className="text-xs font-black text-slate-500">{item.label}</p>
+                                            <p className="text-3xl font-black text-slate-900 mt-3">{item.value}</p>
+                                            <p className="text-[11px] font-bold text-slate-400 mt-1">{item.sub}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.2fr] gap-6">
                                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                                     <div className="flex items-center justify-between mb-4">
@@ -1068,7 +1092,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 {/* 服务商选择 */}
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">AI 服务商</label>
+                                        <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">AI 服务商</label>
                                         <div className="grid grid-cols-2 gap-3">
                                             <button
                                                 onClick={() => setAiSettings(prev => ({ ...prev, aiProvider: 'comfyui' }))}
@@ -1098,7 +1122,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     {/* ComfyUI 地址（占位，后续实现）*/}
                                     {aiSettings.aiProvider === 'comfyui' && (
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ComfyUI 服务地址</label>
+                                            <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">ComfyUI 服务地址</label>
                                             <input
                                                 type="text"
                                                 placeholder="http://your-gpu-server:8188"
@@ -1114,7 +1138,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     {aiSettings.aiProvider === 'nanobanner' && (
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">
                                                     Nano Banner API Key
                                                 </label>
                                                 <input
@@ -1129,7 +1153,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">
                                                     API Base URL (可选)
                                                 </label>
                                                 <input
@@ -1145,7 +1169,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <p className="text-xs text-slate-400 mt-1.5">这里填写接口地址，不要填写 API Key；留空时默认使用 OpenAI 兼容地址。</p>
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">
                                                     Nano Banner Model
                                                 </label>
                                                 <input
@@ -1192,7 +1216,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                                             {/* 扩图 Prompt 配置 */}
                                             <div className="mt-4">
-                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                                <label className="block text-xs font-bold text-slate-500 tracking-normal text-left mb-2">
                                                     扩图 Prompt (建议英文)
                                                 </label>
                                                 <textarea
@@ -1225,7 +1249,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                             {/* 说明卡片 */}
                             <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 p-5 rounded-2xl">
-                                <p className="text-xs font-bold text-violet-600 uppercase tracking-wider mb-3">💡 工作原理</p>
+                                <p className="text-xs font-bold text-violet-600 tracking-normal text-left mb-3">💡 工作原理</p>
                                 <ul className="space-y-2 text-xs text-slate-600">
                                     <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关关闭时：图片经过常规智能裁剪（当前默认行为）</li>
                                     <li className="flex items-start gap-2"><span className="text-violet-400 mt-0.5">•</span>开关开启时：图片被发送给当前选择的 AI 服务，智能扩展并补充背景</li>

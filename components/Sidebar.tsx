@@ -158,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         {tpl.checked && (
                           <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                             <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                              <span className="text-[9px] font-black text-slate-400 tracking-normal text-left">{t('sidebar.personalized')}</span>
                               <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
                             </div>
                             <div className="flex items-center justify-between">
@@ -280,7 +280,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     {focalTpl.checked && (
                       <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                         <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                          <span className="text-[9px] font-black text-slate-400 tracking-normal text-left">{t('sidebar.personalized')}</span>
                           <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
                         </div>
                         {focalTpl.id === 'my-f-1' && (
@@ -460,7 +460,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   {tpl.checked && tpl.app !== 'wink' && (tpl.category === '焦点视窗' || (tpl.category === '开屏' && tpl.name.includes('动态'))) && (
                                     <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                                       <div className="flex items-center justify-between">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                                        <span className="text-[9px] font-black text-slate-400 tracking-normal text-left">{t('sidebar.personalized')}</span>
                                         <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
                                       </div>
 
@@ -574,13 +574,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                                               {tpl.iconColor && /^#[0-9A-Fa-f]{6}$/.test(tpl.iconColor) && (
                                                 <div className="flex items-center gap-1.5">
                                                   <div className="w-3.5 h-3.5 rounded-full border border-ios-gray-5 ring-1 ring-white shrink-0" style={{ backgroundColor: tpl.iconColor }} title="主色" />
-                                                  <span className="text-[10px] font-mono text-ios-gray-2 uppercase tracking-widest">{tpl.iconColor}</span>
+                                                  <span className="text-[10px] font-mono text-ios-gray-2 tracking-normal text-left">{tpl.iconColor}</span>
                                                 </div>
                                               )}
                                               {tpl.gradientColor && /^#[0-9A-Fa-f]{6}$/.test(tpl.gradientColor) && (
                                                 <div className="flex items-center gap-1.5">
                                                   <div className="w-3.5 h-3.5 rounded-full border border-ios-gray-5 ring-1 ring-white shrink-0" style={{ backgroundColor: tpl.gradientColor }} title="渐变色" />
-                                                  <span className="text-[10px] font-mono text-ios-gray-2 uppercase tracking-widest">{tpl.gradientColor}</span>
+                                                  <span className="text-[10px] font-mono text-ios-gray-2 tracking-normal text-left">{tpl.gradientColor}</span>
                                                 </div>
                                               )}
                                             </div>
@@ -594,7 +594,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                   {/* NOTE: 可输入/粘贴 HEX 色値的文本框 */}
                                                   <input
                                                     type="text"
-                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 uppercase bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-widest"
+                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-normal text-left"
                                                     value={tpl.iconColor || ''}
                                                     placeholder="#FF0000"
                                                     onChange={(e) => {
@@ -628,7 +628,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                                   {/* NOTE: 可输入/粘贴 HEX 色値的文本框 */}
                                                   <input
                                                     type="text"
-                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 uppercase bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-widest"
+                                                    className="w-20 text-[10px] font-mono text-ios-gray-1 bg-white/60 border border-ios-gray-5 rounded-md px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary tracking-normal text-left"
                                                     value={tpl.gradientColor || ''}
                                                     placeholder="#FF6B6B"
                                                     onChange={(e) => {
@@ -665,7 +665,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   {tpl.checked && tpl.id === 'mt-p-1' && (
                                     <div className="my-2 p-3 bg-white/50 rounded-ios border border-black/5 space-y-3 shadow-ios">
                                       <div className="flex items-center justify-between">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('sidebar.personalized')}</span>
+                                        <span className="text-[9px] font-black text-slate-400 tracking-normal text-left">{t('sidebar.personalized')}</span>
                                         <span className="material-symbols-outlined text-ios-gray-3 text-xs">settings_suggest</span>
                                       </div>
                                       <div className="flex items-center justify-between">

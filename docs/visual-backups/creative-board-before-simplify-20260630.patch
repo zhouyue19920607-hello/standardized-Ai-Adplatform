@@ -1,0 +1,303 @@
+diff --git a/components/ConfigWorkspace.tsx b/components/ConfigWorkspace.tsx
+index 57313e4..9575108 100644
+--- a/components/ConfigWorkspace.tsx
++++ b/components/ConfigWorkspace.tsx
+@@ -4034,7 +4034,7 @@ const ConfigWorkspace: React.FC = () => {
+     const breakFramePreviewStarted = breakPreviewPhase !== null;
+ 
+     return (
+-        <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
++        <div className="creative-board-shell fixed inset-0 z-0 overflow-hidden text-zinc-300 pt-[73px]">
+             <SideRays
+                 className="creative-board-side-rays"
+                 speed={1.7}
+@@ -4049,7 +4049,7 @@ const ConfigWorkspace: React.FC = () => {
+                 falloff={1.85}
+                 opacity={0.58}
+             />
+-            <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_18%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_88%_78%,rgba(14,165,233,0.12),transparent_30%),linear-gradient(180deg,rgba(10,10,10,0.25),rgba(10,10,10,0.72))]" />
++            <div className="creative-board-atmosphere pointer-events-none absolute inset-0 z-[1]" />
+             {aiGeneratingKey && (
+                 <div className="fixed right-8 bottom-8 z-[90] pointer-events-none rounded-[24px] border border-primary/20 bg-zinc-950/90 px-5 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl overflow-hidden">
+                     <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-white/[0.03] to-cyan-300/10 animate-pulse" />
+@@ -4066,8 +4066,8 @@ const ConfigWorkspace: React.FC = () => {
+                     </div>
+                 </div>
+             )}
+-            <div className="relative z-10 flex h-full gap-6 p-6">
+-                <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
++            <div className="creative-board-stage relative z-10 flex h-full gap-6 p-6">
++                <aside className="creative-board-glass creative-board-sidebar w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
+                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
+                             <span className="material-symbols-outlined text-white text-2xl">auto_awesome_motion</span>
+@@ -4083,7 +4083,7 @@ const ConfigWorkspace: React.FC = () => {
+                             <div key={cat.id} className="space-y-2">
+                                 <button
+                                     onClick={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
+-                                    className={`w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
++                                    className={`creative-category-trigger w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'creative-category-trigger--active bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
+                                 >
+                                     <div className="flex items-center gap-3">
+                                         <span className="material-symbols-outlined text-[20px] font-light">{cat.icon}</span>
+@@ -4104,7 +4104,7 @@ const ConfigWorkspace: React.FC = () => {
+                                                     onPointerEnter={() => setHoveredTemplateId(tpl.id)}
+                                                     onPointerMove={() => setHoveredTemplateId(tpl.id)}
+                                                     onPointerLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
+-                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-white/15 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
++                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-black/60 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
+                                                 >
+                                                     <span>{tpl.label}</span>
+                                                     <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${expandedTemplate === tpl.id ? 'bg-primary shadow-[0_0_10px_#FF2E63]' : 'bg-zinc-800'}`} />
+@@ -4173,7 +4173,7 @@ const ConfigWorkspace: React.FC = () => {
+                         <button
+                             onClick={buildVideo}
+                             disabled={isGenerating}
+-                            className="w-full bg-white text-black py-5 rounded-[20px] font-black text-[11px] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-[0.2em] group disabled:opacity-50"
++                            className="creative-board-primary-action w-full bg-white text-black py-5 rounded-[20px] font-black text-[11px] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-[0.2em] group disabled:opacity-50"
+                         >
+                             <span className={`material-symbols-outlined text-xl ${isGenerating ? 'animate-spin' : 'group-hover:animate-bounce'}`}>{isGenerating ? 'sync' : 'bolt'}</span>
+                             {isGenerating ? '正在生成视频' : '生成合成视频'}
+@@ -4181,22 +4181,15 @@ const ConfigWorkspace: React.FC = () => {
+                     </div>
+                 </aside>
+ 
+-                <main className="relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
++                <main className="creative-board-glass creative-board-main relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                     {renderAiLoadingOverlay('*')}
+-                    <header className="px-10 py-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-center shrink-0">
++                    <header className="creative-board-main-header px-10 pt-10 pb-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-start shrink-0">
+                         <div>
+-                            <div className="flex items-center gap-3 mb-2">
+-                                <span className="px-3 py-1 rounded-[20px] bg-white/5 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-white/5">MR STANDARD</span>
+-                                <div className="flex items-center gap-1.5 antialiased">
+-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#10B981]" />
+-                                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-tight">{isMagazineTemplate ? 'Magazine Flip' : isSpotlightTemplate ? 'Spotlight Splash' : isPolymorphicFlipCardTemplate ? 'Polymorphic Flip Card' : isBreakFocalTemplate ? 'Break Frame Focal' : isJumpingFocalTemplate ? 'Jumping Focal' : isRefreshUiBottomNavTemplate ? 'Refresh UI Nav' : 'Dynamic Splash'}</span>
+-                                </div>
+-                            </div>
+-                            <h1 className="text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
++                            <h1 className="creative-board-title text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
+                         </div>
+                         <div className="flex items-center gap-3">
+                             {saveMessage && <span className="text-[10px] font-bold text-zinc-500">{saveMessage}</span>}
+-                            <div className="px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
++                            <div className="creative-board-output-pill px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
+                                 {outputSpec}
+                             </div>
+                         </div>
+@@ -5530,7 +5523,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                     <div className="flex items-center justify-between">
+                                         <div>
+-                                            <h2 className="text-white text-sm font-black">挂件素材</h2>
++                                            <h2 className="text-white text-sm font-black">①上传挂件素材</h2>
+                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">PNG / 450 x 450px / MR 标准</p>
+                                         </div>
+                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(asset.status)}`}>{asset.message}</span>
+@@ -5626,7 +5619,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                     <div className="flex items-center justify-between">
+                                         <div>
+-                                            <h2 className="text-white text-sm font-black">开屏素材上传</h2>
++                                            <h2 className="text-white text-sm font-black">②上传开屏素材</h2>
+                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 1440 x 2340px / 视频 5s 内</p>
+                                         </div>
+                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(splash.status)}`}>{splash.message}</span>
+@@ -5677,7 +5670,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 )}
+                             </section>
+ 
+-                            <section className="bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
++                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
+                                 <div className="flex items-center justify-between gap-4 mb-4">
+                                     <div>
+                                         <h2 className="text-white text-sm font-black">合成预览</h2>
+diff --git a/components/Header.tsx b/components/Header.tsx
+index 635cf03..e19bc96 100644
+--- a/components/Header.tsx
++++ b/components/Header.tsx
+@@ -12,7 +12,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
+   const isConfigPage = location.pathname === '/config';
+ 
+   return (
+-    <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
++    <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
+       <div className="flex items-center justify-between">
+         <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
+           <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
+diff --git a/index.css b/index.css
+index 499c39d..c808003 100644
+--- a/index.css
++++ b/index.css
+@@ -137,6 +137,171 @@ samp {
+   display: block;
+ }
+ 
++.creative-board-shell {
++  background:
++    radial-gradient(circle at 16% 3%, rgba(117, 92, 255, 0.28), transparent 30%),
++    radial-gradient(circle at 88% 11%, rgba(56, 189, 248, 0.16), transparent 34%),
++    radial-gradient(circle at 68% 92%, rgba(168, 85, 247, 0.14), transparent 35%),
++    linear-gradient(135deg, #03040a 0%, #070811 46%, #020204 100%);
++}
++
++.creative-board-shell::before {
++  content: "";
++  position: absolute;
++  inset: 0;
++  z-index: 1;
++  pointer-events: none;
++  background-image:
++    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
++    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
++  background-size: 72px 72px;
++  mask-image: radial-gradient(circle at 58% 22%, black 0%, transparent 72%);
++  -webkit-mask-image: radial-gradient(circle at 58% 22%, black 0%, transparent 72%);
++  opacity: 0.42;
++}
++
++.creative-board-shell::after {
++  content: "";
++  position: absolute;
++  inset: 0;
++  z-index: 1;
++  pointer-events: none;
++  background:
++    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 18%, rgba(0, 0, 0, 0.38) 100%),
++    radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.12), transparent 30%);
++  opacity: 0.72;
++}
++
++.creative-board-atmosphere {
++  background:
++    radial-gradient(circle at 18% 18%, rgba(99, 102, 241, 0.2), transparent 28%),
++    radial-gradient(circle at 88% 78%, rgba(14, 165, 233, 0.12), transparent 30%),
++    linear-gradient(180deg, rgba(10, 10, 10, 0.2), rgba(10, 10, 10, 0.76));
++}
++
++.creative-board-topbar {
++  background:
++    linear-gradient(105deg, rgba(22, 24, 38, 0.78), rgba(8, 9, 14, 0.64)) !important;
++  border-color: rgba(255, 255, 255, 0.12) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.1),
++    0 18px 60px rgba(0, 0, 0, 0.38),
++    0 0 0 1px rgba(99, 102, 241, 0.08) !important;
++}
++
++.creative-board-topbar button {
++  background: rgba(255, 255, 255, 0.1);
++  color: rgba(255, 255, 255, 0.82);
++  border-color: rgba(255, 255, 255, 0.1);
++}
++
++.creative-board-topbar button:hover {
++  background: rgba(255, 255, 255, 0.18);
++  color: #fff;
++}
++
++.creative-board-stage {
++  filter: drop-shadow(0 32px 90px rgba(0, 0, 0, 0.45));
++}
++
++.creative-board-glass {
++  position: relative;
++  isolation: isolate;
++  background:
++    linear-gradient(145deg, rgba(18, 20, 30, 0.78), rgba(5, 6, 10, 0.58)) !important;
++  border-color: rgba(255, 255, 255, 0.1) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    inset 0 -1px 0 rgba(255, 255, 255, 0.025),
++    0 30px 90px rgba(0, 0, 0, 0.56),
++    0 0 0 1px rgba(99, 102, 241, 0.05) !important;
++}
++
++.creative-board-glass::before {
++  content: "";
++  pointer-events: none;
++  position: absolute;
++  inset: 0;
++  z-index: -1;
++  border-radius: inherit;
++  padding: 1px;
++  background:
++    linear-gradient(135deg, rgba(139, 92, 246, 0.5), rgba(56, 189, 248, 0.18), rgba(255, 255, 255, 0.08));
++  opacity: 0.5;
++  -webkit-mask:
++    linear-gradient(#000 0 0) content-box,
++    linear-gradient(#000 0 0);
++  -webkit-mask-composite: xor;
++  mask-composite: exclude;
++}
++
++.creative-board-glass::after {
++  content: "";
++  pointer-events: none;
++  position: absolute;
++  inset: 1px;
++  z-index: -1;
++  border-radius: inherit;
++  background:
++    radial-gradient(circle at 16% 0%, rgba(139, 92, 246, 0.12), transparent 38%),
++    radial-gradient(circle at 98% 12%, rgba(56, 189, 248, 0.1), transparent 34%),
++    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 48%);
++}
++
++.creative-board-main-header {
++  background:
++    linear-gradient(90deg, rgba(15, 16, 25, 0.74), rgba(4, 5, 8, 0.48)) !important;
++  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
++}
++
++.creative-board-title {
++  letter-spacing: -0.035em;
++  text-shadow:
++    0 0 22px rgba(139, 92, 246, 0.18),
++    0 0 42px rgba(56, 189, 248, 0.08);
++}
++
++.creative-board-output-pill {
++  background: rgba(255, 255, 255, 0.07) !important;
++  border-color: rgba(255, 255, 255, 0.1) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
++}
++
++.creative-category-trigger {
++  border: 1px solid transparent;
++}
++
++.creative-category-trigger:hover,
++.creative-category-trigger--active {
++  background:
++    radial-gradient(circle at 15% 0%, rgba(139, 92, 246, 0.16), transparent 45%),
++    rgba(255, 255, 255, 0.07) !important;
++  border-color: rgba(255, 255, 255, 0.1);
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    0 18px 44px rgba(0, 0, 0, 0.22);
++}
++
++.creative-board-primary-action {
++  background:
++    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.88), transparent 34%),
++    linear-gradient(180deg, #ffffff, #d8d8dc) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.86),
++    0 18px 42px rgba(255, 255, 255, 0.12),
++    0 0 32px rgba(139, 92, 246, 0.12) !important;
++}
++
++.creative-preview-panel {
++  background:
++    radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.07), transparent 30%),
++    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.028)) !important;
++  border-color: rgba(255, 255, 255, 0.1) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    0 24px 70px rgba(0, 0, 0, 0.34);
++}
++
+ @media (prefers-reduced-motion: reduce) {
+   .creative-board-side-rays {
+     display: none;

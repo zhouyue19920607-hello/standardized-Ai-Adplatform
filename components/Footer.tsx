@@ -15,12 +15,12 @@ const Footer: React.FC<FooterProps> = ({ selectedCount, assetCount, onDownload }
       <div className="max-w-[1600px] mx-auto flex items-center justify-between">
         <div className="flex items-center gap-10">
           <div className="flex flex-col">
-            <span className="text-[9px] uppercase font-black text-slate-500 tracking-widest">{t('footer.selectedStyles')}</span>
+            <span className="text-[9px] font-black text-slate-500 tracking-normal text-left">{t('footer.selectedStyles')}</span>
             <span className="font-black text-slate-900 text-sm">{selectedCount}{t('footer.templateUnits')}</span>
           </div>
           <div className="w-px h-6 bg-slate-200"></div>
           <div className="flex flex-col">
-            <span className="text-[9px] uppercase font-black text-slate-500 tracking-widest">{t('footer.exportPredict')}</span>
+            <span className="text-[9px] font-black text-slate-500 tracking-normal text-left">{t('footer.exportPredict')}</span>
             <span className="font-black text-slate-900 text-sm">{assetCount}{t('footer.assetUnits')}</span>
           </div>
         </div>

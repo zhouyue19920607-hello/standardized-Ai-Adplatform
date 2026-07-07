@@ -130,22 +130,38 @@ const ensureAnalyticsDay = (analytics, dateKey = getShanghaiDateKey()) => {
       visits: 0,
       generations: 0,
       visitors: [],
-      templateUses: {}
+      templateUses: {},
+      aiUsage: {
+        meituApi: 0,
+        gptImage2: 0
+      }
     };
   }
   if (!Array.isArray(analytics.days[dateKey].visitors)) analytics.days[dateKey].visitors = [];
   if (!analytics.days[dateKey].templateUses) analytics.days[dateKey].templateUses = {};
+  if (!analytics.days[dateKey].aiUsage) analytics.days[dateKey].aiUsage = {};
+  analytics.days[dateKey].aiUsage.meituApi = Number(analytics.days[dateKey].aiUsage.meituApi || 0);
+  analytics.days[dateKey].aiUsage.gptImage2 = Number(analytics.days[dateKey].aiUsage.gptImage2 || 0);
   return analytics.days[dateKey];
 };
+
+const getAnalyticsAiUsage = (day = {}) => ({
+  meituApi: Number(day.aiUsage?.meituApi || 0),
+  gptImage2: Number(day.aiUsage?.gptImage2 || 0)
+});
 
 const buildAnalyticsSummary = (analytics) => {
   const days = analytics.days || {};
   const todayKey = getShanghaiDateKey();
-  const today = days[todayKey] || { visits: 0, generations: 0, visitors: [], templateUses: {} };
+  const today = days[todayKey] || { visits: 0, generations: 0, visitors: [], templateUses: {}, aiUsage: {} };
   const totalVisitorIds = new Set();
   const templateTotals = {};
+  const aiUsageTotals = { meituApi: 0, gptImage2: 0 };
   Object.entries(days).forEach(([date, day]) => {
     (day.visitors || []).forEach(id => totalVisitorIds.add(id));
+    const aiUsage = getAnalyticsAiUsage(day);
+    aiUsageTotals.meituApi += aiUsage.meituApi;
+    aiUsageTotals.gptImage2 += aiUsage.gptImage2;
     Object.values(day.templateUses || {}).forEach(item => {
       if (!templateTotals[item.id]) {
         templateTotals[item.id] = { ...item, count: 0 };
@@ -160,14 +176,17 @@ const buildAnalyticsSummary = (analytics) => {
       date,
       visits: day.visits || 0,
       generations: day.generations || 0,
+      aiUsage: getAnalyticsAiUsage(day),
       uniqueVisitors: (day.visitors || []).length,
       templateUseCount: Object.values(day.templateUses || {}).reduce((sum, item) => sum + (item.count || 0), 0)
     }));
+  const todayAiUsage = getAnalyticsAiUsage(today);
   return {
     today: {
       date: todayKey,
       visits: today.visits || 0,
       generations: today.generations || 0,
+      aiUsage: todayAiUsage,
       uniqueVisitors: (today.visitors || []).length,
       templateUseCount: Object.values(today.templateUses || {}).reduce((sum, item) => sum + (item.count || 0), 0),
       topTemplates: Object.values(today.templateUses || {}).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 10)
@@ -176,6 +195,7 @@ const buildAnalyticsSummary = (analytics) => {
       daysTracked: Object.keys(days).length,
       visits: Object.values(days).reduce((sum, day) => sum + (day.visits || 0), 0),
       generations: Object.values(days).reduce((sum, day) => sum + (day.generations || 0), 0),
+      aiUsage: aiUsageTotals,
       uniqueVisitors: totalVisitorIds.size
     },
     recentDays,
@@ -855,6 +875,15 @@ app.get("/api/analytics/summary", async (req, res) => {
   const analytics = await readJson(ANALYTICS_FILE, { days: {} });
   res.json(buildAnalyticsSummary(analytics));
 });
+
+const recordAiUsage = async (provider) => {
+  const key = provider === "gpt-image2" ? "gptImage2" : provider === "meitu-open-platform" ? "meituApi" : "";
+  if (!key) return;
+  const analytics = await readJson(ANALYTICS_FILE, { days: {} });
+  const day = ensureAnalyticsDay(analytics);
+  day.aiUsage[key] = Number(day.aiUsage[key] || 0) + 1;
+  await writeJson(ANALYTICS_FILE, analytics);
+};
 
 // ---- API：创新形式素材看板模版管理 ----
 app.get("/api/creative-templates", async (req, res) => {
@@ -7431,6 +7460,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       );
       const finalUrl = await ensureFinalAdaptSize(nanoResult.url, width, height, gptContext, null);
       console.log("[AdaptImage] GPT Image 2 route done", JSON.stringify({ resultUrl: finalUrl, routeReason }));
+      await recordAiUsage("gpt-image2");
       return {
         ok: true,
         provider: "gpt-image2",
@@ -7507,6 +7537,7 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         qaPassed: qa?.passed,
         qaWarnings: qa?.warnings?.length || 0
       }));
+      await recordAiUsage("meitu-open-platform");
 
       return {
         ok: true,

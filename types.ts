@@ -130,6 +130,10 @@ export interface AnalyticsDaySummary {
   date: string;
   visits: number;
   generations: number;
+  aiUsage?: {
+    meituApi: number;
+    gptImage2: number;
+  };
   uniqueVisitors: number;
   templateUseCount: number;
 }
@@ -142,6 +146,10 @@ export interface AnalyticsSummary {
     daysTracked: number;
     visits: number;
     generations: number;
+    aiUsage?: {
+      meituApi: number;
+      gptImage2: number;
+    };
     uniqueVisitors: number;
   };
   recentDays: AnalyticsDaySummary[];

@@ -111,7 +111,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
               <h1 className={`text-lg font-bold tracking-tight ${isConfigPage ? 'text-white' : 'text-slate-900'}`}>
                 {isConfigPage ? '创新形式标准素材看板' : t('header.title')}
               </h1>
-              <p className={`text-[10px] font-semibold uppercase tracking-wider ${isConfigPage ? 'text-white/60' : 'text-slate-500'}`}>
+              <p className={`text-[10px] font-semibold tracking-normal text-left ${isConfigPage ? 'text-white/60' : 'text-slate-500'}`}>
                 {isConfigPage ? '自定义模版' : t('header.subtitle')}
               </p>
             </div>

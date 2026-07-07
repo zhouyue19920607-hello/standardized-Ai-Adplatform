@@ -1,0 +1,647 @@
+diff --git a/backend/data/creative-templates.json b/backend/data/creative-templates.json
+index f3ac8bd..c1cff87 100644
+--- a/backend/data/creative-templates.json
++++ b/backend/data/creative-templates.json
+@@ -5,7 +5,7 @@
+     "groupName": "开屏创意模版",
+     "name": "炫动开屏",
+     "dimensions": "1440 x 2340 / 5s",
+-    "preview_video_path": "/static/previews/dynamic-splash_preview.mp4",
++    "preview_video_path": "/template-previews/dynamic-splash.mp4",
+     "enabled": true
+   },
+   {
+@@ -14,7 +14,7 @@
+     "groupName": "开屏创意模版",
+     "name": "杂志翻页",
+     "dimensions": "1440 x 2340 / 3-5素材",
+-    "preview_video_path": "/static/previews/magazine-flip_preview.mp4",
++    "preview_video_path": "/template-previews/magazine-flip.mp4",
+     "enabled": true
+   },
+   {
+@@ -23,7 +23,7 @@
+     "groupName": "开屏创意模版",
+     "name": "聚光开屏",
+     "dimensions": "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340",
+-    "preview_video_path": "/static/previews/slide-splash_preview.mp4",
++    "preview_video_path": "/template-previews/slide-splash.mp4",
+     "enabled": true
+   },
+   {
+@@ -32,7 +32,7 @@
+     "groupName": "首页创意模版",
+     "name": "秀秀-破框焦点视窗3D",
+     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+-    "preview_video_path": "/static/previews/break-frame-focal-3d_preview.mp4",
++    "preview_video_path": "/template-previews/break-frame-focal-3d.mp4",
+     "enabled": true
+   },
+   {
+@@ -41,7 +41,7 @@
+     "groupName": "首页创意模版",
+     "name": "美颜-破框焦点视窗3D",
+     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+-    "preview_video_path": "/static/previews/meiyan-break-frame-focal-3d_preview.mp4",
++    "preview_video_path": "/template-previews/meiyan-break-frame-focal-3d.mp4",
+     "enabled": true
+   },
+   {
+@@ -50,7 +50,7 @@
+     "groupName": "首页创意模版",
+     "name": "多态翻卡",
+     "dimensions": "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900",
+-    "preview_video_path": "/static/previews/polymorphic-flip-card_preview.mp4",
++    "preview_video_path": "/template-previews/polymorphic-flip-card.mp4",
+     "enabled": true
+   },
+   {
+@@ -59,7 +59,7 @@
+     "groupName": "首页创意模版",
+     "name": "跃动焦点视窗",
+     "dimensions": "预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900",
+-    "preview_video_path": "/static/previews/jumping-focal-window_preview.mp4",
++    "preview_video_path": "/template-previews/jumping-focal-window.mp4",
+     "enabled": true
+   },
+   {
+@@ -68,7 +68,7 @@
+     "groupName": "首页创意模版",
+     "name": "焕新UI",
+     "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon",
+-    "preview_video_path": "/static/previews/refresh-ui-bottom-nav_preview.mp4",
++    "preview_video_path": "/template-previews/refresh-ui-bottom-nav.mp4",
+     "enabled": true
+   }
+ ]
+diff --git a/backend/data/templates.json b/backend/data/templates.json
+index ef7ad8d..53ad6ba 100644
+--- a/backend/data/templates.json
++++ b/backend/data/templates.json
+@@ -119,7 +119,7 @@
+     "name": "焦点视窗",
+     "checked": true,
+     "dimensions": "1126 x 900",
+-    "preview_video_path": "/static/previews/focal-window_preview.mp4",
++    "preview_video_path": "/template-previews/focal-window.mp4",
+     "badge_overlay_path": "/static/badges/mt_focal_window_badge.png",
+     "processedCount": 17,
+     "maskPath": "backend/storage/masks/mt_focal_window_mask.png",
+@@ -133,7 +133,7 @@
+     "name": "沉浸式焦点视窗",
+     "checked": false,
+     "dimensions": "1440 x 2340",
+-    "preview_video_path": "/static/previews/immersive-focal-window_preview.mp4",
++    "preview_video_path": "/template-previews/immersive-focal-window.mp4",
+     "badge_overlay_path": "/static/badges/mt_immersive_focal_badge.png",
+     "processedCount": 1,
+     "maskPath": "backend/storage/masks/mt_immersive_focal_mask.png",
+@@ -350,7 +350,7 @@
+     "mask_path": "/default-assets/standard/my-f-1-mask.png",
+     "maskUrl": "/default-assets/standard/my-f-1-mask.png",
+     "badge_overlay_path": "/default-assets/standard/my-f-1-badge.png",
+-    "preview_video_path": "/static/previews/meiyan-focal-window_preview.mp4"
++    "preview_video_path": "/template-previews/meiyan-focal-window.mp4"
+   },
+   {
+     "id": "my-f-3",
+@@ -484,6 +484,6 @@
+     "maskPath": "backend/storage/masks/1777262149806_wink____________.png",
+     "mask_path": "/static/masks/1777262149806_wink____________.png",
+     "maskUrl": "/static/masks/1777262149806_wink____________.png",
+-    "preview_video_path": "/static/previews/wink-focal-window_preview.mp4"
++    "preview_video_path": "/template-previews/wink-focal-window.mp4"
+   }
+ ]
+diff --git a/backend/server.mjs b/backend/server.mjs
+index 83499a0..a6b300c 100644
+--- a/backend/server.mjs
++++ b/backend/server.mjs
+@@ -98,7 +98,7 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
+     mask_path: "/default-assets/standard/my-f-1-mask.png",
+     maskUrl: "/default-assets/standard/my-f-1-mask.png",
+     badge_overlay_path: "/default-assets/standard/my-f-1-badge.png",
+-    preview_video_path: "/static/previews/meiyan-focal-window_preview.mp4"
++    preview_video_path: "/template-previews/meiyan-focal-window.mp4"
+   }
+ };
+ const DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS = {
+@@ -353,7 +353,7 @@ async function ensureDataFiles() {
+       { id: "wk-s-7", app: "wink", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
+       { id: "wk-s-8", app: "wink", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+       { id: "wk-s-9", app: "wink", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
+-      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436", preview_video_path: "/static/previews/wink-focal-window_preview.mp4" }
++      { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436", preview_video_path: "/template-previews/wink-focal-window.mp4" }
+     ];
+ 
+     await writeJson(TEMPLATES_FILE, initialTemplates);
+diff --git a/components/ConfigWorkspace.tsx b/components/ConfigWorkspace.tsx
+index 57313e4..aa1a0f9 100644
+--- a/components/ConfigWorkspace.tsx
++++ b/components/ConfigWorkspace.tsx
+@@ -112,7 +112,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '开屏创意模版',
+         name: '炫动开屏',
+         dimensions: '1440 x 2340 / 5s',
+-        preview_video_path: '/static/previews/dynamic-splash_preview.mp4',
++        preview_video_path: '/template-previews/dynamic-splash.mp4',
+         enabled: true,
+     },
+     {
+@@ -121,7 +121,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '开屏创意模版',
+         name: '杂志翻页',
+         dimensions: '1440 x 2340 / 3-5素材',
+-        preview_video_path: '/static/previews/magazine-flip_preview.mp4',
++        preview_video_path: '/template-previews/magazine-flip.mp4',
+         enabled: true,
+     },
+     {
+@@ -130,7 +130,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '开屏创意模版',
+         name: '聚光开屏',
+         dimensions: '小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340',
+-        preview_video_path: '/static/previews/slide-splash_preview.mp4',
++        preview_video_path: '/template-previews/slide-splash.mp4',
+         enabled: true,
+     },
+     {
+@@ -139,7 +139,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '首页创意模版',
+         name: '秀秀-破框焦点视窗3D',
+         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+-        preview_video_path: '/static/previews/break-frame-focal-3d_preview.mp4',
++        preview_video_path: '/template-previews/break-frame-focal-3d.mp4',
+         enabled: true,
+     },
+     {
+@@ -148,7 +148,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '首页创意模版',
+         name: '美颜-破框焦点视窗3D',
+         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+-        preview_video_path: '/static/previews/meiyan-break-frame-focal-3d_preview.mp4',
++        preview_video_path: '/template-previews/meiyan-break-frame-focal-3d.mp4',
+         enabled: true,
+     },
+     {
+@@ -157,7 +157,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '首页创意模版',
+         name: '多态翻卡',
+         dimensions: '预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900',
+-        preview_video_path: '/static/previews/polymorphic-flip-card_preview.mp4',
++        preview_video_path: '/template-previews/polymorphic-flip-card.mp4',
+         enabled: true,
+     },
+     {
+@@ -166,7 +166,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '首页创意模版',
+         name: '跃动焦点视窗',
+         dimensions: '预览 1126 x 2436 / 破框 1126 x 906 / 焦点 1126 x 900',
+-        preview_video_path: '/static/previews/jumping-focal-window_preview.mp4',
++        preview_video_path: '/template-previews/jumping-focal-window.mp4',
+         enabled: true,
+     },
+     {
+@@ -175,7 +175,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
+         groupName: '首页创意模版',
+         name: '焕新UI',
+         dimensions: 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon',
+-        preview_video_path: '/static/previews/refresh-ui-bottom-nav_preview.mp4',
++        preview_video_path: '/template-previews/refresh-ui-bottom-nav.mp4',
+         enabled: true,
+     },
+ ];
+@@ -935,9 +935,7 @@ const ConfigWorkspace: React.FC = () => {
+     }, []);
+ 
+     const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === hoveredTemplateId) || null;
+-    const selectedPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === expandedTemplate) || null;
+-    const activePreviewTemplate = hoveredPreviewTemplate || (!generatedVideoUrl ? selectedPreviewTemplate : null);
+-    const hoveredPreviewVideoUrl = activePreviewTemplate?.preview_video_path || null;
++    const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
+ 
+     useEffect(() => {
+         if (!hoveredPreviewVideoUrl) {
+@@ -3924,7 +3922,7 @@ const ConfigWorkspace: React.FC = () => {
+     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
+     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
+     const previewFrameAspectRatio = hoveredPreviewVideoUrl
+-        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(activePreviewTemplate?.id))
++        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(hoveredPreviewTemplate?.id))
+         : getCreativePreviewAspectRatio(expandedTemplate);
+     const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
+     const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
+@@ -4034,7 +4032,7 @@ const ConfigWorkspace: React.FC = () => {
+     const breakFramePreviewStarted = breakPreviewPhase !== null;
+ 
+     return (
+-        <div className="fixed inset-0 bg-[#0A0A0A] z-0 overflow-hidden text-zinc-300 pt-[73px]">
++        <div className="creative-board-shell fixed inset-0 z-0 overflow-hidden text-zinc-300 pt-[73px]">
+             <SideRays
+                 className="creative-board-side-rays"
+                 speed={1.7}
+@@ -4049,7 +4047,7 @@ const ConfigWorkspace: React.FC = () => {
+                 falloff={1.85}
+                 opacity={0.58}
+             />
+-            <div className="pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_18%,rgba(99,102,241,0.18),transparent_28%),radial-gradient(circle_at_88%_78%,rgba(14,165,233,0.12),transparent_30%),linear-gradient(180deg,rgba(10,10,10,0.25),rgba(10,10,10,0.72))]" />
++            <div className="creative-board-atmosphere pointer-events-none absolute inset-0 z-[1]" />
+             {aiGeneratingKey && (
+                 <div className="fixed right-8 bottom-8 z-[90] pointer-events-none rounded-[24px] border border-primary/20 bg-zinc-950/90 px-5 py-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl overflow-hidden">
+                     <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-white/[0.03] to-cyan-300/10 animate-pulse" />
+@@ -4066,8 +4064,8 @@ const ConfigWorkspace: React.FC = () => {
+                     </div>
+                 </div>
+             )}
+-            <div className="relative z-10 flex h-full gap-6 p-6">
+-                <aside className="w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
++            <div className="creative-board-stage relative z-10 flex h-full gap-6 p-6">
++                <aside className="creative-board-glass creative-board-sidebar w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
+                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
+                             <span className="material-symbols-outlined text-white text-2xl">auto_awesome_motion</span>
+@@ -4083,7 +4081,7 @@ const ConfigWorkspace: React.FC = () => {
+                             <div key={cat.id} className="space-y-2">
+                                 <button
+                                     onClick={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
+-                                    className={`w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
++                                    className={`creative-category-trigger w-full flex items-center justify-between px-5 py-4 rounded-[20px] transition-all duration-500 ${expandedCategory === cat.id ? 'creative-category-trigger--active bg-white/10 text-white shadow-inner' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
+                                 >
+                                     <div className="flex items-center gap-3">
+                                         <span className="material-symbols-outlined text-[20px] font-light">{cat.icon}</span>
+@@ -4104,7 +4102,7 @@ const ConfigWorkspace: React.FC = () => {
+                                                     onPointerEnter={() => setHoveredTemplateId(tpl.id)}
+                                                     onPointerMove={() => setHoveredTemplateId(tpl.id)}
+                                                     onPointerLeave={() => setHoveredTemplateId((current) => current === tpl.id ? null : current)}
+-                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-white/15 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
++                                                    className={`w-full flex items-center justify-between px-5 py-3 rounded-[20px] text-xs font-bold transition-all duration-300 ${expandedTemplate === tpl.id ? 'text-white bg-black/60 shadow-2xl border border-white/10' : 'text-zinc-500 hover:text-zinc-200'}`}
+                                                 >
+                                                     <span>{tpl.label}</span>
+                                                     <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${expandedTemplate === tpl.id ? 'bg-primary shadow-[0_0_10px_#FF2E63]' : 'bg-zinc-800'}`} />
+@@ -4168,43 +4166,25 @@ const ConfigWorkspace: React.FC = () => {
+                             </div>
+                         ))}
+                     </div>
+-
+-                    <div className="mt-6 pt-6 border-t border-white/5 shrink-0">
+-                        <button
+-                            onClick={buildVideo}
+-                            disabled={isGenerating}
+-                            className="w-full bg-white text-black py-5 rounded-[20px] font-black text-[11px] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 uppercase tracking-[0.2em] group disabled:opacity-50"
+-                        >
+-                            <span className={`material-symbols-outlined text-xl ${isGenerating ? 'animate-spin' : 'group-hover:animate-bounce'}`}>{isGenerating ? 'sync' : 'bolt'}</span>
+-                            {isGenerating ? '正在生成视频' : '生成合成视频'}
+-                        </button>
+-                    </div>
+                 </aside>
+ 
+-                <main className="relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
++                <main className="creative-board-glass creative-board-main relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                     {renderAiLoadingOverlay('*')}
+-                    <header className="px-10 py-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-center shrink-0">
++                    <header className="creative-board-main-header px-10 pt-10 pb-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-start shrink-0">
+                         <div>
+-                            <div className="flex items-center gap-3 mb-2">
+-                                <span className="px-3 py-1 rounded-[20px] bg-white/5 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-white/5">MR STANDARD</span>
+-                                <div className="flex items-center gap-1.5 antialiased">
+-                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_#10B981]" />
+-                                    <span className="text-[9px] text-zinc-600 font-black uppercase tracking-tight">{isMagazineTemplate ? 'Magazine Flip' : isSpotlightTemplate ? 'Spotlight Splash' : isPolymorphicFlipCardTemplate ? 'Polymorphic Flip Card' : isBreakFocalTemplate ? 'Break Frame Focal' : isJumpingFocalTemplate ? 'Jumping Focal' : isRefreshUiBottomNavTemplate ? 'Refresh UI Nav' : 'Dynamic Splash'}</span>
+-                                </div>
+-                            </div>
+-                            <h1 className="text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
++                            <h1 className="creative-board-title text-3xl font-black text-white tracking-tighter antialiased">{selectedTemplateName}模版</h1>
+                         </div>
+                         <div className="flex items-center gap-3">
+                             {saveMessage && <span className="text-[10px] font-bold text-zinc-500">{saveMessage}</span>}
+-                            <div className="px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
++                            <div className="creative-board-output-pill px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
+                                 {outputSpec}
+                             </div>
+                         </div>
+                     </header>
+ 
+-                    <div className="flex-1 overflow-auto p-10 custom-scrollbar">
++                    <div className="creative-board-content flex-1 overflow-auto p-10 custom-scrollbar">
+                         <div className="grid min-w-[900px] grid-cols-[420px_minmax(420px,1fr)] gap-8 min-h-full">
+-                            <section className="space-y-5">
++                            <section className="creative-workflow-column space-y-5">
+                                 {isMagazineTemplate ? (
+                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                         <div className="flex items-center justify-between">
+@@ -5530,7 +5510,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                     <div className="flex items-center justify-between">
+                                         <div>
+-                                            <h2 className="text-white text-sm font-black">挂件素材</h2>
++                                            <h2 className="text-white text-sm font-black">①上传挂件素材</h2>
+                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">PNG / 450 x 450px / MR 标准</p>
+                                         </div>
+                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(asset.status)}`}>{asset.message}</span>
+@@ -5626,7 +5606,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                     <div className="flex items-center justify-between">
+                                         <div>
+-                                            <h2 className="text-white text-sm font-black">开屏素材上传</h2>
++                                            <h2 className="text-white text-sm font-black">②上传开屏素材</h2>
+                                             <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 1440 x 2340px / 视频 5s 内</p>
+                                         </div>
+                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(splash.status)}`}>{splash.message}</span>
+@@ -5677,7 +5657,7 @@ const ConfigWorkspace: React.FC = () => {
+                                 )}
+                             </section>
+ 
+-                            <section className="bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
++                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
+                                 <div className="flex items-center justify-between gap-4 mb-4">
+                                     <div>
+                                         <h2 className="text-white text-sm font-black">合成预览</h2>
+@@ -5699,21 +5679,22 @@ const ConfigWorkspace: React.FC = () => {
+                                     </div>
+                                     <div className="flex items-center gap-2 shrink-0">
+                                         {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
++                                        <button
++                                            onClick={buildVideo}
++                                            disabled={isGenerating}
++                                            className="h-9 px-5 rounded-[14px] bg-white text-black text-[11px] font-black hover:bg-zinc-200 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-[0_12px_36px_rgba(255,255,255,0.12)]"
++                                        >
++                                            <span className={`material-symbols-outlined text-[15px] ${isGenerating ? 'animate-spin' : ''}`}>{isGenerating ? 'sync' : 'bolt'}</span>
++                                            {isGenerating ? '生成中' : '③生成视频'}
++                                        </button>
+                                         <a
+                                             href={generatedVideoUrl || undefined}
+                                             download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
+-                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all ${generatedVideoUrl ? 'bg-white text-black hover:bg-zinc-200' : 'bg-white/5 text-zinc-700 pointer-events-none'}`}
++                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
+                                         >
+                                             <span className="material-symbols-outlined text-base">download</span>
+                                             下载
+                                         </a>
+-                                        <button
+-                                            onClick={buildVideo}
+-                                            disabled={isGenerating}
+-                                            className="h-9 px-4 rounded-[14px] bg-primary/90 text-white text-[11px] font-black hover:bg-primary transition-all disabled:opacity-50"
+-                                        >
+-                                            {isGenerating ? '生成中' : '重新生成'}
+-                                        </button>
+                                     </div>
+                                 </div>
+ 
+@@ -6173,7 +6154,7 @@ const ConfigWorkspace: React.FC = () => {
+                                     </div>
+                                 </div>
+ 
+-                                <div className={`mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
++                                <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                     {!isBreakFocalTemplate && (
+                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
+                                             <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">交互形式</p>
+diff --git a/components/Header.tsx b/components/Header.tsx
+index 635cf03..e19bc96 100644
+--- a/components/Header.tsx
++++ b/components/Header.tsx
+@@ -12,7 +12,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
+   const isConfigPage = location.pathname === '/config';
+ 
+   return (
+-    <header className="liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg">
++    <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
+       <div className="flex items-center justify-between">
+         <Link to={isConfigPage ? '/' : '/config'} className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all">
+           <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
+diff --git a/index.css b/index.css
+index 499c39d..e5152d0 100644
+--- a/index.css
++++ b/index.css
+@@ -137,6 +137,232 @@ samp {
+   display: block;
+ }
+ 
++.creative-board-shell {
++  background:
++    radial-gradient(circle at 16% 3%, rgba(117, 92, 255, 0.28), transparent 30%),
++    radial-gradient(circle at 88% 11%, rgba(56, 189, 248, 0.16), transparent 34%),
++    radial-gradient(circle at 68% 92%, rgba(168, 85, 247, 0.14), transparent 35%),
++    linear-gradient(135deg, #03040a 0%, #070811 46%, #020204 100%);
++}
++
++.creative-board-shell::before {
++  content: "";
++  position: absolute;
++  inset: 0;
++  z-index: 1;
++  pointer-events: none;
++  background-image:
++    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
++    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
++  background-size: 72px 72px;
++  mask-image: radial-gradient(circle at 58% 22%, black 0%, transparent 72%);
++  -webkit-mask-image: radial-gradient(circle at 58% 22%, black 0%, transparent 72%);
++  opacity: 0.42;
++}
++
++.creative-board-shell::after {
++  content: "";
++  position: absolute;
++  inset: 0;
++  z-index: 1;
++  pointer-events: none;
++  background:
++    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 18%, rgba(0, 0, 0, 0.38) 100%),
++    radial-gradient(circle at 50% -10%, rgba(255, 255, 255, 0.12), transparent 30%);
++  opacity: 0.72;
++}
++
++.creative-board-atmosphere {
++  background:
++    radial-gradient(circle at 18% 18%, rgba(99, 102, 241, 0.2), transparent 28%),
++    radial-gradient(circle at 88% 78%, rgba(14, 165, 233, 0.12), transparent 30%),
++    linear-gradient(180deg, rgba(10, 10, 10, 0.2), rgba(10, 10, 10, 0.76));
++}
++
++.creative-board-topbar {
++  background:
++    linear-gradient(105deg, rgba(22, 24, 38, 0.78), rgba(8, 9, 14, 0.64)) !important;
++  border-color: rgba(255, 255, 255, 0.12) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.1),
++    0 18px 60px rgba(0, 0, 0, 0.38),
++    0 0 0 1px rgba(99, 102, 241, 0.08) !important;
++}
++
++.creative-board-topbar button {
++  background: rgba(255, 255, 255, 0.1);
++  color: rgba(255, 255, 255, 0.82);
++  border-color: rgba(255, 255, 255, 0.1);
++}
++
++.creative-board-topbar button:hover {
++  background: rgba(255, 255, 255, 0.18);
++  color: #fff;
++}
++
++.creative-board-stage {
++  filter: drop-shadow(0 32px 90px rgba(0, 0, 0, 0.45));
++}
++
++.creative-board-glass {
++  position: relative;
++  isolation: isolate;
++  background:
++    linear-gradient(145deg, rgba(18, 20, 30, 0.78), rgba(5, 6, 10, 0.58)) !important;
++  border-color: rgba(255, 255, 255, 0.1) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    inset 0 -1px 0 rgba(255, 255, 255, 0.025),
++    0 30px 90px rgba(0, 0, 0, 0.56),
++    0 0 0 1px rgba(99, 102, 241, 0.05) !important;
++}
++
++.creative-board-glass::before {
++  content: "";
++  pointer-events: none;
++  position: absolute;
++  inset: 0;
++  z-index: -1;
++  border-radius: inherit;
++  padding: 1px;
++  background:
++    linear-gradient(135deg, rgba(139, 92, 246, 0.5), rgba(56, 189, 248, 0.18), rgba(255, 255, 255, 0.08));
++  opacity: 0.5;
++  -webkit-mask:
++    linear-gradient(#000 0 0) content-box,
++    linear-gradient(#000 0 0);
++  -webkit-mask-composite: xor;
++  mask-composite: exclude;
++}
++
++.creative-board-glass::after {
++  content: "";
++  pointer-events: none;
++  position: absolute;
++  inset: 1px;
++  z-index: -1;
++  border-radius: inherit;
++  background:
++    radial-gradient(circle at 16% 0%, rgba(139, 92, 246, 0.12), transparent 38%),
++    radial-gradient(circle at 98% 12%, rgba(56, 189, 248, 0.1), transparent 34%),
++    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 48%);
++}
++
++.creative-board-main-header {
++  background:
++    linear-gradient(90deg, rgba(15, 16, 25, 0.54), rgba(4, 5, 8, 0.2)) !important;
++  border-bottom-color: rgba(255, 255, 255, 0.045) !important;
++}
++
++.creative-board-title {
++  letter-spacing: -0.035em;
++  text-shadow:
++    0 0 22px rgba(139, 92, 246, 0.18),
++    0 0 42px rgba(56, 189, 248, 0.08);
++}
++
++.creative-board-output-pill {
++  background: rgba(255, 255, 255, 0.07) !important;
++  border-color: rgba(255, 255, 255, 0.1) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
++}
++
++.creative-category-trigger {
++  border: 1px solid transparent;
++}
++
++.creative-category-trigger:hover,
++.creative-category-trigger--active {
++  background:
++    radial-gradient(circle at 15% 0%, rgba(139, 92, 246, 0.16), transparent 45%),
++    rgba(255, 255, 255, 0.07) !important;
++  border-color: rgba(255, 255, 255, 0.1);
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    0 18px 44px rgba(0, 0, 0, 0.22);
++}
++
++.creative-board-primary-action {
++  background:
++    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.88), transparent 34%),
++    linear-gradient(180deg, #ffffff, #d8d8dc) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.86),
++    0 18px 42px rgba(255, 255, 255, 0.12),
++    0 0 32px rgba(139, 92, 246, 0.12) !important;
++}
++
++.creative-preview-panel {
++  background:
++    radial-gradient(circle at 50% 4%, rgba(56, 189, 248, 0.06), transparent 34%),
++    linear-gradient(145deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)) !important;
++  border-color: rgba(255, 255, 255, 0.07) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.08),
++    0 24px 70px rgba(0, 0, 0, 0.3);
++}
++
++.creative-board-content {
++  background:
++    linear-gradient(90deg, rgba(255, 255, 255, 0.018), transparent 38%, rgba(255, 255, 255, 0.014));
++}
++
++.creative-workflow-column > div[class*="bg-white/"] {
++  position: relative;
++  padding: 22px 0 26px !important;
++  background: transparent !important;
++  border-color: transparent !important;
++  border-radius: 0 !important;
++  box-shadow: none !important;
++}
++
++.creative-workflow-column > div[class*="bg-white/"]::after {
++  content: "";
++  position: absolute;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  height: 1px;
++  pointer-events: none;
++  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.11), transparent);
++}
++
++.creative-workflow-column > div[class*="bg-white/"]:first-child {
++  padding-top: 0 !important;
++}
++
++.creative-workflow-column > div[class*="bg-white/"]:last-child::after {
++  opacity: 0;
++}
++
++.creative-workflow-column h2 {
++  letter-spacing: -0.01em;
++}
++
++.creative-workflow-column button[class*="border-dashed"],
++.creative-workflow-column label[class*="border-dashed"] {
++  background:
++    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.06), transparent 48%),
++    rgba(255, 255, 255, 0.035) !important;
++  border-color: rgba(255, 255, 255, 0.12) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255, 255, 255, 0.05),
++    0 14px 34px rgba(0, 0, 0, 0.18);
++}
++
++.creative-workflow-column textarea,
++.creative-workflow-column input:not([type="color"]) {
++  background: rgba(3, 4, 8, 0.68) !important;
++  border-color: rgba(255, 255, 255, 0.07) !important;
++}
++
++.creative-preview-controls > div {
++  background:
++    linear-gradient(145deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)) !important;
++  border-color: rgba(255, 255, 255, 0.07) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
++}
++
+ @media (prefers-reduced-motion: reduce) {
+   .creative-board-side-rays {
+     display: none;
