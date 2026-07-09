@@ -299,7 +299,7 @@ const AdCard: React.FC<{
             ) : asset.type.startsWith('video') && !(isHotRecommend || isHotSearch || isTopicBg || isTopicBanner || isPopup || isRecipeContent) ? (
               <video
                 src={asset.url}
-                className={`w-full h-full ${localShowMask && isImmersiveFocal ? 'absolute inset-0 z-0 object-cover' : (localShowMask && (asset.category === '开屏' || asset.category === '焦点视窗' || asset.category === '弹窗' || asset.id.includes('mt-ib-4')) ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
+                className={`w-full h-full ${localShowMask && isImmersiveFocal ? 'absolute inset-0 z-0 object-cover' : (localShowMask && (asset.category === '开屏' || asset.category === '焦点视窗' || asset.category === '弹窗' || asset.id.includes('mt-ib-4')) ? 'relative z-10 object-contain object-top' : 'relative z-10 object-contain')}`}
                 style={meiyanFocalOffsetStyle}
                 controls={false}
                 autoPlay
@@ -775,15 +775,17 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
             {templatePreviewAsset.type.startsWith('video') ? (
-              <video
-                src={templatePreviewAsset.url}
-                className="block h-auto w-auto max-h-[70vh] max-w-[min(94vw,960px)] rounded-[24px] shadow-2xl ring-1 ring-black/10"
-                controls={false}
-                autoPlay
-                playsInline
-                loop
-                muted
-              />
+              <div className="relative flex max-h-[72vh] w-[min(94vw,960px)] items-center justify-center overflow-hidden rounded-[24px] bg-slate-950/5 shadow-2xl ring-1 ring-black/10">
+                <video
+                  src={templatePreviewAsset.url}
+                  className="block h-auto max-h-[72vh] w-auto max-w-full object-contain"
+                  controls={false}
+                  autoPlay
+                  playsInline
+                  loop
+                  muted
+                />
+              </div>
             ) : (
               <div
                 className="relative overflow-hidden rounded-[24px] shadow-2xl ring-1 ring-black/10"
@@ -830,7 +832,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               selectedAsset.type.startsWith('video') ? (
                 <video
                   src={selectedAsset.url}
-                  className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-[15] object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-cover')}`}
+                  className={`w-full h-full ${selectedAssetInfo.showMask && selectedAsset.templateName.includes('沉浸式') ? 'absolute inset-0 z-[15] object-cover' : (selectedAssetInfo.showMask && (selectedAsset.category === '焦点视窗' || selectedAsset.category === '开屏') ? 'relative z-10 object-contain object-top' : 'relative z-10 object-contain')}`}
                   style={selectedMeiyanFocalOffsetStyle}
                   controls
                   autoPlay

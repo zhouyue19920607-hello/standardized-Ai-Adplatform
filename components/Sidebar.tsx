@@ -14,6 +14,7 @@ interface SidebarProps {
   generationProgress?: { current: number; total: number } | null;
   onTemplateUpdate: (id: string, updates: Partial<AdTemplate>) => void;
   onTemplatePreviewHover?: (template: AdTemplate | null) => void;
+  onTemplatePreviewLock?: (template: AdTemplate | null) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -26,7 +27,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isProcessing,
   generationProgress,
   onTemplateUpdate,
-  onTemplatePreviewHover
+  onTemplatePreviewHover,
+  onTemplatePreviewLock
 }) => {
   const { t } = useLanguage();
   if (!Array.isArray(templates)) return null;
@@ -40,6 +42,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
   const handleTemplatePreviewLeave = (tpl: AdTemplate) => {
     if (canPreviewTemplate(tpl)) onTemplatePreviewHover?.(null);
+  };
+  const handleTemplatePreviewLock = (tpl: AdTemplate) => {
+    if (canPreviewTemplate(tpl)) onTemplatePreviewLock?.(tpl);
   };
 
   // State for collapsible sub-categories (Key format: "AppName-CategoryName")
@@ -119,6 +124,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <div key={tpl.id} className="px-1 relative group/template">
                         <StandardTemplatePillOption
                           active={tpl.checked}
+                          onClick={() => handleTemplatePreviewLock(tpl)}
                           onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
                           onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
                           onPointerEnter={() => handleTemplatePreviewEnter(tpl)}
@@ -240,6 +246,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <StandardTemplatePillOption
                       active={focalTpl.checked}
+                      onClick={() => handleTemplatePreviewLock(focalTpl)}
                       className={`flex items-center gap-3 p-3 rounded-2xl transition-all cursor-pointer
                         ${focalTpl.checked ? 'bg-white/80 ring-1 ring-primary/20' : 'bg-white/30 hover:bg-white/50'}`
                       }
@@ -407,6 +414,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 <div key={tpl.id} className="px-1 relative group/template">
                                   <StandardTemplatePillOption
                                     active={tpl.checked}
+                                    onClick={() => handleTemplatePreviewLock(tpl)}
                                     onMouseEnter={() => handleTemplatePreviewEnter(tpl)}
                                     onMouseLeave={() => handleTemplatePreviewLeave(tpl)}
                                     onPointerEnter={() => handleTemplatePreviewEnter(tpl)}

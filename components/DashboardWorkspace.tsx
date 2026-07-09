@@ -56,25 +56,33 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     handleBatchDownload,
 }) => {
     const [hoveredPreviewTemplate, setHoveredPreviewTemplate] = useState<AdTemplate | null>(null);
+    const [lockedPreviewTemplate, setLockedPreviewTemplate] = useState<AdTemplate | null>(null);
+    const activePreviewTemplate = hoveredPreviewTemplate || lockedPreviewTemplate;
     const hoverPreviewAssets = useMemo<AdAsset[]>(() => {
-        const previewVideoUrl = hoveredPreviewTemplate?.preview_video_path || (hoveredPreviewTemplate?.id === 'mt-s-1' ? '/template-previews/bubble-fullscreen.mp4' : '');
-        if (!hoveredPreviewTemplate || !previewVideoUrl) return [];
+        const previewVideoUrl = activePreviewTemplate?.preview_video_path || (activePreviewTemplate?.id === 'mt-s-1' ? '/template-previews/bubble-fullscreen.mp4' : '');
+        if (!activePreviewTemplate || !previewVideoUrl) return [];
         return [{
-            id: `template-preview-${hoveredPreviewTemplate.id}`,
+            id: `template-preview-${activePreviewTemplate.id}`,
             url: previewVideoUrl,
-            name: `${hoveredPreviewTemplate.name}展示视频.mp4`,
+            name: `${activePreviewTemplate.name}展示视频.mp4`,
             size: 'template-preview',
             isCompressed: false,
             type: 'video/mp4',
-            category: hoveredPreviewTemplate.category,
-            app: hoveredPreviewTemplate.app,
-            templateName: hoveredPreviewTemplate.name,
-            dimensions: hoveredPreviewTemplate.dimensions || '1440 x 2340',
-            maskUrl: hoveredPreviewTemplate.mask_path || null,
+            category: activePreviewTemplate.category,
+            app: activePreviewTemplate.app,
+            templateName: activePreviewTemplate.name,
+            dimensions: activePreviewTemplate.dimensions || '1440 x 2340',
+            maskUrl: activePreviewTemplate.mask_path || null,
             showMask: false,
         }];
-    }, [hoveredPreviewTemplate]);
+    }, [activePreviewTemplate]);
     const previewAssets = hoverPreviewAssets.length > 0 ? hoverPreviewAssets : processedAssets;
+
+    const handleGenerateWithPreviewReset = () => {
+        setHoveredPreviewTemplate(null);
+        setLockedPreviewTemplate(null);
+        handleGenerate();
+    };
 
     const parseDimensions = (value?: string) => {
         const match = value?.match(/(\d+)\s*x\s*(\d+)/i);
@@ -173,11 +181,12 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                             onTemplateToggle={handleTemplateToggle}
                             onConfigChange={handleConfigChange}
                             activeCount={templates.filter(tpl => tpl.checked).length}
-                            onGenerate={handleGenerate}
+                            onGenerate={handleGenerateWithPreviewReset}
                             isProcessing={isProcessing}
                             generationProgress={generationProgress}
                             onTemplateUpdate={handleTemplateUpdate}
                             onTemplatePreviewHover={setHoveredPreviewTemplate}
+                            onTemplatePreviewLock={setLockedPreviewTemplate}
                         />
                     </div>
                 </aside>
