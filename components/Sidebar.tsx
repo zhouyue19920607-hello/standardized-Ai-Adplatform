@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   // NOTE: 三平台开屏 — 仅取美图秀秀的开屏模板作为代表，生成时自动关联三平台蒙版
   const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏' && tpl.splashGroup !== 'bubble');
-  const canPreviewTemplate = (tpl: AdTemplate) => Boolean(tpl.preview_video_path || tpl.id === 'mt-s-1' || tpl.splashGroup === 'nonfull');
+  const canPreviewTemplate = (tpl: AdTemplate) => Boolean(tpl.preview_video_path || tpl.id === 'mt-s-1' || tpl.splashGroup === 'nonfull' || tpl.splashGroup === 'slide' || tpl.splashGroup === 'slide-nonfull');
   const handleTemplatePreviewEnter = (tpl: AdTemplate) => {
     if (canPreviewTemplate(tpl)) onTemplatePreviewHover?.(tpl);
   };

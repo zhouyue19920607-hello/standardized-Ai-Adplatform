@@ -37,6 +37,7 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-fullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_slide_fullscreen_mask.png",
     "mask_path": "/static/masks/mt_slide_fullscreen_mask.png",
     "maskUrl": "/static/masks/mt_slide_fullscreen_mask.png",
@@ -51,6 +52,7 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_slide_nonfullscreen_mask.png",
     "mask_path": "/static/masks/mt_slide_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/mt_slide_nonfullscreen_mask.png",
@@ -278,6 +280,7 @@
     "dimensions": "1440 x 2340",
     "splashGroup": "slide",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-fullscreen.mp4",
     "maskPath": "backend/storage/masks/my_slide_fullscreen_mask.png",
     "mask_path": "/static/masks/my_slide_fullscreen_mask.png",
     "maskUrl": "/static/masks/my_slide_fullscreen_mask.png"
@@ -291,6 +294,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "slide-nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/my_slide_nonfullscreen_mask.png",
     "mask_path": "/static/masks/my_slide_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/my_slide_nonfullscreen_mask.png"
@@ -414,6 +418,7 @@
     "dimensions": "1440 x 2340",
     "splashGroup": "slide",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-fullscreen.mp4",
     "maskPath": "backend/storage/masks/wk_slide_fullscreen_mask.png",
     "mask_path": "/static/masks/wk_slide_fullscreen_mask.png",
     "maskUrl": "/static/masks/wk_slide_fullscreen_mask.png"
@@ -427,6 +432,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "slide-nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/slide-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/wk_slide_nonfullscreen_mask.png",
     "mask_path": "/static/masks/wk_slide_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/wk_slide_nonfullscreen_mask.png"

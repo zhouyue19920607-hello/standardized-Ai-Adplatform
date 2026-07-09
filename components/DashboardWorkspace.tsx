@@ -64,6 +64,10 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                 ? '/template-previews/bubble-fullscreen.mp4'
                 : activePreviewTemplate?.splashGroup === 'nonfull'
                     ? '/template-previews/bubble-nonfullscreen.mp4'
+                    : activePreviewTemplate?.splashGroup === 'slide'
+                        ? '/template-previews/slide-fullscreen.mp4'
+                        : activePreviewTemplate?.splashGroup === 'slide-nonfull'
+                            ? '/template-previews/slide-nonfullscreen.mp4'
                     : '';
         const previewVideoUrl = activePreviewTemplate?.preview_video_path || fallbackPreviewVideoUrl;
         if (!activePreviewTemplate || !previewVideoUrl) return [];
