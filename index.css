@@ -204,6 +204,80 @@ samp {
   filter: drop-shadow(0 32px 90px rgba(0, 0, 0, 0.45));
 }
 
+.board-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 10px 28px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.board-switch-link {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: rgba(71, 85, 105, 0.82);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.board-switch-link:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.board-switch-link.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, #0f172a, #1f2937);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+}
+
+.board-switch-divider {
+  width: 1px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.09);
+}
+
+.creative-board-topbar .board-switcher {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 14px 36px rgba(0, 0, 0, 0.18);
+}
+
+.creative-board-topbar .board-switch-link {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.creative-board-topbar .board-switch-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.creative-board-topbar .board-switch-link.is-active {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 28px rgba(255, 255, 255, 0.1);
+}
+
+.creative-board-topbar .board-switch-divider {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .creative-board-glass {
   position: relative;
   isolation: isolate;
@@ -895,17 +969,15 @@ samp {
 
 .creative-entry-hint-anchor {
   position: relative;
+  display: inline-flex;
   isolation: isolate;
   z-index: 2;
 }
 
 .creative-entry-hint-pulse {
   position: absolute;
-  left: -7px;
-  top: -7px;
-  width: 54px;
-  height: 54px;
-  border-radius: 18px;
+  inset: -5px;
+  border-radius: 999px;
   pointer-events: none;
   z-index: 0;
   border: 1px solid rgba(0, 122, 255, 0.58);
@@ -923,7 +995,7 @@ samp {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 188px;
+  min-width: 244px;
   padding: 10px 11px 10px 12px;
   border-radius: 18px;
   color: #0f172a;

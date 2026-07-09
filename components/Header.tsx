@@ -72,31 +72,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
   return (
     <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
       <div className="flex items-center justify-between">
-        <div className="creative-entry-hint-anchor">
-          {!isConfigPage && showCreativeEntryHint && (
-            <>
-              <span className="creative-entry-hint-pulse" aria-hidden="true" />
-              <div className="creative-entry-hint-bubble" role="status">
-                <span className="creative-entry-hint-dot" aria-hidden="true" />
-                <div>
-                  <p className="text-[11px] font-black text-slate-950 leading-none">点击这里</p>
-                  <p className="mt-1 text-[10px] font-semibold text-slate-500 leading-none">进入创新形式看板</p>
-                </div>
-                <button
-                  type="button"
-                  className="creative-entry-hint-close"
-                  aria-label="关闭创新形式看板入口提示"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    dismissCreativeEntryHint();
-                  }}
-                >
-                  <span className="material-symbols-outlined text-[14px]">close</span>
-                </button>
-              </div>
-            </>
-          )}
+        <div className="flex min-w-0 items-center gap-5">
           <Link
             to={isConfigPage ? '/' : '/config'}
             onClick={dismissCreativeEntryHint}
@@ -116,6 +92,50 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
               </p>
             </div>
           </Link>
+          <nav className="board-switcher" aria-label="看板切换">
+            <Link
+              to="/"
+              className={`board-switch-link ${!isConfigPage ? 'is-active' : ''}`}
+              aria-current={!isConfigPage ? 'page' : undefined}
+            >
+              标准素材
+            </Link>
+            <span className="board-switch-divider" aria-hidden="true" />
+            <span className="creative-entry-hint-anchor">
+              {!isConfigPage && showCreativeEntryHint && (
+                <>
+                  <span className="creative-entry-hint-pulse" aria-hidden="true" />
+                  <div className="creative-entry-hint-bubble" role="status">
+                    <span className="creative-entry-hint-dot" aria-hidden="true" />
+                    <div>
+                      <p className="text-[11px] font-black text-slate-950 leading-none">还有互动模板</p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 leading-none">炫动开屏、翻卡、焕新 UI 在这里</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="creative-entry-hint-close"
+                      aria-label="关闭创新形式看板入口提示"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        dismissCreativeEntryHint();
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                </>
+              )}
+              <Link
+                to="/config"
+                onClick={dismissCreativeEntryHint}
+                className={`board-switch-link ${isConfigPage ? 'is-active' : ''}`}
+                aria-current={isConfigPage ? 'page' : undefined}
+              >
+                创新形式
+              </Link>
+            </span>
+          </nav>
         </div>
         <div className="flex items-center gap-5">
           {authState?.configured && (
