@@ -36,6 +36,7 @@
     "name": "上下滑动全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
+    "preview_video_path": "/template-previews/triple-fullscreen.mp4",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
     "preview_video_path": "/template-previews/slide-fullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_slide_fullscreen_mask.png",
@@ -332,6 +333,7 @@
     "name": "三合一全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
+    "preview_video_path": "/template-previews/triple-fullscreen.mp4",
     "splashGroup": "triple",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },
@@ -470,6 +472,7 @@
     "name": "三合一全屏",
     "checked": false,
     "dimensions": "1440 x 2340",
+    "preview_video_path": "/template-previews/triple-fullscreen.mp4",
     "splashGroup": "triple",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png"
   },

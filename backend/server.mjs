@@ -96,6 +96,9 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "mt-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
   },
+  "mt-s-8": {
+    preview_video_path: "/template-previews/triple-fullscreen.mp4"
+  },
   "mt-p-1": {
     maskPath: "backend/default-assets/standard/mt-p-1-mask.jpg",
     mask_path: "/default-assets/standard/mt-p-1-mask.jpg",
@@ -118,6 +121,9 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "my-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
   },
+  "my-s-8": {
+    preview_video_path: "/template-previews/triple-fullscreen.mp4"
+  },
   "wk-s-5": {
     preview_video_path: "/template-previews/bubble-nonfullscreen.mp4"
   },
@@ -126,6 +132,9 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   },
   "wk-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
+  },
+  "wk-s-8": {
+    preview_video_path: "/template-previews/triple-fullscreen.mp4"
   }
 };
 const DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS = {
@@ -405,7 +414,7 @@ async function ensureDataFiles() {
       { id: "mt-s-6", app: "美图秀秀", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-s-6"] },
       { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
       { id: "mt-s-7", app: "美图秀秀", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
-      { id: "mt-s-8", app: "美图秀秀", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "mt-s-8", app: "美图秀秀", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-s-8"] },
       { id: "mt-s-9", app: "美图秀秀", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
       { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "焦点视窗", checked: true, dimensions: "1126 x 2436" },
       { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1440 x 2340" },
@@ -425,7 +434,7 @@ async function ensureDataFiles() {
       { id: "my-s-6", app: "美颜", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["my-s-6"] },
       { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
       { id: "my-s-7", app: "美颜", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
-      { id: "my-s-8", app: "美颜", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "my-s-8", app: "美颜", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["my-s-8"] },
       { id: "my-s-9", app: "美颜", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
       { id: "my-f-1", app: "美颜", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1284 x 1128", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["my-f-1"] },
       { id: "my-p-1", app: "美颜", category: "弹窗", name: "弹窗精图", checked: false, dimensions: "1080 x 1920" },
@@ -438,7 +447,7 @@ async function ensureDataFiles() {
       { id: "wk-s-6", app: "wink", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["wk-s-6"] },
       { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
       { id: "wk-s-7", app: "wink", category: "开屏", name: "扭动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "twist-nonfull" },
-      { id: "wk-s-8", app: "wink", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple" },
+      { id: "wk-s-8", app: "wink", category: "开屏", name: "三合一全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "triple", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["wk-s-8"] },
       { id: "wk-s-9", app: "wink", category: "开屏", name: "三合一非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "triple-nonfull" },
       { id: "wk-f-1", app: "wink", category: "焦点视窗", name: "焦点视窗", checked: false, dimensions: "1126 x 2436", preview_video_path: "/template-previews/wink-focal-window.mp4" }
     ];

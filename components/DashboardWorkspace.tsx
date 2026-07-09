@@ -59,15 +59,17 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     const [lockedPreviewTemplate, setLockedPreviewTemplate] = useState<AdTemplate | null>(null);
     const activePreviewTemplate = hoveredPreviewTemplate || lockedPreviewTemplate;
     const hoverPreviewAssets = useMemo<AdAsset[]>(() => {
+        const splashPreviewFallbacks: Record<string, string> = {
+            nonfull: '/template-previews/bubble-nonfullscreen.mp4',
+            slide: '/template-previews/slide-fullscreen.mp4',
+            'slide-nonfull': '/template-previews/slide-nonfullscreen.mp4',
+            triple: '/template-previews/triple-fullscreen.mp4',
+        };
         const fallbackPreviewVideoUrl =
             activePreviewTemplate?.id === 'mt-s-1'
                 ? '/template-previews/bubble-fullscreen.mp4'
-                : activePreviewTemplate?.splashGroup === 'nonfull'
-                    ? '/template-previews/bubble-nonfullscreen.mp4'
-                    : activePreviewTemplate?.splashGroup === 'slide'
-                        ? '/template-previews/slide-fullscreen.mp4'
-                        : activePreviewTemplate?.splashGroup === 'slide-nonfull'
-                            ? '/template-previews/slide-nonfullscreen.mp4'
+                : activePreviewTemplate?.splashGroup
+                    ? splashPreviewFallbacks[activePreviewTemplate.splashGroup] || ''
                     : '';
         const previewVideoUrl = activePreviewTemplate?.preview_video_path || fallbackPreviewVideoUrl;
         if (!activePreviewTemplate || !previewVideoUrl) return [];
