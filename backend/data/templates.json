@@ -169,6 +169,7 @@
     "maskPath": "backend/storage/masks/1770618693115_______________________.png.png",
     "mask_path": "/static/masks/1770618693115_______________________.png.png",
     "maskUrl": "/static/masks/1770618693115_______________________.png.png",
+    "preview_image_path": "/template-previews/hot-recommend-third.png",
     "processedCount": 6
   },
   {
@@ -182,6 +183,7 @@
     "mask_path": "/static/masks/1770623311229__________________________.jpg.jpg",
     "maskUrl": "/static/masks/1770623311229__________________________.jpg.jpg",
     "badge_overlay_path": "/static/1770623316420__________________________.png.png",
+    "preview_image_path": "/template-previews/hot-search-word.jpg",
     "processedCount": 4
   },
   {
@@ -195,6 +197,7 @@
     "maskPath": "backend/storage/masks/1770618700596_________________.png.png",
     "mask_path": "/static/masks/1770618700596_________________.png.png",
     "maskUrl": "/static/masks/1770618700596_________________.png.png",
+    "preview_image_path": "/template-previews/topic-page-bg-banner.jpg",
     "processedCount": 2
   },
   {
@@ -208,6 +211,7 @@
     "mask_path": "/static/masks/1770619559716_________________banner.jpg.jpg",
     "maskUrl": "/static/masks/1770619559716_________________banner.jpg.jpg",
     "badge_overlay_path": "/static/badges/mt-ib-4_badge.png",
+    "preview_image_path": "/template-previews/topic-page-bg-banner.jpg",
     "processedCount": 1
   },
   {
@@ -221,6 +225,7 @@
     "mask_path": "/default-assets/standard/mt-p-1-mask.jpg",
     "maskUrl": "/default-assets/standard/mt-p-1-mask.jpg",
     "badge_overlay_path": "/default-assets/standard/mt-p-1-badge.png",
+    "preview_video_path": "/template-previews/score-popup.mp4",
     "processedCount": 10
   },
   {
@@ -233,19 +238,8 @@
     "maskPath": "backend/storage/masks/1770699760569______________-.jpg.jpg",
     "mask_path": "/static/masks/1770699760569______________-.jpg.jpg",
     "maskUrl": "/static/masks/1770699760569______________-.jpg.jpg",
+    "preview_image_path": "/template-previews/home-popup.jpg",
     "processedCount": 6
-  },
-  {
-    "id": "mt-p-3",
-    "app": "美图秀秀",
-    "category": "弹窗",
-    "name": "首页弹窗异形",
-    "checked": false,
-    "dimensions": "720 x 960",
-    "maskPath": "backend/storage/masks/1770699763404______________-.jpg.jpg",
-    "mask_path": "/static/masks/1770699763404______________-.jpg.jpg",
-    "maskUrl": "/static/masks/1770699763404______________-.jpg.jpg",
-    "processedCount": 15
   },
   {
     "id": "my-s-1",

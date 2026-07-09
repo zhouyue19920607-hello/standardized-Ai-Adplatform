@@ -51,34 +51,31 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
             </div>
             </Link>
             <div className="min-w-0">
-              <h1 className={`board-title-switch ${isConfigPage ? 'is-creative' : 'is-standard'}`}>
-                <Link
-                  to="/"
-                  className={`board-title-link ${!isConfigPage ? 'is-active' : ''}`}
-                  aria-current={!isConfigPage ? 'page' : undefined}
-                >
-                  {t('header.title')}
-                </Link>
-                <span className="board-title-slash" aria-hidden="true">/</span>
-                <span className="creative-title-hint-anchor">
+              <h1 className={`text-[19px] font-black leading-tight tracking-normal ${isConfigPage ? 'text-white' : 'text-slate-950'}`}>
+                {isConfigPage ? '创新形式素材看板' : t('header.title')}
+              </h1>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <nav className="board-switcher" aria-label="素材看板切换">
+                  <Link
+                    to="/"
+                    className={`board-switch-link ${!isConfigPage ? 'is-active' : ''}`}
+                    aria-current={!isConfigPage ? 'page' : undefined}
+                  >
+                    标准
+                  </Link>
+                  <span className="board-switch-divider" aria-hidden="true" />
                   <Link
                     to="/config"
-                    className={`board-title-link ${isConfigPage ? 'is-active' : ''}`}
+                    className={`board-switch-link ${isConfigPage ? 'is-active' : ''}`}
                     aria-current={isConfigPage ? 'page' : undefined}
                   >
-                    创新形式素材看板
+                    创新
                   </Link>
-                  {!isConfigPage && (
-                    <span className="creative-entry-hint-strip" role="status">
-                      <span className="creative-entry-hint-dot" aria-hidden="true" />
-                      可切换创新形式素材看板
-                    </span>
-                  )}
+                </nav>
+                <span className={`board-switch-hint ${isConfigPage ? 'text-white/55' : 'text-slate-500'}`}>
+                  {isConfigPage ? '可切换标准化素材看板' : '可切换创新形式素材看板'}
                 </span>
-              </h1>
-              <p className={`text-[10px] font-semibold tracking-normal text-left ${isConfigPage ? 'text-white/60' : 'text-slate-500'}`}>
-                {isConfigPage ? '自定义模版' : t('header.subtitle')}
-              </p>
+              </div>
             </div>
           </div>
         </div>

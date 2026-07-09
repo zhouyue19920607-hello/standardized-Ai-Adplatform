@@ -32,11 +32,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t } = useLanguage();
   if (!Array.isArray(templates)) return null;
+  const sidebarTemplates = templates.filter(tpl => tpl.category !== '信息流' && tpl.id !== 'mt-fe-1');
   const apps: AdTemplate['app'][] = ['美图秀秀', '美颜', 'wink'];
 
   // NOTE: 三平台开屏 — 仅取美图秀秀的开屏模板作为代表，生成时自动关联三平台蒙版
-  const meituSplashTemplates = templates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏' && tpl.splashGroup !== 'bubble' && tpl.splashGroup !== 'triple-nonfull');
-  const canPreviewTemplate = (tpl: AdTemplate) => Boolean(tpl.preview_video_path || tpl.id === 'mt-s-1' || tpl.splashGroup === 'nonfull' || tpl.splashGroup === 'slide' || tpl.splashGroup === 'slide-nonfull' || tpl.splashGroup === 'triple');
+  const meituSplashTemplates = sidebarTemplates.filter(tpl => tpl.app === '美图秀秀' && tpl.category === '开屏' && tpl.splashGroup !== 'bubble' && tpl.splashGroup !== 'triple-nonfull');
+  const canPreviewTemplate = (tpl: AdTemplate) => Boolean(tpl.preview_video_path || tpl.preview_image_path || tpl.id === 'mt-s-1' || tpl.splashGroup === 'nonfull' || tpl.splashGroup === 'slide' || tpl.splashGroup === 'slide-nonfull' || tpl.splashGroup === 'triple');
   const handleTemplatePreviewEnter = (tpl: AdTemplate) => {
     if (canPreviewTemplate(tpl)) onTemplatePreviewHover?.(tpl);
   };
@@ -57,7 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     const initialExpanded: Record<string, boolean> = {};
-    templates.forEach(tpl => {
+    sidebarTemplates.forEach(tpl => {
       const key = `${tpl.app}-${tpl.category}`;
       if (initialExpanded[key] === undefined) initialExpanded[key] = false;
     });
@@ -210,7 +211,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* ===== 各 App 其他分类（开屏已移至上方三平台分组，不再重复显示）===== */}
         {apps.map(appName => {
-          const appTemplates = templates.filter(tpl => {
+          const appTemplates = sidebarTemplates.filter(tpl => {
             if (tpl.id === 'mt-f-2') return false;
             if (appName === '美颜') {
               return tpl.id === 'my-f-1';

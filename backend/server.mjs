@@ -83,9 +83,9 @@ const IMPLEMENTED_CREATIVE_TEMPLATE_IDS = new Set(DEFAULT_CREATIVE_TEMPLATES.map
 // 格式：{ "mt-f-1": 12, "mt-ib-1": 5, ... }
 const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 // NOTE: 遇罩/裁剪层/角标路径单独存储，不随代码更新被覆盖
-// 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path, preview_video_path } }
+// 格式：{ "mt-s-1": { mask_path, maskUrl, maskPath, crop_overlay_path, badge_overlay_path, preview_video_path, preview_image_path } }
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
-const ASSET_OVERRIDE_FIELDS = ["maskPath", "mask_path", "maskUrl", "crop_overlay_path", "badge_overlay_path", "preview_video_path"];
+const ASSET_OVERRIDE_FIELDS = ["maskPath", "mask_path", "maskUrl", "crop_overlay_path", "badge_overlay_path", "preview_video_path", "preview_image_path"];
 const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "mt-s-5": {
     preview_video_path: "/template-previews/bubble-nonfullscreen.mp4"
@@ -105,11 +105,27 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "mt-s-8": {
     preview_video_path: "/template-previews/triple-fullscreen.mp4"
   },
+  "mt-ib-1": {
+    preview_image_path: "/template-previews/hot-recommend-third.png"
+  },
+  "mt-ib-2": {
+    preview_image_path: "/template-previews/hot-search-word.jpg"
+  },
+  "mt-ib-3": {
+    preview_image_path: "/template-previews/topic-page-bg-banner.jpg"
+  },
+  "mt-ib-4": {
+    preview_image_path: "/template-previews/topic-page-bg-banner.jpg"
+  },
+  "mt-p-2": {
+    preview_image_path: "/template-previews/home-popup.jpg"
+  },
   "mt-p-1": {
     maskPath: "backend/default-assets/standard/mt-p-1-mask.jpg",
     mask_path: "/default-assets/standard/mt-p-1-mask.jpg",
     maskUrl: "/default-assets/standard/mt-p-1-mask.jpg",
-    badge_overlay_path: "/default-assets/standard/mt-p-1-badge.png"
+    badge_overlay_path: "/default-assets/standard/mt-p-1-badge.png",
+    preview_video_path: "/template-previews/score-popup.mp4"
   },
   "my-f-1": {
     maskPath: "backend/storage/masks/my_focal_window_mask.png",
@@ -437,13 +453,12 @@ async function ensureDataFiles() {
       { id: "mt-f-1", app: "美图秀秀", category: "焦点视窗", name: "焦点视窗", checked: true, dimensions: "1126 x 2436" },
       { id: "mt-f-3", app: "美图秀秀", category: "焦点视窗", name: "沉浸式焦点视窗", checked: false, dimensions: "1440 x 2340" },
       { id: "mt-fe-1", app: "美图秀秀", category: "信息流", name: "一键配方图文", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-ib-1", app: "美图秀秀", category: "icon/banner", name: "热推第三位", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1126 x 640" },
-      { id: "mt-ib-4", app: "美图秀秀", category: "icon/banner", name: "话题页banner", checked: false, dimensions: "1080 x 1920" },
+      { id: "mt-ib-1", app: "美图秀秀", category: "icon/banner", name: "热推第三位", checked: false, dimensions: "1080 x 1920", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-ib-1"] },
+      { id: "mt-ib-2", app: "美图秀秀", category: "icon/banner", name: "热搜词第四位", checked: false, dimensions: "1080 x 1920", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-ib-2"] },
+      { id: "mt-ib-3", app: "美图秀秀", category: "icon/banner", name: "话题页背景板", checked: false, dimensions: "1126 x 640", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-ib-3"] },
+      { id: "mt-ib-4", app: "美图秀秀", category: "icon/banner", name: "话题页banner", checked: false, dimensions: "1080 x 1920", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-ib-4"] },
       { id: "mt-p-1", app: "美图秀秀", category: "弹窗", name: "保分页弹窗", checked: false, dimensions: "960 x 1440", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-p-1"] },
-      { id: "mt-p-2", app: "美图秀秀", category: "弹窗", name: "首页弹窗", checked: false, dimensions: "1080 x 1920" },
-      { id: "mt-p-3", app: "美图秀秀", category: "弹窗", name: "首页弹窗异形", checked: false, dimensions: "1080 x 1920" },
+      { id: "mt-p-2", app: "美图秀秀", category: "弹窗", name: "首页弹窗", checked: false, dimensions: "1080 x 1920", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-p-2"] },
 
       // 美颜
       { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },

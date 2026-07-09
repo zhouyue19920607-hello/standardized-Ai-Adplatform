@@ -74,14 +74,16 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     ? splashPreviewFallbacks[activePreviewTemplate.splashGroup] || ''
                     : '';
         const previewVideoUrl = activePreviewTemplate?.preview_video_path || fallbackPreviewVideoUrl;
-        if (!activePreviewTemplate || !previewVideoUrl) return [];
+        const previewImageUrl = activePreviewTemplate?.preview_image_path || '';
+        const previewUrl = previewVideoUrl || previewImageUrl;
+        if (!activePreviewTemplate || !previewUrl) return [];
         return [{
             id: `template-preview-${activePreviewTemplate.id}`,
-            url: previewVideoUrl,
-            name: `${activePreviewTemplate.name}展示视频.mp4`,
+            url: previewUrl,
+            name: previewVideoUrl ? `${activePreviewTemplate.name}展示视频.mp4` : `${activePreviewTemplate.name}展示图.png`,
             size: 'template-preview',
             isCompressed: false,
-            type: 'video/mp4',
+            type: previewVideoUrl ? 'video/mp4' : 'image/png',
             category: activePreviewTemplate.category,
             app: activePreviewTemplate.app,
             templateName: activePreviewTemplate.name,
