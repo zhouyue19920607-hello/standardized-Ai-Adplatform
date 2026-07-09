@@ -63,6 +63,8 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
             nonfull: '/template-previews/bubble-nonfullscreen.mp4',
             slide: '/template-previews/slide-fullscreen.mp4',
             'slide-nonfull': '/template-previews/slide-nonfullscreen.mp4',
+            twist: '/template-previews/twist-fullscreen.mp4',
+            'twist-nonfull': '/template-previews/twist-nonfullscreen.mp4',
             triple: '/template-previews/triple-fullscreen.mp4',
         };
         const fallbackPreviewVideoUrl =

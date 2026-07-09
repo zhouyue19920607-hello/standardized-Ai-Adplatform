@@ -96,6 +96,12 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "mt-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
   },
+  "mt-s-3": {
+    preview_video_path: "/template-previews/twist-fullscreen.mp4"
+  },
+  "mt-s-7": {
+    preview_video_path: "/template-previews/twist-nonfullscreen.mp4"
+  },
   "mt-s-8": {
     preview_video_path: "/template-previews/triple-fullscreen.mp4"
   },
@@ -121,6 +127,12 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   "my-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
   },
+  "my-s-3": {
+    preview_video_path: "/template-previews/twist-fullscreen.mp4"
+  },
+  "my-s-7": {
+    preview_video_path: "/template-previews/twist-nonfullscreen.mp4"
+  },
   "my-s-8": {
     preview_video_path: "/template-previews/triple-fullscreen.mp4"
   },
@@ -132,6 +144,12 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
   },
   "wk-s-6": {
     preview_video_path: "/template-previews/slide-nonfullscreen.mp4"
+  },
+  "wk-s-3": {
+    preview_video_path: "/template-previews/twist-fullscreen.mp4"
+  },
+  "wk-s-7": {
+    preview_video_path: "/template-previews/twist-nonfullscreen.mp4"
   },
   "wk-s-8": {
     preview_video_path: "/template-previews/triple-fullscreen.mp4"

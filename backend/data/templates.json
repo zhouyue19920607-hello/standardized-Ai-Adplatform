@@ -68,6 +68,7 @@
     "checked": false,
     "dimensions": "1440 x 2340",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-fullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_twist_fullscreen_mask.png",
     "mask_path": "/static/masks/mt_twist_fullscreen_mask.png",
     "maskUrl": "/static/masks/mt_twist_fullscreen_mask.png",
@@ -82,6 +83,7 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_twist_nonfullscreen_mask.png",
     "mask_path": "/static/masks/mt_twist_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/mt_twist_nonfullscreen_mask.png",
@@ -309,6 +311,7 @@
     "dimensions": "1440 x 2340",
     "splashGroup": "twist",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-fullscreen.mp4",
     "maskPath": "backend/storage/masks/my_twist_fullscreen_mask.png",
     "mask_path": "/static/masks/my_twist_fullscreen_mask.png",
     "maskUrl": "/static/masks/my_twist_fullscreen_mask.png"
@@ -322,6 +325,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "twist-nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/my_twist_nonfullscreen_mask.png",
     "mask_path": "/static/masks/my_twist_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/my_twist_nonfullscreen_mask.png"
@@ -448,6 +452,7 @@
     "dimensions": "1440 x 2340",
     "splashGroup": "twist",
     "crop_overlay_path": "/static/badges/splash_fullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-fullscreen.mp4",
     "maskPath": "backend/storage/masks/wk_twist_fullscreen_mask.png",
     "mask_path": "/static/masks/wk_twist_fullscreen_mask.png",
     "maskUrl": "/static/masks/wk_twist_fullscreen_mask.png"
@@ -461,6 +466,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "twist-nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/twist-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/wk_twist_nonfullscreen_mask.png",
     "mask_path": "/static/masks/wk_twist_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/wk_twist_nonfullscreen_mask.png"

@@ -103,28 +103,10 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
             <span className="board-switch-divider" aria-hidden="true" />
             <span className="creative-entry-hint-anchor">
               {!isConfigPage && showCreativeEntryHint && (
-                <>
-                  <span className="creative-entry-hint-pulse" aria-hidden="true" />
-                  <div className="creative-entry-hint-bubble" role="status">
-                    <span className="creative-entry-hint-dot" aria-hidden="true" />
-                    <div>
-                      <p className="text-[11px] font-black text-slate-950 leading-none">还有互动模板</p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-500 leading-none">炫动开屏、翻卡、焕新 UI 在这里</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="creative-entry-hint-close"
-                      aria-label="关闭创新形式看板入口提示"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        dismissCreativeEntryHint();
-                      }}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">close</span>
-                    </button>
-                  </div>
-                </>
+                <span className="creative-entry-hint-strip" role="status">
+                  <span className="creative-entry-hint-dot" aria-hidden="true" />
+                  创新形式素材看板
+                </span>
               )}
               <Link
                 to="/config"
