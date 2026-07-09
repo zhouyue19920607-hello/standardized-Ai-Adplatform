@@ -204,6 +204,67 @@ samp {
   filter: drop-shadow(0 32px 90px rgba(0, 0, 0, 0.45));
 }
 
+.board-title-switch {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  color: #94a3b8;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.board-title-link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  color: rgba(148, 163, 184, 0.88);
+  text-decoration: none;
+  transition: color 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+.board-title-link:hover {
+  color: #0f172a;
+}
+
+.board-title-link.is-active {
+  color: #0f172a;
+}
+
+.board-title-slash {
+  color: rgba(100, 116, 139, 0.42);
+  font-weight: 800;
+}
+
+.creative-title-hint-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  isolation: isolate;
+}
+
+.creative-title-hint-anchor > a {
+  position: relative;
+  z-index: 2;
+}
+
+.creative-board-topbar .board-title-link {
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.creative-board-topbar .board-title-link:hover,
+.creative-board-topbar .board-title-link.is-active {
+  color: #fff;
+}
+
+.creative-board-topbar .board-title-slash {
+  color: rgba(255, 255, 255, 0.28);
+}
+
 .board-switcher {
   display: inline-flex;
   align-items: center;
@@ -984,7 +1045,7 @@ samp {
   align-items: center;
   gap: 6px;
   width: max-content;
-  max-width: 168px;
+  max-width: 196px;
   height: 28px;
   padding: 0 10px;
   border-radius: 999px;

@@ -7,46 +7,11 @@ interface HeaderProps {
   onOpenAdmin?: () => void;
 }
 
-const CREATIVE_ENTRY_HINT_SESSION_KEY = 'saap_creative_entry_hint_seen_session_v1';
-const CREATIVE_ENTRY_HINT_LEGACY_KEY = 'saap_creative_entry_hint_seen_v1';
-
 const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
   const { t, toggleLanguage, language } = useLanguage();
   const location = useLocation();
   const isConfigPage = location.pathname === '/config';
-  const [showCreativeEntryHint, setShowCreativeEntryHint] = useState(false);
   const [authState, setAuthState] = useState<MeituAuthState | null>(null);
-
-  useEffect(() => {
-    if (isConfigPage || typeof window === 'undefined') {
-      setShowCreativeEntryHint(false);
-      return;
-    }
-
-    window.localStorage.removeItem(CREATIVE_ENTRY_HINT_LEGACY_KEY);
-    if (window.sessionStorage.getItem(CREATIVE_ENTRY_HINT_SESSION_KEY) === '1') return;
-
-    const openTimer = window.setTimeout(() => {
-      setShowCreativeEntryHint(true);
-    }, 600);
-
-    const closeTimer = window.setTimeout(() => {
-      setShowCreativeEntryHint(false);
-    }, 12000);
-
-    return () => {
-      window.clearTimeout(openTimer);
-      window.clearTimeout(closeTimer);
-    };
-  }, [isConfigPage]);
-
-  const dismissCreativeEntryHint = () => {
-    setShowCreativeEntryHint(false);
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(CREATIVE_ENTRY_HINT_LEGACY_KEY);
-      window.sessionStorage.setItem(CREATIVE_ENTRY_HINT_SESSION_KEY, '1');
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -73,51 +38,49 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
     <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-5">
-          <Link
-            to={isConfigPage ? '/' : '/config'}
-            onClick={dismissCreativeEntryHint}
-            className="flex items-center gap-3 group/logo cursor-pointer hover:opacity-80 transition-all"
-          >
+          <div className="flex items-center gap-3">
+            <Link
+              to={isConfigPage ? '/' : '/config'}
+              className="group/logo flex shrink-0 cursor-pointer items-center hover:opacity-80 transition-all"
+              aria-label={isConfigPage ? '返回标准化素材看板' : '进入创新形式素材看板'}
+            >
             <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
               <span className="material-symbols-outlined text-white text-2xl animate-eye-look">
                 visibility
               </span>
             </div>
-            <div>
-              <h1 className={`text-lg font-bold tracking-tight ${isConfigPage ? 'text-white' : 'text-slate-900'}`}>
-                {isConfigPage ? '创新形式标准素材看板' : t('header.title')}
+            </Link>
+            <div className="min-w-0">
+              <h1 className={`board-title-switch ${isConfigPage ? 'is-creative' : 'is-standard'}`}>
+                <Link
+                  to="/"
+                  className={`board-title-link ${!isConfigPage ? 'is-active' : ''}`}
+                  aria-current={!isConfigPage ? 'page' : undefined}
+                >
+                  {t('header.title')}
+                </Link>
+                <span className="board-title-slash" aria-hidden="true">/</span>
+                <span className="creative-title-hint-anchor">
+                  <Link
+                    to="/config"
+                    className={`board-title-link ${isConfigPage ? 'is-active' : ''}`}
+                    aria-current={isConfigPage ? 'page' : undefined}
+                  >
+                    创新形式素材看板
+                  </Link>
+                  {!isConfigPage && (
+                    <span className="creative-entry-hint-strip" role="status">
+                      <span className="creative-entry-hint-dot" aria-hidden="true" />
+                      可切换创新形式素材看板
+                    </span>
+                  )}
+                </span>
               </h1>
               <p className={`text-[10px] font-semibold tracking-normal text-left ${isConfigPage ? 'text-white/60' : 'text-slate-500'}`}>
                 {isConfigPage ? '自定义模版' : t('header.subtitle')}
               </p>
             </div>
-          </Link>
-          <nav className="board-switcher" aria-label="看板切换">
-            <Link
-              to="/"
-              className={`board-switch-link ${!isConfigPage ? 'is-active' : ''}`}
-              aria-current={!isConfigPage ? 'page' : undefined}
-            >
-              标准素材
-            </Link>
-            <span className="board-switch-divider" aria-hidden="true" />
-            <span className="creative-entry-hint-anchor">
-              {!isConfigPage && showCreativeEntryHint && (
-                <span className="creative-entry-hint-strip" role="status">
-                  <span className="creative-entry-hint-dot" aria-hidden="true" />
-                  创新形式素材看板
-                </span>
-              )}
-              <Link
-                to="/config"
-                onClick={dismissCreativeEntryHint}
-                className={`board-switch-link ${isConfigPage ? 'is-active' : ''}`}
-                aria-current={isConfigPage ? 'page' : undefined}
-              >
-                创新形式
-              </Link>
-            </span>
-          </nav>
+          </div>
         </div>
         <div className="flex items-center gap-5">
           {authState?.configured && (
