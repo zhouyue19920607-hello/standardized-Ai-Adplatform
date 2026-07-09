@@ -87,6 +87,9 @@ const USAGE_STATS_FILE = path.join(DATA_DIR, "usage-stats.json");
 const ASSET_OVERRIDES_FILE = path.join(DATA_DIR, "asset-overrides.json");
 const ASSET_OVERRIDE_FIELDS = ["maskPath", "mask_path", "maskUrl", "crop_overlay_path", "badge_overlay_path", "preview_video_path"];
 const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
+  "mt-s-5": {
+    preview_video_path: "/template-previews/bubble-nonfullscreen.mp4"
+  },
   "mt-p-1": {
     maskPath: "backend/default-assets/standard/mt-p-1-mask.jpg",
     mask_path: "/default-assets/standard/mt-p-1-mask.jpg",
@@ -99,6 +102,12 @@ const DEFAULT_TEMPLATE_ASSET_OVERRIDES = {
     maskUrl: "/static/masks/my_focal_window_mask.png",
     badge_overlay_path: "/static/badges/my_focal_window_badge.png",
     preview_video_path: "/template-previews/meiyan-focal-window.mp4"
+  },
+  "my-s-5": {
+    preview_video_path: "/template-previews/bubble-nonfullscreen.mp4"
+  },
+  "wk-s-5": {
+    preview_video_path: "/template-previews/bubble-nonfullscreen.mp4"
   }
 };
 const DEFAULT_TEMPLATE_ASSET_LEGACY_PATHS = {
@@ -373,7 +382,7 @@ async function ensureDataFiles() {
     const initialTemplates = [
       // 美图秀秀
       { id: "mt-s-1", app: "美图秀秀", category: "开屏", name: "气泡全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
-      { id: "mt-s-5", app: "美图秀秀", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
+      { id: "mt-s-5", app: "美图秀秀", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["mt-s-5"] },
       { id: "mt-s-2", app: "美图秀秀", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "mt-s-6", app: "美图秀秀", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "mt-s-3", app: "美图秀秀", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
@@ -393,7 +402,7 @@ async function ensureDataFiles() {
 
       // 美颜
       { id: "my-s-1", app: "美颜", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
-      { id: "my-s-5", app: "美颜", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
+      { id: "my-s-5", app: "美颜", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["my-s-5"] },
       { id: "my-s-2", app: "美颜", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "my-s-6", app: "美颜", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "my-s-3", app: "美颜", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },
@@ -406,7 +415,7 @@ async function ensureDataFiles() {
 
       // wink
       { id: "wk-s-1", app: "wink", category: "开屏", name: "动态开屏", checked: false, dimensions: "1440 x 2340", splashGroup: "dynamic" },
-      { id: "wk-s-5", app: "wink", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull" },
+      { id: "wk-s-5", app: "wink", category: "开屏", name: "气泡非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "nonfull", ...DEFAULT_TEMPLATE_ASSET_OVERRIDES["wk-s-5"] },
       { id: "wk-s-2", app: "wink", category: "开屏", name: "上下滑动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "slide" },
       { id: "wk-s-6", app: "wink", category: "开屏", name: "上下滑动非全屏", checked: false, dimensions: "1440 x 1938", splashGroup: "slide-nonfull" },
       { id: "wk-s-3", app: "wink", category: "开屏", name: "扭动全屏", checked: false, dimensions: "1440 x 2340", splashGroup: "twist" },

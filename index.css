@@ -733,17 +733,18 @@ samp {
 }
 
 .standard-preview-toolbar {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.1);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 251, 255, 0.93)) !important;
   box-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.075),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    0 16px 36px rgba(15, 23, 42, 0.1),
+    0 2px 8px rgba(37, 99, 235, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
 }
 
 .standard-preview-toolbar-wrap {
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .standard-preview-toolbar-icon {

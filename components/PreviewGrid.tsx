@@ -775,10 +775,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
             {templatePreviewAsset.type.startsWith('video') ? (
-              <div className="relative flex max-h-[72vh] w-[min(94vw,960px)] items-center justify-center overflow-hidden rounded-[24px] bg-slate-950/5 shadow-2xl ring-1 ring-black/10">
+              <div className="template-preview-video-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
                 <video
                   src={templatePreviewAsset.url}
-                  className="block h-auto max-h-[72vh] w-auto max-w-full object-contain"
+                  className="block max-h-[72vh] w-full object-contain rounded-[22px]"
                   controls={false}
                   autoPlay
                   playsInline

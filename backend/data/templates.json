@@ -22,6 +22,7 @@
     "checked": false,
     "dimensions": "1440 x 1938",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/bubble-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/mt_bubble_nonfullscreen_mask.png",
     "mask_path": "/static/masks/mt_bubble_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/mt_bubble_nonfullscreen_mask.png",
@@ -263,6 +264,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/bubble-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/my_bubble_nonfullscreen_mask.png",
     "mask_path": "/static/masks/my_bubble_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/my_bubble_nonfullscreen_mask.png"
@@ -398,6 +400,7 @@
     "dimensions": "1440 x 1938",
     "splashGroup": "nonfull",
     "crop_overlay_path": "/static/badges/splash_nonfullscreen_safe_crop.png",
+    "preview_video_path": "/template-previews/bubble-nonfullscreen.mp4",
     "maskPath": "backend/storage/masks/wk_bubble_nonfullscreen_mask.png",
     "mask_path": "/static/masks/wk_bubble_nonfullscreen_mask.png",
     "maskUrl": "/static/masks/wk_bubble_nonfullscreen_mask.png"

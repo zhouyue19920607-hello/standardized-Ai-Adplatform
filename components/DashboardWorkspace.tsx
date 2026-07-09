@@ -59,7 +59,13 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
     const [lockedPreviewTemplate, setLockedPreviewTemplate] = useState<AdTemplate | null>(null);
     const activePreviewTemplate = hoveredPreviewTemplate || lockedPreviewTemplate;
     const hoverPreviewAssets = useMemo<AdAsset[]>(() => {
-        const previewVideoUrl = activePreviewTemplate?.preview_video_path || (activePreviewTemplate?.id === 'mt-s-1' ? '/template-previews/bubble-fullscreen.mp4' : '');
+        const fallbackPreviewVideoUrl =
+            activePreviewTemplate?.id === 'mt-s-1'
+                ? '/template-previews/bubble-fullscreen.mp4'
+                : activePreviewTemplate?.splashGroup === 'nonfull'
+                    ? '/template-previews/bubble-nonfullscreen.mp4'
+                    : '';
+        const previewVideoUrl = activePreviewTemplate?.preview_video_path || fallbackPreviewVideoUrl;
         if (!activePreviewTemplate || !previewVideoUrl) return [];
         return [{
             id: `template-preview-${activePreviewTemplate.id}`,
@@ -77,6 +83,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
         }];
     }, [activePreviewTemplate]);
     const previewAssets = hoverPreviewAssets.length > 0 ? hoverPreviewAssets : processedAssets;
+    const shouldShowPreviewToolbar = isProcessing || processedAssets.length > 0;
 
     const handleGenerateWithPreviewReset = () => {
         setHoveredPreviewTemplate(null);
@@ -309,72 +316,74 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                     </section>
 
                     {/* Sticky Controller Header */}
-                    <div className="standard-preview-toolbar-wrap px-4 pt-1 pb-3 sticky top-[74px] z-30 pointer-events-none transition-all duration-300">
-                        <div className="standard-preview-toolbar flex items-center justify-between px-5 py-3 pointer-events-auto">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="standard-preview-toolbar-icon w-10 h-10 flex items-center justify-center text-primary">
-                                        <span className="material-symbols-outlined text-[24px]">grid_view</span>
+                    {shouldShowPreviewToolbar && (
+                        <div className="standard-preview-toolbar-wrap px-4 -mt-1 pt-0 pb-2 sticky top-[74px] z-30 pointer-events-none transition-all duration-300">
+                            <div className="standard-preview-toolbar flex items-center justify-between px-5 py-3 pointer-events-auto">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="standard-preview-toolbar-icon w-10 h-10 flex items-center justify-center text-primary">
+                                            <span className="material-symbols-outlined text-[24px]">grid_view</span>
+                                        </div>
+                                        <h2 className="text-base font-bold text-slate-800">生成预览</h2>
                                     </div>
-                                    <h2 className="text-base font-bold text-slate-800">生成预览</h2>
-                                </div>
-                                {hoverPreviewAssets.length > 0 && !isProcessing && (
-                                    <span className="text-xs font-bold text-blue-600 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full">
-                                        模版效果预览
-                                    </span>
-                                )}
-                                {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && !isProcessing && (
-                                    <span className="text-xs font-bold text-primary bg-primary/20 backdrop-blur-md border border-primary/30 px-3 py-1 rounded-full">
-                                        {processedAssets.length} 份匹配资产
-                                    </span>
-                                )}
-                                {isProcessing && generationProgress && (
-                                    <span className="text-xs font-bold text-blue-500 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                                        <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
-                                        生成中 {generationProgress.current} / {generationProgress.total}
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="flex items-center gap-4">
-                                <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
-                                    <span className="text-[11px] font-bold text-slate-500">全显遮罩</span>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={config.showMask}
-                                            onChange={() => handleConfigChange({ showMask: !config.showMask })}
-                                        />
-                                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
-                                    </label>
+                                    {hoverPreviewAssets.length > 0 && !isProcessing && (
+                                        <span className="text-xs font-bold text-blue-600 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full">
+                                            模版效果预览
+                                        </span>
+                                    )}
+                                    {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && !isProcessing && (
+                                        <span className="text-xs font-bold text-primary bg-primary/20 backdrop-blur-md border border-primary/30 px-3 py-1 rounded-full">
+                                            {processedAssets.length} 份匹配资产
+                                        </span>
+                                    )}
+                                    {isProcessing && generationProgress && (
+                                        <span className="text-xs font-bold text-blue-500 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                            <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                                            生成中 {generationProgress.current} / {generationProgress.total}
+                                        </span>
+                                    )}
                                 </div>
 
-                                <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
-                                    <span className="text-[11px] font-bold text-slate-500">全显裁剪</span>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={config.showCrop}
-                                            onChange={() => handleConfigChange({ showCrop: !config.showCrop })}
-                                        />
-                                        <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
-                                    </label>
-                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
+                                        <span className="text-[11px] font-bold text-slate-500">全显遮罩</span>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={config.showMask}
+                                                onChange={() => handleConfigChange({ showMask: !config.showMask })}
+                                            />
+                                            <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
+                                        </label>
+                                    </div>
 
-                                {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && (
-                                    <button
-                                        onClick={() => setProcessedAssets([])}
-                                        className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/50 border border-black/5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                                        title="清空"
-                                    >
-                                        <span className="material-symbols-outlined text-[22px]">delete_sweep</span>
-                                    </button>
-                                )}
+                                    <div className="standard-preview-toggle flex items-center gap-3 px-4 py-2 bg-white/50 rounded-xl border border-black/5">
+                                        <span className="text-[11px] font-bold text-slate-500">全显裁剪</span>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={config.showCrop}
+                                                onChange={() => handleConfigChange({ showCrop: !config.showCrop })}
+                                            />
+                                            <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary transition-all"></div>
+                                        </label>
+                                    </div>
+
+                                    {processedAssets.length > 0 && hoverPreviewAssets.length === 0 && (
+                                        <button
+                                            onClick={() => setProcessedAssets([])}
+                                            className="h-10 w-10 flex items-center justify-center rounded-xl bg-white/50 border border-black/5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                                            title="清空"
+                                        >
+                                            <span className="material-symbols-outlined text-[22px]">delete_sweep</span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Processed Previews Section */}
                     <div className="standard-preview-stage w-full pb-24 relative">
