@@ -265,15 +265,103 @@ samp {
   color: rgba(255, 255, 255, 0.28);
 }
 
+.board-brand-cluster {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.board-brand-icon-link {
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+  align-items: center;
+  color: #fff;
+  text-decoration: none;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.board-brand-icon-link:hover {
+  transform: translateY(-1px);
+}
+
+.board-brand-icon {
+  position: relative;
+  display: flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 26% 20%, rgba(255, 255, 255, 0.32), transparent 30%),
+    linear-gradient(145deg, #0a84ff 0%, #007aff 54%, #3867ff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 16px 34px rgba(0, 122, 255, 0.26);
+  transition: transform 420ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+
+.board-brand-icon::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+.board-brand-icon-link:hover .board-brand-icon {
+  transform: rotate(5deg) scale(1.025);
+}
+
+.board-brand-icon--creative {
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.22), transparent 30%),
+    linear-gradient(145deg, rgba(23, 24, 36, 0.98), rgba(7, 10, 18, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.board-brand-icon .material-symbols-outlined {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  font-size: 30px;
+}
+
+.board-brand-copy {
+  min-width: 0;
+}
+
+.board-brand-title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 950;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+
+.board-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+
 .board-switcher {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px;
+  gap: 2px;
+  padding: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 10px 28px rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 8px 20px rgba(15, 23, 42, 0.045);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
@@ -284,41 +372,42 @@ samp {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 52px;
-  height: 26px;
-  padding: 0 12px;
+  min-width: 58px;
+  height: 28px;
+  padding: 0 14px;
   border-radius: 999px;
   color: rgba(71, 85, 105, 0.82);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   line-height: 1;
   text-decoration: none;
-  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 .board-switch-link:hover {
   color: #0f172a;
-  background: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .board-switch-link.is-active {
   color: #fff;
-  background: linear-gradient(135deg, #0f172a, #1f2937);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  background: linear-gradient(135deg, #111827, #1f2937);
+  box-shadow: 0 9px 18px rgba(15, 23, 42, 0.2);
 }
 
 .board-switch-divider {
-  width: 1px;
-  height: 16px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.09);
+  display: none;
 }
 
 .board-switch-hint {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  font-size: 11px;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(15, 23, 42, 0.055);
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0;
@@ -329,14 +418,14 @@ samp {
   content: "";
   width: 6px;
   height: 6px;
-  margin-right: 7px;
+  margin-right: 8px;
   border-radius: 999px;
   background: #007aff;
-  box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.11);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
 }
 
 .creative-board-topbar .board-switcher {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.085);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 14px 36px rgba(0, 0, 0, 0.18);
 }
@@ -358,6 +447,11 @@ samp {
 
 .creative-board-topbar .board-switch-divider {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.creative-board-topbar .board-switch-hint {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .creative-board-glass {

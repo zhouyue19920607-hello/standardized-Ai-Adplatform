@@ -38,23 +38,23 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
     <header className={`liquid-glass px-8 py-3 sticky top-4 z-50 border border-white/20 mx-4 transition-all duration-300 shadow-lg ${isConfigPage ? 'creative-board-topbar' : ''}`}>
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-5">
-          <div className="flex items-center gap-3">
+          <div className="board-brand-cluster">
             <Link
               to={isConfigPage ? '/' : '/config'}
-              className="group/logo flex shrink-0 cursor-pointer items-center hover:opacity-80 transition-all"
+              className="group/logo board-brand-icon-link"
               aria-label={isConfigPage ? '返回标准化素材看板' : '进入创新形式素材看板'}
             >
-            <div className={`h-10 w-10 bg-primary rounded-[10px] shadow-ios transition-transform duration-500 flex items-center justify-center ${isConfigPage ? 'rotate-180 bg-slate-800' : 'group-hover/logo:rotate-12'}`}>
-              <span className="material-symbols-outlined text-white text-2xl animate-eye-look">
-                visibility
-              </span>
-            </div>
+              <div className={`board-brand-icon ${isConfigPage ? 'board-brand-icon--creative' : ''}`}>
+                <span className="material-symbols-outlined animate-eye-look">
+                  visibility
+                </span>
+              </div>
             </Link>
-            <div className="min-w-0">
-              <h1 className={`text-[19px] font-black leading-tight tracking-normal ${isConfigPage ? 'text-white' : 'text-slate-950'}`}>
+            <div className="board-brand-copy">
+              <h1 className={`board-brand-title ${isConfigPage ? 'text-white' : 'text-slate-950'}`}>
                 {isConfigPage ? '创新形式素材看板' : t('header.title')}
               </h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <div className="board-switch-row">
                 <nav className="board-switcher" aria-label="素材看板切换">
                   <Link
                     to="/"
