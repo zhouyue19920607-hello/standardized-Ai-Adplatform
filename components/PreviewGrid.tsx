@@ -613,7 +613,6 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('all');
   const [selectedAssetInfo, setSelectedAssetInfo] = useState<{ asset: AdAsset, showMask: boolean, showCrop?: boolean, showBadge?: boolean } | null>(null);
-  const [templatePreviewAspectRatio, setTemplatePreviewAspectRatio] = useState<string | null>(null);
 
   const filteredAssets = activeTab === 'all' ? assets : assets.filter(a => a.category === activeTab);
   const templatePreviewAsset = assets.find(asset => asset.id.startsWith('template-preview-'));
@@ -622,50 +621,6 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
   const shouldOffsetSelectedMeiyanFocal = !!selectedAsset && selectedAssetInfo?.showMask && selectedAsset.category === '焦点视窗' && selectedAsset.app === '美颜' && !!selectedAsset.maskUrl;
   const selectedMeiyanFocalOffsetStyle = shouldOffsetSelectedMeiyanFocal ? { transform: 'translateY(-3.9819cqh)' } : undefined;
   const shouldAlignSelectedMeiyanFocalBadge = shouldOffsetSelectedMeiyanFocal && !!selectedAsset?.badgeOverlayUrl;
-
-  useEffect(() => {
-    if (!templatePreviewAsset?.url) {
-      setTemplatePreviewAspectRatio(null);
-      return;
-    }
-
-    if (!templatePreviewAsset.type.startsWith('video')) {
-      setTemplatePreviewAspectRatio(null);
-      return;
-    }
-
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.muted = true;
-    video.playsInline = true;
-
-    const handleLoadedMetadata = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setTemplatePreviewAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
-      } else {
-        setTemplatePreviewAspectRatio(null);
-      }
-      video.remove();
-    };
-
-    const handleError = () => {
-      setTemplatePreviewAspectRatio(null);
-      video.remove();
-    };
-
-    video.onloadedmetadata = handleLoadedMetadata;
-    video.onerror = handleError;
-    video.src = templatePreviewAsset.url;
-
-    return () => {
-      video.onloadedmetadata = null;
-      video.onerror = null;
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-      video.remove();
-    };
-  }, [templatePreviewAsset?.url, templatePreviewAsset?.type]);
 
   if (assets.length === 0 && !isGenerating) {
     return (
@@ -775,7 +730,7 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
             {templatePreviewAsset.type.startsWith('video') ? (
-              <div className="template-preview-video-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
+              <div className="template-preview-asset-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
                 <video
                   src={templatePreviewAsset.url}
                   className="block max-h-[72vh] w-full object-contain rounded-[22px]"
@@ -787,11 +742,12 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 />
               </div>
             ) : (
-              <div
-                className="relative overflow-hidden rounded-[24px] shadow-2xl ring-1 ring-black/10"
-                style={{ aspectRatio: templatePreviewAspectRatio || parseAspectRatio(templatePreviewAsset.dimensions || '1440 x 2340'), width: 'min(94vw, 960px)', maxHeight: '70vh' }}
-              >
-                <img src={templatePreviewAsset.url} alt={templatePreviewAsset.templateName} className="block h-full w-full object-contain" />
+              <div className="template-preview-asset-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
+                <img
+                  src={templatePreviewAsset.url}
+                  alt={templatePreviewAsset.templateName}
+                  className="block max-h-[72vh] w-full object-contain"
+                />
               </div>
             )}
           </div>
