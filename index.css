@@ -333,125 +333,73 @@ samp {
   font-size: 30px;
 }
 
-.board-brand-copy {
-  min-width: 0;
-}
-
-.board-brand-title {
-  margin: 0;
-  font-size: 23px;
-  font-weight: 950;
-  line-height: 1.08;
-  letter-spacing: -0.01em;
-}
-
-.board-switch-row {
+.board-brand-nav {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
-  gap: 9px;
-  margin-top: 10px;
-}
-
-.board-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 8px 20px rgba(15, 23, 42, 0.045);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.board-switch-link {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 58px;
-  height: 28px;
-  padding: 0 14px;
-  border-radius: 999px;
-  color: rgba(71, 85, 105, 0.82);
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1;
-  text-decoration: none;
-  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-}
-
-.board-switch-link:hover {
-  color: #0f172a;
-  background: rgba(255, 255, 255, 0.68);
-}
-
-.board-switch-link.is-active {
-  color: #fff;
-  background: linear-gradient(135deg, #111827, #1f2937);
-  box-shadow: 0 9px 18px rgba(15, 23, 42, 0.2);
-}
-
-.board-switch-divider {
-  display: none;
-}
-
-.board-switch-hint {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 11px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.48);
-  border: 1px solid rgba(15, 23, 42, 0.055);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: 0;
+  gap: 18px;
   white-space: nowrap;
 }
 
-.board-switch-hint::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  margin-right: 8px;
+.board-brand-name {
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.board-brand-slash {
+  color: rgba(15, 23, 42, 0.34);
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.board-nav-link {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
-  background: #007aff;
-  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+  padding: 0 18px;
+  color: rgba(71, 85, 105, 0.72);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1;
+  text-decoration: none;
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
-.creative-board-topbar .board-switcher {
-  background: rgba(255, 255, 255, 0.085);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 14px 36px rgba(0, 0, 0, 0.18);
+.board-nav-link:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.58);
 }
 
-.creative-board-topbar .board-switch-link {
-  color: rgba(255, 255, 255, 0.64);
-}
-
-.creative-board-topbar .board-switch-link:hover {
+.board-nav-link.is-active {
   color: #fff;
-  background: rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, #111827, #1f2937);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 12px 24px rgba(15, 23, 42, 0.18);
 }
 
-.creative-board-topbar .board-switch-link.is-active {
+.creative-board-topbar .board-brand-slash {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.creative-board-topbar .board-nav-link {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.creative-board-topbar .board-nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.creative-board-topbar .board-nav-link.is-active {
   color: #0f172a;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 28px rgba(255, 255, 255, 0.1);
-}
-
-.creative-board-topbar .board-switch-divider {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.creative-board-topbar .board-switch-hint {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 14px 28px rgba(0, 0, 0, 0.18);
 }
 
 .creative-board-glass {

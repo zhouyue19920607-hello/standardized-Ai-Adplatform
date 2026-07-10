@@ -8,7 +8,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
-  const { t, toggleLanguage, language } = useLanguage();
+  const { t } = useLanguage();
   const location = useLocation();
   const isConfigPage = location.pathname === '/config';
   const [authState, setAuthState] = useState<MeituAuthState | null>(null);
@@ -50,33 +50,25 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
                 </span>
               </div>
             </Link>
-            <div className="board-brand-copy">
-              <h1 className={`board-brand-title ${isConfigPage ? 'text-white' : 'text-slate-950'}`}>
-                {isConfigPage ? '创新形式素材看板' : t('header.title')}
-              </h1>
-              <div className="board-switch-row">
-                <nav className="board-switcher" aria-label="素材看板切换">
-                  <Link
-                    to="/"
-                    className={`board-switch-link ${!isConfigPage ? 'is-active' : ''}`}
-                    aria-current={!isConfigPage ? 'page' : undefined}
-                  >
-                    标准
-                  </Link>
-                  <span className="board-switch-divider" aria-hidden="true" />
-                  <Link
-                    to="/config"
-                    className={`board-switch-link ${isConfigPage ? 'is-active' : ''}`}
-                    aria-current={isConfigPage ? 'page' : undefined}
-                  >
-                    创新
-                  </Link>
-                </nav>
-                <span className={`board-switch-hint ${isConfigPage ? 'text-white/55' : 'text-slate-500'}`}>
-                  {isConfigPage ? '可切换标准化素材看板' : '可切换创新形式素材看板'}
-                </span>
-              </div>
-            </div>
+            <nav className="board-brand-nav" aria-label="素材看板切换">
+              <span className={`board-brand-name ${isConfigPage ? 'text-white' : 'text-slate-950'}`}>
+                品牌素材自动化处理
+              </span>
+              <span className="board-brand-slash" aria-hidden="true">/</span>
+              <Link
+                to={isConfigPage ? '/config' : '/'}
+                className="board-nav-link is-active"
+                aria-current="page"
+              >
+                {isConfigPage ? '创新看板' : '标准看板'}
+              </Link>
+              <Link
+                to={isConfigPage ? '/' : '/config'}
+                className="board-nav-link"
+              >
+                {isConfigPage ? '标准看板' : '创新看板'}
+              </Link>
+            </nav>
           </div>
         </div>
         <div className="flex items-center gap-5">
@@ -84,7 +76,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
             authState.authenticated ? (
               <div className="flex items-center gap-2 rounded-full border border-black/5 bg-white/55 px-3 py-1.5 shadow-ios">
                 <span className="material-symbols-outlined text-[17px] text-emerald-600">verified_user</span>
-                <span className="max-w-[120px] truncate text-xs font-bold text-slate-700">{authDisplayName}</span>
+                <span className="max-w-[160px] truncate text-xs font-bold text-slate-700">Hello，{authDisplayName}</span>
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -102,13 +94,6 @@ const Header: React.FC<HeaderProps> = ({ onOpenAdmin }) => {
               </a>
             )
           )}
-          <button
-            onClick={toggleLanguage}
-            className="px-3 py-1.5 rounded-ios bg-white/50 hover:bg-white text-slate-700 font-semibold text-xs transition-all border border-black/5 shadow-ios active:scale-95 flex items-center gap-1.5"
-          >
-            <span className="material-symbols-outlined text-[16px]">translate</span>
-            {language === 'zh' ? 'EN' : '中'}
-          </button>
           <button
             onClick={onOpenAdmin}
             className="h-9 w-9 flex items-center justify-center rounded-full bg-white/50 hover:bg-white text-slate-600 hover:text-primary transition-all border border-black/5 shadow-ios active:scale-95"
