@@ -5440,7 +5440,16 @@ async function buildRelayoutBackgroundBuffer(backgroundPath, targetWidth, target
     .toBuffer();
 }
 
+function isImmersiveFocalWindowTemplateForAdapt(context = {}) {
+  const templateId = String(context.templateId || "").toLowerCase();
+  const templateName = String(context.templateName || "");
+  const appName = String(context.appName || "");
+  const text = `${appName}${templateName}${templateId}`.toLowerCase();
+  return /(沉浸式焦点视窗|immersive.*focal|focal.*immersive|mt-f-3)/i.test(text);
+}
+
 function isStandardFocalWindowTemplateForAdapt(context = {}) {
+  if (isImmersiveFocalWindowTemplateForAdapt(context)) return false;
   const templateId = String(context.templateId || "").toLowerCase();
   const templateName = String(context.templateName || "");
   const appName = String(context.appName || "");
@@ -6535,6 +6544,9 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     plan.layoutIntent === "center_expand_only"
       ? "Same-orientation adaptation: keep the entire original poster as the core centered composition. Do not split, move, rewrite, redraw, translate, or regenerate any text, logo, product, subject, button, or brand mark. Only extend the canvas outward around the original image with seamless background continuation."
       : "",
+    plan.layoutIntent === "immersive_focal_center_expand"
+      ? "Immersive focal window adaptation: treat this as a vertical splash-like canvas. Keep the uploaded poster as the unchanged core visual, centered in the target frame. Do not split, move, rewrite, redraw, translate, duplicate, or regenerate any text, logo, product, subject, button, or brand mark. Only extend the surrounding background naturally to the target canvas."
+      : "",
     plan.strategy === "relayout"
       ? "For large ratio changes, preserve the original logo and all readable text exactly. Keep every brand mark, slogan, button copy, and title visible and uncropped. Extend the background and improve composition without deleting or rewriting text."
       : "For moderate ratio changes, keep the original logo and text intact and only fill missing background area. Do not redesign the poster.",
@@ -7582,7 +7594,12 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         analysis,
         context: meituContext
       });
-      if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
+      if (isImmersiveFocalWindowTemplateForAdapt(meituContext) && plan.strategy !== "direct") {
+        plan.strategy = "outpaint";
+        plan.steps = ["detect", "center_original", "background_extension", "protected_crop", "qa"];
+        plan.layoutIntent = "immersive_focal_center_expand";
+        plan.reasons.push("沉浸式焦点视窗按竖版开屏逻辑处理：保留原图核心内容居中，只做背景延展，避免误走普通焦点视窗左右排版拆层");
+      } else if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
         plan.strategy = "relayout";
         plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
         plan.reasons.push("标准焦点视窗模板强制使用左右智能排版：左侧文案/Logo，右侧主体物");
