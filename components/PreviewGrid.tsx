@@ -185,6 +185,9 @@ const AdCard: React.FC<{
         });
 
         if (result.ok && result.url) {
+          if (videoLimitMB && Number(result.sizeMB) > videoLimitMB) {
+            throw new Error(`视频导出后仍超过 ${videoLimitMB}MB，请使用更短的视频素材`);
+          }
           await downloadAsBlob(`${ASSETS_URL}${result.url}`, `${safeName}.mp4`);
         } else {
           throw new Error(result.error || "Video composition failed");
@@ -220,6 +223,10 @@ const AdCard: React.FC<{
       }, 100);
     } catch (err) {
       console.error("Individual download failed", err);
+      if (asset.type.startsWith('video')) {
+        alert(`视频导出失败：${err instanceof Error ? err.message : '请稍后重试'}。为保证叠层效果和文件大小正确，已停止下载原视频。`);
+        return;
+      }
       // Fallback: direct download link
       const link = document.createElement('a');
       link.href = asset.url;
@@ -326,29 +333,46 @@ const AdCard: React.FC<{
             )}
 
             {shouldRenderFixedFocalChrome && (
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute inset-0 z-[10]">
-                  <img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" alt="" />
-                </div>
-                {!isImmersiveFocal && (
-                  <div className="absolute inset-0 z-[20]">
-                    <img src={`${focalAssetsPath}/gradient_layer.png`} className="w-full h-full object-fill" alt="" />
+              (() => {
+                const baseColor = asset.aiExtractedColor || '#FF00FF';
+                const gradColor = asset.gradientColor || getDerivedGradientColor(baseColor);
+                return (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-0 z-[10]">
+                      <img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" alt="" />
+                    </div>
+                    {isImmersiveFocal ? (
+                      <div
+                        className="absolute left-0 right-0 z-[20]"
+                        style={{
+                          top: `${1600 / 2436 * 100}%`,
+                          height: '20.5%',
+                          backgroundColor: gradColor,
+                          maskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)',
+                          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)'
+                        }}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 z-[20]">
+                        <img src={`${focalAssetsPath}/gradient_layer.png`} className="w-full h-full object-fill" alt="" />
+                      </div>
+                    )}
+                    <div
+                      className="absolute inset-0 z-[30]"
+                      style={{
+                        backgroundColor: baseColor,
+                        maskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                        WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`,
+                        maskSize: '100% 100%',
+                        WebkitMaskSize: '100% 100%',
+                      }}
+                    />
+                    <div className="absolute inset-0 z-[40]">
+                      <img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" alt="" />
+                    </div>
                   </div>
-                )}
-                <div
-                  className="absolute inset-0 z-[30]"
-                  style={{
-                    backgroundColor: asset.aiExtractedColor || '#FF00FF',
-                    maskImage: `url(${focalAssetsPath}/icon_bg.png)`,
-                    WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`,
-                    maskSize: '100% 100%',
-                    WebkitMaskSize: '100% 100%',
-                  }}
-                />
-                <div className="absolute inset-0 z-[40]">
-                  <img src={`${focalAssetsPath}/fixed_bg_1.png`} className="w-full h-full object-fill" alt="" />
-                </div>
-              </div>
+                );
+              })()
             )}
 
             {/* Topic Background UI Mask (Overlay Layer) */}
@@ -730,10 +754,10 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               <span>{templatePreviewAsset.templateName} 样式预览</span>
             </div>
             {templatePreviewAsset.type.startsWith('video') ? (
-              <div className="template-preview-asset-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
+              <div className="template-preview-asset-stage mx-auto flex items-center justify-center">
                 <video
                   src={templatePreviewAsset.url}
-                  className="block max-h-[72vh] w-full object-contain rounded-[22px]"
+                  className="template-preview-media block rounded-[22px]"
                   controls={false}
                   autoPlay
                   playsInline
@@ -742,11 +766,11 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
                 />
               </div>
             ) : (
-              <div className="template-preview-asset-stage mx-auto flex w-[clamp(320px,34vw,480px)] max-w-[92vw] items-center justify-center">
+              <div className="template-preview-asset-stage mx-auto flex items-center justify-center">
                 <img
                   src={templatePreviewAsset.url}
                   alt={templatePreviewAsset.templateName}
-                  className="block max-h-[72vh] w-full object-contain"
+                  className="template-preview-media block"
                 />
               </div>
             )}
@@ -840,16 +864,29 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
               (() => {
                 const isImmersiveFocal = selectedAsset.templateName.includes('沉浸式');
                 const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
+                const baseColor = selectedAsset.aiExtractedColor || '#FF00FF';
+                const gradColor = selectedAsset.gradientColor || getDerivedGradientColor(baseColor);
                 return (
                   <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute inset-0 z-[10]"><img src={`${focalAssetsPath}/fixed_bg_2.png`} className="w-full h-full object-fill" alt="" /></div>
-                    {!isImmersiveFocal && (
+                    {isImmersiveFocal ? (
+                      <div
+                        className="absolute left-0 right-0 z-[20]"
+                        style={{
+                          top: `${1600 / 2436 * 100}%`,
+                          height: '20.5%',
+                          backgroundColor: gradColor,
+                          maskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)',
+                          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, white 10%, white 30%, transparent 100%)'
+                        }}
+                      />
+                    ) : (
                       <div className="absolute inset-0 z-[20]"><img src={`${focalAssetsPath}/gradient_layer.png`} className="w-full h-full object-fill" alt="" /></div>
                     )}
                     <div
                       className="absolute inset-0 z-[30]"
                       style={{
-                        backgroundColor: selectedAsset.aiExtractedColor || '#FF00FF',
+                        backgroundColor: baseColor,
                         maskImage: `url(${focalAssetsPath}/icon_bg.png)`,
                         WebkitMaskImage: `url(${focalAssetsPath}/icon_bg.png)`,
                         maskSize: '100% 100%',

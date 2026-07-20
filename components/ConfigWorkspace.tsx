@@ -14,6 +14,7 @@ import {
     getCreativeTemplates,
     uploadRawAsset,
 } from '../services/api';
+import { hexToRgb } from '../utils/colorUtils';
 import { extractSmartPalette } from '../utils/smartColor';
 import CreativeTemplateHoverCard from './CreativeTemplateHoverCard';
 import SideRays from './SideRays';
@@ -45,6 +46,23 @@ interface SpotlightCardAsset {
 
 type SpotlightAiTarget = 'large' | `small-${0 | 1 | 2}`;
 type PolyAiTarget = 'base' | `card-${0 | 1 | 2 | 3}`;
+type CreativeUploadTarget =
+    | 'asset'
+    | 'splash'
+    | 'magazine'
+    | 'spotlight-small'
+    | 'spotlight-large'
+    | 'spotlight-splash'
+    | 'break-frame'
+    | 'break-splash'
+    | 'break-focal'
+    | 'poly-base'
+    | 'poly-cards'
+    | 'poly-focal'
+    | 'refresh-icons'
+    | 'refresh-bottom-nav'
+    | 'linked-opening'
+    | 'linked-focal';
 
 const emptyUpload: UploadState = {
     file: null,
@@ -79,6 +97,7 @@ const dynamicSplashPlatformMasks: Record<CreativeTemplateSettings['platforms'][n
 };
 
 const SHOW_REFRESH_BOTTOM_NAV_UPLOAD = false;
+const LINKED_TEMPLATE_ID = 'linked-super-video-panorama';
 
 const defaultCreativeCategories = [
     {
@@ -101,6 +120,14 @@ const defaultCreativeCategories = [
             { id: 'polymorphic-flip-card', label: '多态翻卡' },
             { id: 'jumping-focal-window', label: '跃动焦点视窗' },
             { id: 'refresh-ui-bottom-nav', label: '焕新UI' },
+        ],
+    },
+    {
+        id: 'linked',
+        label: '联动创意模版',
+        icon: 'hub',
+        templates: [
+            { id: LINKED_TEMPLATE_ID, label: '联动超视频-全景视频模版' },
         ],
     },
 ];
@@ -178,6 +205,14 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         preview_video_path: '/template-previews/refresh-ui-bottom-nav.mp4',
         enabled: true,
     },
+    {
+        id: LINKED_TEMPLATE_ID,
+        groupId: 'linked',
+        groupName: '联动创意模版',
+        name: '联动超视频-全景视频模版',
+        dimensions: '开屏 1440 x 2340 / 8s；焦点 1126 x 900；输出 1126 x 2436',
+        enabled: true,
+    },
 ];
 
 const implementedCreativeTemplateIds = new Set(
@@ -187,6 +222,7 @@ const implementedCreativeTemplateIds = new Set(
 const categoryIcons: Record<string, string> = {
     splash: 'wb_sunny',
     home: 'home_app_logo',
+    linked: 'hub',
 };
 
 const isBreakFrameLikeTemplateId = (id?: string | null) => (
@@ -197,6 +233,8 @@ const isBreakFrameLikeTemplateId = (id?: string | null) => (
         id === 'refresh-ui-bottom-nav'
     ))
 );
+
+const isLinkedSuperVideoTemplateId = (id?: string | null) => id === LINKED_TEMPLATE_ID;
 
 const buildCreativeCategories = (templates: CreativeTemplateItem[]) => {
     const enabledTemplates = templates.filter((item) => item.enabled !== false && implementedCreativeTemplateIds.has(item.id));
@@ -261,9 +299,13 @@ const BREAK_CANVAS_H = 2436;
 const BREAK_FOCAL_Y = 0;
 const BREAK_FRAME_Y = 0;
 const BREAK_DURATION = 5000;
+const LINKED_OPENING_DURATION = 8000;
+const LINKED_FULL_OPENING_DURATION = 5000;
+const LINKED_TRANSITION_DURATION = LINKED_OPENING_DURATION - LINKED_FULL_OPENING_DURATION;
+const LINKED_OPENING_DURATION_TOLERANCE = 0.3;
 const BREAK_AI_DURATION_RULE = '每一破框只能维持1.5s';
 const getCreativePreviewAspectRatio = (templateId?: string | null) => (
-    isBreakFrameLikeTemplateId(templateId)
+    isBreakFrameLikeTemplateId(templateId) || isLinkedSuperVideoTemplateId(templateId)
         ? `${BREAK_CANVAS_W} / ${BREAK_CANVAS_H}`
         : `${CANVAS_W} / ${CANVAS_H}`
 );
@@ -818,6 +860,8 @@ const ConfigWorkspace: React.FC = () => {
     const refreshAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const refreshBottomNavInputRef = useRef<HTMLInputElement>(null);
     const refreshBottomNavAiReferenceInputRef = useRef<HTMLInputElement>(null);
+    const linkedOpeningInputRef = useRef<HTMLInputElement>(null);
+    const linkedFocalInputRef = useRef<HTMLInputElement>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
@@ -871,6 +915,8 @@ const ConfigWorkspace: React.FC = () => {
     const [refreshBottomNav, setRefreshBottomNav] = useState<UploadState>(emptyUpload);
     const [refreshBottomNavAiPrompt, setRefreshBottomNavAiPrompt] = useState('');
     const [refreshBottomNavAiReference, setRefreshBottomNavAiReference] = useState<UploadState>(emptyUpload);
+    const [linkedOpeningVideo, setLinkedOpeningVideo] = useState<UploadState>(emptyUpload);
+    const [linkedFocalVideo, setLinkedFocalVideo] = useState<UploadState>(emptyUpload);
     const [prompt, setPrompt] = useState('');
     const [interactionType, setInteractionType] = useState<CreativeTemplateSettings['interactionType']>(defaultCreativeSettings.interactionType);
     const [cropAreaEnabled, setCropAreaEnabled] = useState(defaultCreativeSettings.cropAreaEnabled);
@@ -879,7 +925,7 @@ const ConfigWorkspace: React.FC = () => {
     const [aiGeneratingKey, setAiGeneratingKey] = useState<string | null>(null);
     const [isPreviewPlaying, setIsPreviewPlaying] = useState(true);
     const [saveMessage, setSaveMessage] = useState('');
-    const [dragTarget, setDragTarget] = useState<'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav' | null>(null);
+    const [dragTarget, setDragTarget] = useState<CreativeUploadTarget | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
     const [generatedVideoType, setGeneratedVideoType] = useState('video/webm');
     const [error, setError] = useState('');
@@ -1500,6 +1546,83 @@ const ConfigWorkspace: React.FC = () => {
         } catch (err) {
             URL.revokeObjectURL(url);
             setSplash({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '开屏素材读取失败' });
+        }
+    };
+
+    const updateLinkedOpeningVideo = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+
+        try {
+            if (!file.type.startsWith('video/')) {
+                URL.revokeObjectURL(url);
+                setLinkedOpeningVideo({ file: null, url: null, status: 'invalid', message: '开屏素材仅支持视频' });
+                return;
+            }
+
+            const meta = await getVideoMeta(file);
+            const hasValidSize = meta.width === CANVAS_W && meta.height === CANVAS_H;
+            const hasValidDuration = Number.isFinite(meta.duration) && Math.abs(meta.duration - (LINKED_OPENING_DURATION / 1000)) <= LINKED_OPENING_DURATION_TOLERANCE;
+
+            if (!hasValidSize || !hasValidDuration) {
+                URL.revokeObjectURL(url);
+                setLinkedOpeningVideo({
+                    file: null,
+                    url: null,
+                    status: 'invalid',
+                    message: !hasValidSize
+                        ? `视频 ${meta.width} x ${meta.height}，需为 1440 x 2340`
+                        : `视频时长 ${meta.duration.toFixed(1)}s，需为 8s`,
+                });
+                return;
+            }
+
+            setLinkedOpeningVideo({
+                file,
+                url,
+                status: 'valid',
+                message: '开屏视频 1440 x 2340 / 8s，符合联动规范',
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setLinkedOpeningVideo({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '开屏视频读取失败' });
+        }
+    };
+
+    const updateLinkedFocalVideo = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+
+        try {
+            if (!file.type.startsWith('video/')) {
+                URL.revokeObjectURL(url);
+                setLinkedFocalVideo({ file: null, url: null, status: 'invalid', message: '焦点视窗素材仅支持视频' });
+                return;
+            }
+
+            const meta = await getVideoMeta(file);
+            if (meta.width !== BREAK_FOCAL_W || meta.height !== BREAK_FOCAL_H) {
+                URL.revokeObjectURL(url);
+                setLinkedFocalVideo({
+                    file: null,
+                    url: null,
+                    status: 'invalid',
+                    message: `视频 ${meta.width} x ${meta.height}，需为 1126 x 900`,
+                });
+                return;
+            }
+
+            setLinkedFocalVideo({
+                file,
+                url,
+                status: 'valid',
+                message: `焦点视窗视频 1126 x 900 / ${meta.duration.toFixed(1)}s`,
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setLinkedFocalVideo({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '焦点视窗视频读取失败' });
         }
     };
 
@@ -2921,21 +3044,21 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
-    const handleUploadDragOver = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDragOver = (event: React.DragEvent, target: CreativeUploadTarget) => {
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
         setDragTarget(target);
     };
 
-    const handleUploadDragLeave = (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDragLeave = (event: React.DragEvent, target: CreativeUploadTarget) => {
         event.preventDefault();
         event.stopPropagation();
         if (event.currentTarget.contains(event.relatedTarget as Node)) return;
         setDragTarget((current) => current === target ? null : current);
     };
 
-    const handleUploadDrop = async (event: React.DragEvent, target: 'asset' | 'splash' | 'magazine' | 'spotlight-small' | 'spotlight-large' | 'spotlight-splash' | 'break-frame' | 'break-splash' | 'break-focal' | 'poly-base' | 'poly-cards' | 'poly-focal' | 'refresh-icons' | 'refresh-bottom-nav') => {
+    const handleUploadDrop = async (event: React.DragEvent, target: CreativeUploadTarget) => {
         event.preventDefault();
         event.stopPropagation();
         setDragTarget(null);
@@ -2956,6 +3079,8 @@ const ConfigWorkspace: React.FC = () => {
         else if (target === 'poly-focal') await updatePolyFocal(files[0]);
         else if (target === 'refresh-icons') await updateRefreshIconSheet(files[0]);
         else if (target === 'refresh-bottom-nav') await updateRefreshBottomNav(files[0]);
+        else if (target === 'linked-opening') await updateLinkedOpeningVideo(files[0]);
+        else if (target === 'linked-focal') await updateLinkedFocalVideo(files[0]);
         else await addPolyCards(files);
     };
 
@@ -3769,6 +3894,160 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const buildLinkedSuperVideo = async () => {
+        setError('');
+        resetOutput();
+
+        if (!linkedOpeningVideo.url || !linkedOpeningVideo.file || linkedOpeningVideo.status !== 'valid') {
+            setError('请上传 1440 x 2340px / 8s 的开屏视频');
+            return;
+        }
+        if (!linkedFocalVideo.url || !linkedFocalVideo.file || linkedFocalVideo.status !== 'valid') {
+            setError('请上传 1126 x 900px 的焦点视窗视频');
+            return;
+        }
+
+        setIsGenerating(true);
+        try {
+            const [openingMeta, focalMeta] = await Promise.all([
+                getVideoMeta(linkedOpeningVideo.file),
+                getVideoMeta(linkedFocalVideo.file),
+            ]);
+
+            if (openingMeta.width !== CANVAS_W || openingMeta.height !== CANVAS_H || Math.abs(openingMeta.duration - (LINKED_OPENING_DURATION / 1000)) > LINKED_OPENING_DURATION_TOLERANCE) {
+                throw new Error('开屏视频需为 1440 x 2340px 且时长 8s');
+            }
+            if (focalMeta.width !== BREAK_FOCAL_W || focalMeta.height !== BREAK_FOCAL_H) {
+                throw new Error('焦点视窗视频需为 1126 x 900px');
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = BREAK_CANVAS_W;
+            canvas.height = BREAK_CANVAS_H;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('无法创建联动合成画布');
+
+            const [openingVideo, focalVideo, focalBg1, focalBg2, focalIconMask] = await Promise.all([
+                loadVideoElement(linkedOpeningVideo.url, false),
+                loadVideoElement(linkedFocalVideo.url, false),
+                loadImage('/focal-window-immersive/fixed_bg_1.png'),
+                loadImage('/focal-window-immersive/fixed_bg_2.png'),
+                loadImage('/focal-window-immersive/icon_bg.png'),
+            ]);
+
+            const iconCanvas = document.createElement('canvas');
+            iconCanvas.width = BREAK_CANVAS_W;
+            iconCanvas.height = BREAK_CANVAS_H;
+            const iconCtx = iconCanvas.getContext('2d');
+            if (iconCtx) {
+                iconCtx.fillStyle = breakIconColor;
+                iconCtx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                iconCtx.globalCompositeOperation = 'destination-in';
+                iconCtx.drawImage(focalIconMask, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+            }
+
+            const mimeType = [
+                'video/mp4;codecs=h264',
+                'video/webm;codecs=vp9',
+                'video/webm',
+            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const stream = canvas.captureStream(30);
+            const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 8_000_000 } : { videoBitsPerSecond: 8_000_000 });
+            const chunks: Blob[] = [];
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) chunks.push(event.data);
+            };
+            const done = new Promise<Blob>((resolve) => {
+                recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
+            });
+
+            const drawImmersiveHomeUi = (progress: number, layer: 'base' | 'foreground') => {
+                if (progress <= 0) return;
+                const eased = easeInOutCubic(progress);
+                ctx.save();
+                ctx.globalAlpha = eased;
+                ctx.translate(0, (1 - eased) * 72);
+
+                if (layer === 'base') {
+                    ctx.drawImage(focalBg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                    const gradientRgb = hexToRgb(breakGradientColor);
+                    const gradient = ctx.createLinearGradient(0, 750, 0, 1250);
+                    gradient.addColorStop(0, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0)`);
+                    gradient.addColorStop(0.1, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0.95)`);
+                    gradient.addColorStop(0.3, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0.95)`);
+                    gradient.addColorStop(1, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0)`);
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 750, BREAK_CANVAS_W, 500);
+                    if (iconCtx) ctx.drawImage(iconCanvas, 0, 0);
+                } else {
+                    ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                }
+
+                ctx.restore();
+            };
+
+            openingVideo.currentTime = 0;
+            focalVideo.currentTime = 0;
+            openingVideo.loop = false;
+            focalVideo.loop = false;
+            await openingVideo.play().catch(() => undefined);
+
+            const totalDuration = LINKED_OPENING_DURATION + Math.max(0.1, focalMeta.duration) * 1000;
+            let focalStarted = false;
+            const start = performance.now();
+            recorder.start();
+
+            const drawFrame = (now: number) => {
+                const elapsed = Math.min(now - start, totalDuration);
+                const transitionProgress = easeInOutCubic((elapsed - LINKED_FULL_OPENING_DURATION) / LINKED_TRANSITION_DURATION);
+                const uiProgress = elapsed < LINKED_FULL_OPENING_DURATION ? 0 : transitionProgress;
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                drawImmersiveHomeUi(uiProgress, 'base');
+
+                if (elapsed < LINKED_OPENING_DURATION) {
+                    const openingHeight = BREAK_CANVAS_H - (BREAK_CANVAS_H - BREAK_FOCAL_H) * transitionProgress;
+                    if (openingVideo.readyState >= 2) {
+                        drawCoverAt(ctx, openingVideo, openingVideo.videoWidth || CANVAS_W, openingVideo.videoHeight || CANVAS_H, 0, 0, BREAK_CANVAS_W, openingHeight);
+                    } else {
+                        ctx.fillStyle = '#111827';
+                        ctx.fillRect(0, 0, BREAK_CANVAS_W, openingHeight);
+                    }
+                    drawImmersiveHomeUi(uiProgress, 'foreground');
+                } else {
+                    if (!focalStarted) {
+                        openingVideo.pause();
+                        focalVideo.currentTime = 0;
+                        void focalVideo.play().catch(() => undefined);
+                        focalStarted = true;
+                    }
+                    if (focalVideo.readyState >= 2) {
+                        drawCoverAt(ctx, focalVideo, focalVideo.videoWidth || BREAK_FOCAL_W, focalVideo.videoHeight || BREAK_FOCAL_H, 0, BREAK_FOCAL_Y, BREAK_FOCAL_W, BREAK_FOCAL_H);
+                    }
+                    drawImmersiveHomeUi(1, 'foreground');
+                }
+
+                if (elapsed < totalDuration) {
+                    requestAnimationFrame(drawFrame);
+                } else {
+                    recorder.stop();
+                    openingVideo.pause();
+                    focalVideo.pause();
+                }
+            };
+
+            requestAnimationFrame(drawFrame);
+            const output = await done;
+            setGeneratedVideoUrl(URL.createObjectURL(output));
+            setGeneratedVideoType(mimeType || 'video/webm');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '联动超视频合成失败');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     const buildVideo = async () => {
         setError('');
         setHoveredTemplateId(null);
@@ -3791,13 +4070,17 @@ const ConfigWorkspace: React.FC = () => {
             await buildRefreshBottomNavVideo();
             return;
         }
+        if (isLinkedSuperVideoTemplateId(expandedTemplate)) {
+            await buildLinkedSuperVideo();
+            return;
+        }
         if (isBreakFrameLikeTemplateId(expandedTemplate)) {
             await buildBreakFrameFocalVideo();
             return;
         }
 
         if (expandedTemplate !== 'dynamic-splash') {
-            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI」模版编辑');
+            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI」「联动超视频-全景视频」模版编辑');
             return;
         }
         if (!splash.url || !splash.file || splash.status === 'invalid') {
@@ -3925,6 +4208,7 @@ const ConfigWorkspace: React.FC = () => {
     const isJumpingFocalTemplate = expandedTemplate === 'jumping-focal-window';
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
+    const isLinkedSuperVideoTemplate = isLinkedSuperVideoTemplateId(expandedTemplate);
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
         ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(hoveredPreviewTemplate?.id))
@@ -3943,6 +4227,8 @@ const ConfigWorkspace: React.FC = () => {
                         ? SHOW_REFRESH_BOTTOM_NAV_UPLOAD
                             ? 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon / 底导 1126 x 252'
                             : 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon'
+                    : isLinkedSuperVideoTemplate
+                        ? '输出规格 1126 x 2436 / 开屏 8s + 焦点视窗'
                 : isBreakFocalTemplate
                     ? '输出规格 1126 x 2436 / 破框 3D'
                 : '输出规格 1440 x 2340 / 5s';
@@ -5226,6 +5512,97 @@ const ConfigWorkspace: React.FC = () => {
                                             </div>
                                         )}
                                     </>
+                                ) : isLinkedSuperVideoTemplate ? (
+                                    <>
+                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h2 className="text-white text-sm font-black">①上传开屏视频</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">视频 1440 x 2340px / 8s</p>
+                                                </div>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(linkedOpeningVideo.status)}`}>{linkedOpeningVideo.message}</span>
+                                            </div>
+                                            <input
+                                                ref={linkedOpeningInputRef}
+                                                type="file"
+                                                accept="video/*"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updateLinkedOpeningVideo(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            <div className="relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => linkedOpeningInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'linked-opening')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'linked-opening')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'linked-opening')}
+                                                    className={`w-full min-h-[190px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'linked-opening' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {linkedOpeningVideo.url ? (
+                                                        <video src={linkedOpeningVideo.url} className="h-48 max-w-full rounded-[16px] object-contain bg-black/40" muted loop playsInline />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">movie</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'linked-opening' ? '松开上传开屏视频' : '点击或拖入 8s 开屏视频'}</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(linkedOpeningVideo, () => clearUploadState(linkedOpeningVideo, setLinkedOpeningVideo), '删除开屏视频')}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h2 className="text-white text-sm font-black">②上传焦点视窗视频</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">视频 1126 x 900px / 播放到结束</p>
+                                                </div>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(linkedFocalVideo.status)}`}>{linkedFocalVideo.message}</span>
+                                            </div>
+                                            <input
+                                                ref={linkedFocalInputRef}
+                                                type="file"
+                                                accept="video/*"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updateLinkedFocalVideo(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            <div className="relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => linkedFocalInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'linked-focal')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'linked-focal')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'linked-focal')}
+                                                    className={`w-full min-h-[150px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'linked-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {linkedFocalVideo.url ? (
+                                                        <video src={linkedFocalVideo.url} className="h-28 w-full rounded-[16px] object-cover bg-black/40" muted loop playsInline />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'linked-focal' ? '松开上传焦点视窗视频' : '点击或拖入焦点视窗视频'}</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(linkedFocalVideo, () => clearUploadState(linkedFocalVideo, setLinkedFocalVideo), '删除焦点视窗视频')}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-[20px] border border-white/5 bg-white/[0.035] p-5 text-[11px] font-bold text-zinc-400 leading-6">
+                                            <p className="text-white font-black mb-2">联动时间轴</p>
+                                            <p>0-5s：开屏视频正常播放。</p>
+                                            <p>5-8s：开屏视频顶部贴住合成画布顶部，缓动回缩到沉浸式焦点视窗区域。</p>
+                                            <p>8s 后：开屏视频停止，焦点视窗视频接续播放到结束。</p>
+                                        </div>
+                                    </>
                                 ) : isBreakFocalTemplate ? (
                                     <>
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -5677,13 +6054,15 @@ const ConfigWorkspace: React.FC = () => {
                                                         ? '焦点视窗底层能力不变，1126 x 906 破框素材从第 0 秒开始播放'
                                                         : isRefreshUiBottomNavTemplate
                                                             ? '沿用秀秀-破框焦点视窗3D能力，破框素材覆盖在焦点视窗上方'
+                                                        : isLinkedSuperVideoTemplate
+                                                            ? '开屏 0-5s 正常播放，5-8s 缓动回缩，8s 后接焦点视窗视频'
                                                     : isBreakFocalTemplate
                                                         ? '套用美图秀秀焦点视窗底层能力，破框素材覆盖在焦点视窗上方'
                                                         : '8 个挂件组成一整块，从上方滑入并在 5s 内滑出画面'}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
+                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && !isLinkedSuperVideoTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
                                         <button
                                             onClick={buildVideo}
                                             disabled={isGenerating}
@@ -5694,7 +6073,7 @@ const ConfigWorkspace: React.FC = () => {
                                         </button>
                                         <a
                                             href={generatedVideoUrl || undefined}
-                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
+                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
                                             className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
                                         >
                                             <span className="material-symbols-outlined text-base">download</span>
@@ -5756,7 +6135,38 @@ const ConfigWorkspace: React.FC = () => {
                                             </>
                                         ) : (
                                             <>
-                                                {isMagazineTemplate ? (
+                                                {isLinkedSuperVideoTemplate ? (
+                                                    <div className="absolute inset-0 bg-zinc-950">
+                                                        {linkedOpeningVideo.url ? (
+                                                            <video
+                                                                src={linkedOpeningVideo.url}
+                                                                className="absolute inset-0 h-full w-full object-cover"
+                                                                muted
+                                                                loop
+                                                                playsInline
+                                                                autoPlay
+                                                            />
+                                                        ) : linkedFocalVideo.url ? (
+                                                            <video
+                                                                src={linkedFocalVideo.url}
+                                                                className="absolute left-0 top-0 w-full object-cover"
+                                                                style={{ height: `${(BREAK_FOCAL_H / BREAK_CANVAS_H) * 100}%` }}
+                                                                muted
+                                                                loop
+                                                                playsInline
+                                                                autoPlay
+                                                            />
+                                                        ) : (
+                                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
+                                                                <span className="material-symbols-outlined text-6xl">linked_services</span>
+                                                                <span className="mt-3 text-[10px] font-black tracking-normal text-left">Linked Super Video</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute left-4 top-4 rounded-full bg-black/50 px-3 py-1 text-[10px] font-black text-white backdrop-blur-md">
+                                                            {linkedOpeningVideo.url ? '开屏视频预览' : linkedFocalVideo.url ? '焦点视窗预览' : '联动超视频'}
+                                                        </div>
+                                                    </div>
+                                                ) : isMagazineTemplate ? (
                                                     magazineAssets.length ? (
                                                         magazineAssets.map((item, index) => (
                                                             item.type === 'video' ? (
@@ -6159,6 +6569,7 @@ const ConfigWorkspace: React.FC = () => {
                                     </div>
                                 </div>
 
+                                {!isLinkedSuperVideoTemplate && (
                                 <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                     {!isBreakFocalTemplate && (
                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
@@ -6213,6 +6624,7 @@ const ConfigWorkspace: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </section>
                         </div>
                     </div>

@@ -70,5 +70,13 @@
     "dimensions": "icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon",
     "preview_video_path": "/template-previews/refresh-ui-bottom-nav.mp4",
     "enabled": true
+  },
+  {
+    "id": "linked-super-video-panorama",
+    "groupId": "linked",
+    "groupName": "联动创意模版",
+    "name": "联动超视频-全景视频模版",
+    "dimensions": "开屏 1440 x 2340 / 8s；焦点 1126 x 900；输出 1126 x 2436",
+    "enabled": true
   }
 ]

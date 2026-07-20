@@ -1,6 +1,7 @@
 import { AdAsset, AdConfig } from '../types';
-import { ASSETS_URL } from '../services/api';
+import { ASSETS_URL, compositeVideo } from '../services/api';
 import { getDerivedGradientColor, hexToRgb } from './colorUtils';
+import { exportVideoElements } from './videoCompositor';
 
 /**
  * Helper to load image with cache-busting
@@ -97,16 +98,70 @@ const getImageTargetSizeBytes = (asset: AdAsset): number => {
     return 500 * 1024;
 };
 
+const getVideoLimitMB = (asset: AdAsset): number | undefined => {
+    if (asset.category === '焦点视窗') return 10;
+    if (asset.category === '开屏') return 4;
+    if (asset.id.includes('mt-p-1') || asset.id.includes('mt-ib-1')) return 4;
+    return undefined;
+};
+
+const getVideoDimensions = (asset: AdAsset) => {
+    const dimensions = { w: 1080, h: 1920 };
+    const match = asset.dimensions?.match(/(\d+)\s*x\s*(\d+)/i);
+    if (match) {
+        dimensions.w = parseInt(match[1], 10);
+        dimensions.h = parseInt(match[2], 10);
+    }
+    return dimensions;
+};
+
+const hasVideoOverlay = (asset: AdAsset, config: AdConfig): boolean => {
+    const showBadge = (config as any).showBadge !== undefined ? Boolean((config as any).showBadge) : Boolean(asset.showBadge);
+    return Boolean(config.showMask) ||
+        Boolean((config as any).showCrop && asset.cropOverlayUrl) ||
+        Boolean(showBadge && asset.badgeOverlayUrl) ||
+        Boolean(asset.category === '开屏' && config.showMask && (asset.splashText || config.splashText)) ||
+        Boolean(asset.id.includes('mt-p-1') && asset.splashText);
+};
+
 /**
  * Intelligent asset compositor that replicates the PreviewGrid download logic.
  * Returns a Blob (JPEG/MP4) of the composited result.
  */
 export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<Blob> {
-    // If it's a video, just return the raw video
-    // (We don't support compositing on top of videos in client-side yet)
     if (asset.type.startsWith('video')) {
         const resp = await fetch(asset.url);
-        return await resp.blob();
+        const videoBlob = await resp.blob();
+        const maxSizeMB = getVideoLimitMB(asset);
+        const maxSizeBytes = maxSizeMB ? maxSizeMB * 1024 * 1024 : undefined;
+        const needsVideoComposite = hasVideoOverlay(asset, config);
+
+        if (!needsVideoComposite && (!maxSizeBytes || videoBlob.size <= maxSizeBytes)) {
+            return videoBlob;
+        }
+
+        const params = await exportVideoElements(asset, config, getVideoDimensions(asset));
+        const result = await compositeVideo(videoBlob, params.bgBlob, params.fgBlob, {
+            targetW: params.targetW,
+            targetH: params.targetH,
+            videoRect: params.videoRect,
+            ...(maxSizeMB ? { maxSizeMB } : {}),
+            ...(asset.id.includes('mt-p-1') ? { maxDurationSec: 5 } : {})
+        });
+
+        if (!result.ok || !result.url) {
+            throw new Error(result.error || 'Video composition failed');
+        }
+
+        const outputResp = await fetch(`${ASSETS_URL}${result.url}`);
+        if (!outputResp.ok) {
+            throw new Error(`视频结果下载失败：${outputResp.status}`);
+        }
+        const outputBlob = await outputResp.blob();
+        if (maxSizeBytes && outputBlob.size > maxSizeBytes) {
+            throw new Error(`视频导出后仍超过 ${maxSizeMB}MB，请使用更短的视频素材`);
+        }
+        return outputBlob;
     }
 
     const isHotRecommend = asset.id.includes('mt-ib-1');
