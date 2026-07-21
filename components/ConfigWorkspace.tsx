@@ -211,6 +211,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         groupName: '联动创意模版',
         name: '联动超视频-全景视频模版',
         dimensions: '开屏 1440 x 2340 / 8s；焦点 1126 x 900；输出 1126 x 2436',
+        preview_video_path: '/template-previews/linked-super-video-panorama.mp4',
         enabled: true,
     },
 ];
@@ -3928,24 +3929,41 @@ const ConfigWorkspace: React.FC = () => {
             const ctx = canvas.getContext('2d');
             if (!ctx) throw new Error('无法创建联动合成画布');
 
-            const [openingVideo, focalVideo, focalBg1, focalBg2, focalIconMask] = await Promise.all([
+            const [
+                openingVideo,
+                focalVideo,
+                immersiveFocalBg1,
+                immersiveFocalBg2,
+                immersiveFocalIconMask,
+                focalBg1,
+                focalBg2,
+                focalIconMask,
+            ] = await Promise.all([
                 loadVideoElement(linkedOpeningVideo.url, false),
                 loadVideoElement(linkedFocalVideo.url, false),
                 loadImage('/focal-window-immersive/fixed_bg_1.png'),
                 loadImage('/focal-window-immersive/fixed_bg_2.png'),
                 loadImage('/focal-window-immersive/icon_bg.png'),
+                loadImage('/focal-window/fixed_bg_1.png'),
+                loadImage('/focal-window/fixed_bg_2.png'),
+                loadImage('/focal-window/icon_bg.png'),
             ]);
 
-            const iconCanvas = document.createElement('canvas');
-            iconCanvas.width = BREAK_CANVAS_W;
-            iconCanvas.height = BREAK_CANVAS_H;
-            const iconCtx = iconCanvas.getContext('2d');
-            if (iconCtx) {
+            const createTintedIconLayer = (mask: HTMLImageElement) => {
+                const iconCanvas = document.createElement('canvas');
+                iconCanvas.width = BREAK_CANVAS_W;
+                iconCanvas.height = BREAK_CANVAS_H;
+                const iconCtx = iconCanvas.getContext('2d');
+                if (!iconCtx) return null;
                 iconCtx.fillStyle = breakIconColor;
                 iconCtx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 iconCtx.globalCompositeOperation = 'destination-in';
-                iconCtx.drawImage(focalIconMask, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
-            }
+                iconCtx.drawImage(mask, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                return iconCanvas;
+            };
+
+            const immersiveIconCanvas = createTintedIconLayer(immersiveFocalIconMask);
+            const focalIconCanvas = createTintedIconLayer(focalIconMask);
 
             const mimeType = [
                 'video/mp4;codecs=h264',
@@ -3962,15 +3980,19 @@ const ConfigWorkspace: React.FC = () => {
                 recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
             });
 
-            const drawImmersiveHomeUi = (progress: number, layer: 'base' | 'foreground') => {
-                if (progress <= 0) return;
-                const eased = easeInOutCubic(progress);
+            const drawLinkedUiVariant = (
+                alpha: number,
+                yOffset: number,
+                assets: { bg1: HTMLImageElement; bg2: HTMLImageElement; iconCanvas: HTMLCanvasElement | null },
+                layer: 'base' | 'foreground',
+            ) => {
+                if (alpha <= 0) return;
                 ctx.save();
-                ctx.globalAlpha = eased;
-                ctx.translate(0, (1 - eased) * 72);
+                ctx.globalAlpha = alpha;
+                ctx.translate(0, yOffset);
 
                 if (layer === 'base') {
-                    ctx.drawImage(focalBg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                    ctx.drawImage(assets.bg2, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                     const gradientRgb = hexToRgb(breakGradientColor);
                     const gradient = ctx.createLinearGradient(0, 750, 0, 1250);
                     gradient.addColorStop(0, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0)`);
@@ -3979,12 +4001,32 @@ const ConfigWorkspace: React.FC = () => {
                     gradient.addColorStop(1, `rgba(${gradientRgb.r}, ${gradientRgb.g}, ${gradientRgb.b}, 0)`);
                     ctx.fillStyle = gradient;
                     ctx.fillRect(0, 750, BREAK_CANVAS_W, 500);
-                    if (iconCtx) ctx.drawImage(iconCanvas, 0, 0);
+                    if (assets.iconCanvas) ctx.drawImage(assets.iconCanvas, 0, 0);
                 } else {
-                    ctx.drawImage(focalBg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
+                    ctx.drawImage(assets.bg1, 0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 }
 
                 ctx.restore();
+            };
+
+            const drawLinkedHomeUi = (progress: number, settleProgress: number, layer: 'base' | 'foreground') => {
+                if (progress <= 0) return;
+                const entrance = easeInOutCubic(progress);
+                const settle = Math.max(0, Math.min(1, settleProgress));
+                const entranceOffset = (1 - entrance) * 72;
+
+                drawLinkedUiVariant(
+                    entrance * (1 - settle),
+                    entranceOffset - settle * 72,
+                    { bg1: immersiveFocalBg1, bg2: immersiveFocalBg2, iconCanvas: immersiveIconCanvas },
+                    layer,
+                );
+                drawLinkedUiVariant(
+                    entrance * settle,
+                    entranceOffset + (1 - settle) * 72,
+                    { bg1: focalBg1, bg2: focalBg2, iconCanvas: focalIconCanvas },
+                    layer,
+                );
             };
 
             openingVideo.currentTime = 0;
@@ -4007,7 +4049,7 @@ const ConfigWorkspace: React.FC = () => {
 
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
-                drawImmersiveHomeUi(uiProgress, 'base');
+                drawLinkedHomeUi(uiProgress, finalShrinkProgress, 'base');
 
                 if (elapsed < focalStartAt) {
                     const panoramaHeight = BREAK_CANVAS_H - (BREAK_CANVAS_H - LINKED_PANORAMA_OPENING_H) * firstShrinkProgress;
@@ -4020,7 +4062,7 @@ const ConfigWorkspace: React.FC = () => {
                         ctx.fillStyle = '#111827';
                         ctx.fillRect(0, 0, BREAK_CANVAS_W, openingHeight);
                     }
-                    drawImmersiveHomeUi(uiProgress, 'foreground');
+                    drawLinkedHomeUi(uiProgress, finalShrinkProgress, 'foreground');
                 } else {
                     if (!focalStarted) {
                         openingVideo.pause();
@@ -4031,7 +4073,7 @@ const ConfigWorkspace: React.FC = () => {
                     if (focalVideo.readyState >= 2) {
                         drawCoverAt(ctx, focalVideo, focalVideo.videoWidth || BREAK_FOCAL_W, focalVideo.videoHeight || BREAK_FOCAL_H, 0, BREAK_FOCAL_Y, BREAK_FOCAL_W, BREAK_FOCAL_H);
                     }
-                    drawImmersiveHomeUi(1, 'foreground');
+                    drawLinkedHomeUi(1, 1, 'foreground');
                 }
 
                 if (elapsed < totalDuration) {
@@ -4219,6 +4261,21 @@ const ConfigWorkspace: React.FC = () => {
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
         ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(hoveredPreviewTemplate?.id))
         : getCreativePreviewAspectRatio(expandedTemplate);
+    const previewFrameRatioValue = (() => {
+        const [width, height] = previewFrameAspectRatio.split('/').map((part) => Number(part.trim()));
+        return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+            ? width / height
+            : 9 / 16;
+    })();
+    const previewFrameHeightVh = 68;
+    const previewFrameHeightPx = 760;
+    const previewFrameHeightBudget = `min(${previewFrameHeightVh}vh, ${previewFrameHeightPx}px)`;
+    const previewFrameStyle: React.CSSProperties = {
+        aspectRatio: previewFrameAspectRatio,
+        maxHeight: previewFrameHeightBudget,
+        maxWidth: '100%',
+        width: `min(100%, ${(previewFrameHeightVh * previewFrameRatioValue).toFixed(2)}vh, ${Math.round(previewFrameHeightPx * previewFrameRatioValue)}px)`,
+    };
     const activeDynamicSplashPlatform = selectedPlatforms[0] ?? defaultCreativeSettings.platforms[0];
     const activeDynamicSplashMask = dynamicSplashPlatformMasks[activeDynamicSplashPlatform];
     const outputSpec = isMagazineTemplate
@@ -4479,8 +4536,8 @@ const ConfigWorkspace: React.FC = () => {
                         </div>
                     </header>
 
-                    <div className="creative-board-content flex-1 overflow-auto p-10 custom-scrollbar">
-                        <div className="grid min-w-[900px] grid-cols-[420px_minmax(420px,1fr)] gap-8 min-h-full">
+                    <div className="creative-board-content flex-1 overflow-auto p-5 md:p-8 xl:p-10 custom-scrollbar">
+                        <div className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(340px,420px)_minmax(360px,1fr)] gap-5 xl:gap-8 min-h-full">
                             <section className="creative-workflow-column space-y-5">
                                 {isMagazineTemplate ? (
                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -5605,9 +5662,10 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="rounded-[20px] border border-white/5 bg-white/[0.035] p-5 text-[11px] font-bold text-zinc-400 leading-6">
                                             <p className="text-white font-black mb-2">联动时间轴</p>
                                             <p>0-5s：开屏视频正常播放。</p>
-                                            <p>5-5.5s：开屏视频顶部贴住合成画布顶部，第一次回缩为全景播放状态。</p>
+                                            <p>5-5.5s：开屏视频回缩到沉浸式首页 UI 界面。</p>
                                             <p>5.5-8s：开屏视频保持全景播放状态继续播放。</p>
-                                            <p>8s 后：再次回缩到焦点视窗区域，焦点视窗视频接续播放到结束。</p>
+                                            <p>8-8.5s：开屏视频与首页 UI 一起回缩到焦点视窗位置。</p>
+                                            <p>8.5s 后：焦点视窗视频接续播放到结束。</p>
                                         </div>
                                     </>
                                 ) : isBreakFocalTemplate ? (
@@ -6016,7 +6074,7 @@ const ConfigWorkspace: React.FC = () => {
                                         >
                                             {splash.url ? (
                                                 splash.file?.type.startsWith('video/') ? (
-                                                    <video src={splash.url} className="h-44 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                                    <video src={splash.url} className="h-44 aspect-[9/16] object-contain rounded-xl bg-black/40" muted loop playsInline />
                                                 ) : (
                                                     <img src={splash.url} alt="开屏素材预览" className="h-44 aspect-[9/16] object-cover rounded-xl" />
                                                 )
@@ -6046,7 +6104,7 @@ const ConfigWorkspace: React.FC = () => {
                                 )}
                             </section>
 
-                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-8 flex flex-col min-h-[640px]">
+                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-5 md:p-6 xl:p-8 flex flex-col">
                                 <div className="flex items-center justify-between gap-4 mb-4">
                                     <div>
                                         <h2 className="text-white text-sm font-black">合成预览</h2>
@@ -6089,10 +6147,10 @@ const ConfigWorkspace: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="flex-1 flex items-center justify-center min-h-0">
+                                <div className="creative-preview-stage-wrap flex-1 flex items-center justify-center min-h-0 overflow-hidden">
                                     <div
-                                        className={`relative h-full max-h-[68vh] rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
-                                        style={{ aspectRatio: previewFrameAspectRatio }}
+                                        className={`creative-preview-stage relative rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                                        style={previewFrameStyle}
                                         onPointerDown={handleMagazinePointerDown}
                                         onPointerMove={handleMagazinePointerMove}
                                         onPointerUp={handleMagazinePointerUp}
@@ -6120,7 +6178,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 <video
                                                     ref={previewVideoRef}
                                                     src={generatedVideoUrl}
-                                                    className="w-full h-full object-cover"
+                                                    className="w-full h-full object-contain"
                                                     autoPlay={!shouldFreezeRefreshPreviewVideo}
                                                     loop={expandedTemplate !== 'dynamic-splash' && !shouldFreezeRefreshPreviewVideo}
                                                     muted
@@ -6147,7 +6205,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         {linkedOpeningVideo.url ? (
                                                             <video
                                                                 src={linkedOpeningVideo.url}
-                                                                className="absolute inset-0 h-full w-full object-cover"
+                                                                className="absolute inset-0 h-full w-full object-contain"
                                                                 muted
                                                                 loop
                                                                 playsInline
@@ -6156,7 +6214,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         ) : linkedFocalVideo.url ? (
                                                             <video
                                                                 src={linkedFocalVideo.url}
-                                                                className="absolute left-0 top-0 w-full object-cover"
+                                                                className="absolute left-0 top-0 w-full object-contain"
                                                                 style={{ height: `${(BREAK_FOCAL_H / BREAK_CANVAS_H) * 100}%` }}
                                                                 muted
                                                                 loop
@@ -6506,7 +6564,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         <video
                                                             ref={previewVideoRef}
                                                             src={splash.url}
-                                                            className="absolute inset-0 w-full h-full object-cover"
+                                                            className="absolute inset-0 w-full h-full object-contain"
                                                             muted
                                                             playsInline
                                                             autoPlay
@@ -6577,7 +6635,7 @@ const ConfigWorkspace: React.FC = () => {
                                 </div>
 
                                 {!isLinkedSuperVideoTemplate && (
-                                <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                <div className={`creative-preview-controls mt-4 grid gap-3 shrink-0 ${isBreakFocalTemplate ? 'grid-cols-1' : 'grid-cols-1 2xl:grid-cols-3'}`}>
                                     {!isBreakFocalTemplate && (
                                         <div className="rounded-[16px] border border-white/5 bg-black/20 p-3 space-y-2">
                                             <p className="text-[10px] font-black text-zinc-500 tracking-normal text-left">交互形式</p>

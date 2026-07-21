@@ -77,6 +77,7 @@
     "groupName": "联动创意模版",
     "name": "联动超视频-全景视频模版",
     "dimensions": "开屏 1440 x 2340 / 8s；焦点 1126 x 900；输出 1126 x 2436",
+    "preview_video_path": "/template-previews/linked-super-video-panorama.mp4",
     "enabled": true
   }
 ]
