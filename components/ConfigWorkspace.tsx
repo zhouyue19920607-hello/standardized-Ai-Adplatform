@@ -301,7 +301,8 @@ const BREAK_FRAME_Y = 0;
 const BREAK_DURATION = 5000;
 const LINKED_OPENING_DURATION = 8000;
 const LINKED_FULL_OPENING_DURATION = 5000;
-const LINKED_TRANSITION_DURATION = LINKED_OPENING_DURATION - LINKED_FULL_OPENING_DURATION;
+const LINKED_TRANSITION_DURATION = 500;
+const LINKED_PANORAMA_OPENING_H = Math.round(BREAK_CANVAS_W * (CANVAS_H / CANVAS_W));
 const LINKED_OPENING_DURATION_TOLERANCE = 0.3;
 const BREAK_AI_DURATION_RULE = '每一破框只能维持1.5s';
 const getCreativePreviewAspectRatio = (templateId?: string | null) => (
@@ -3992,22 +3993,27 @@ const ConfigWorkspace: React.FC = () => {
             focalVideo.loop = false;
             await openingVideo.play().catch(() => undefined);
 
-            const totalDuration = LINKED_OPENING_DURATION + Math.max(0.1, focalMeta.duration) * 1000;
+            const focalStartAt = LINKED_OPENING_DURATION + LINKED_TRANSITION_DURATION;
+            const totalDuration = focalStartAt + Math.max(0.1, focalMeta.duration) * 1000;
             let focalStarted = false;
             const start = performance.now();
             recorder.start();
 
             const drawFrame = (now: number) => {
                 const elapsed = Math.min(now - start, totalDuration);
-                const transitionProgress = easeInOutCubic((elapsed - LINKED_FULL_OPENING_DURATION) / LINKED_TRANSITION_DURATION);
-                const uiProgress = elapsed < LINKED_FULL_OPENING_DURATION ? 0 : transitionProgress;
+                const firstShrinkProgress = easeInOutCubic((elapsed - LINKED_FULL_OPENING_DURATION) / LINKED_TRANSITION_DURATION);
+                const finalShrinkProgress = easeInOutCubic((elapsed - LINKED_OPENING_DURATION) / LINKED_TRANSITION_DURATION);
+                const uiProgress = elapsed < LINKED_FULL_OPENING_DURATION ? 0 : firstShrinkProgress;
 
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, BREAK_CANVAS_W, BREAK_CANVAS_H);
                 drawImmersiveHomeUi(uiProgress, 'base');
 
-                if (elapsed < LINKED_OPENING_DURATION) {
-                    const openingHeight = BREAK_CANVAS_H - (BREAK_CANVAS_H - BREAK_FOCAL_H) * transitionProgress;
+                if (elapsed < focalStartAt) {
+                    const panoramaHeight = BREAK_CANVAS_H - (BREAK_CANVAS_H - LINKED_PANORAMA_OPENING_H) * firstShrinkProgress;
+                    const openingHeight = elapsed < LINKED_OPENING_DURATION
+                        ? panoramaHeight
+                        : LINKED_PANORAMA_OPENING_H - (LINKED_PANORAMA_OPENING_H - BREAK_FOCAL_H) * finalShrinkProgress;
                     if (openingVideo.readyState >= 2) {
                         drawCoverAt(ctx, openingVideo, openingVideo.videoWidth || CANVAS_W, openingVideo.videoHeight || CANVAS_H, 0, 0, BREAK_CANVAS_W, openingHeight);
                     } else {
@@ -5599,8 +5605,9 @@ const ConfigWorkspace: React.FC = () => {
                                         <div className="rounded-[20px] border border-white/5 bg-white/[0.035] p-5 text-[11px] font-bold text-zinc-400 leading-6">
                                             <p className="text-white font-black mb-2">联动时间轴</p>
                                             <p>0-5s：开屏视频正常播放。</p>
-                                            <p>5-8s：开屏视频顶部贴住合成画布顶部，缓动回缩到沉浸式焦点视窗区域。</p>
-                                            <p>8s 后：开屏视频停止，焦点视窗视频接续播放到结束。</p>
+                                            <p>5-5.5s：开屏视频顶部贴住合成画布顶部，第一次回缩为全景播放状态。</p>
+                                            <p>5.5-8s：开屏视频保持全景播放状态继续播放。</p>
+                                            <p>8s 后：再次回缩到焦点视窗区域，焦点视窗视频接续播放到结束。</p>
                                         </div>
                                     </>
                                 ) : isBreakFocalTemplate ? (
