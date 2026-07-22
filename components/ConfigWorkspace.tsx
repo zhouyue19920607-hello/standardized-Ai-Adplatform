@@ -311,6 +311,7 @@ const getCreativePreviewAspectRatio = (templateId?: string | null) => (
         ? `${BREAK_CANVAS_W} / ${BREAK_CANVAS_H}`
         : `${CANVAS_W} / ${CANVAS_H}`
 );
+const CREATIVE_EFFECT_PREVIEW_ASPECT_RATIO = `${CANVAS_W} / ${CANVAS_H}`;
 const FOCAL_UI_SOURCE_W = 473;
 const FOCAL_UI_SOURCE_H = 1024;
 const FOCAL_UI_SCALE_X = BREAK_CANVAS_W / FOCAL_UI_SOURCE_W;
@@ -870,7 +871,6 @@ const ConfigWorkspace: React.FC = () => {
     const [creativeTemplates, setCreativeTemplates] = useState<CreativeTemplateItem[]>(defaultCreativeTemplates);
     const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
     const [lockedPreviewTemplateId, setLockedPreviewTemplateId] = useState<string | null>(null);
-    const [hoveredPreviewAspectRatio, setHoveredPreviewAspectRatio] = useState<string | null>(null);
     const [asset, setAsset] = useState<UploadState>(emptyUpload);
     const [pendantReference, setPendantReference] = useState<UploadState>(emptyUpload);
     const [splash, setSplash] = useState<UploadState>(emptyUpload);
@@ -986,45 +986,6 @@ const ConfigWorkspace: React.FC = () => {
     const activePreviewTemplateId = hoveredTemplateId || lockedPreviewTemplateId;
     const hoveredPreviewTemplate = creativeTemplates.find((tpl) => tpl.id === activePreviewTemplateId) || null;
     const hoveredPreviewVideoUrl = hoveredPreviewTemplate?.preview_video_path || null;
-
-    useEffect(() => {
-        if (!hoveredPreviewVideoUrl) {
-            setHoveredPreviewAspectRatio(null);
-            return;
-        }
-
-        const video = document.createElement('video');
-        video.preload = 'metadata';
-        video.muted = true;
-        video.playsInline = true;
-
-        const cleanup = () => {
-            video.onloadedmetadata = null;
-            video.onerror = null;
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-            video.remove();
-        };
-
-        video.onloadedmetadata = () => {
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-                setHoveredPreviewAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
-            } else {
-                setHoveredPreviewAspectRatio(null);
-            }
-            cleanup();
-        };
-
-        video.onerror = () => {
-            setHoveredPreviewAspectRatio(null);
-            cleanup();
-        };
-
-        video.src = resolveApiAssetUrl(hoveredPreviewVideoUrl);
-
-        return cleanup;
-    }, [hoveredPreviewVideoUrl]);
 
     useEffect(() => {
         if (expandedTemplate !== 'magazine-flip') {
@@ -4259,7 +4220,7 @@ const ConfigWorkspace: React.FC = () => {
     const isLinkedSuperVideoTemplate = isLinkedSuperVideoTemplateId(expandedTemplate);
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
-        ? (hoveredPreviewAspectRatio || getCreativePreviewAspectRatio(hoveredPreviewTemplate?.id))
+        ? CREATIVE_EFFECT_PREVIEW_ASPECT_RATIO
         : getCreativePreviewAspectRatio(expandedTemplate);
     const previewFrameRatioValue = (() => {
         const [width, height] = previewFrameAspectRatio.split('/').map((part) => Number(part.trim()));
@@ -4269,7 +4230,7 @@ const ConfigWorkspace: React.FC = () => {
     })();
     const previewFrameHeightVh = 68;
     const previewFrameHeightPx = 760;
-    const previewFrameHeightBudget = `min(${previewFrameHeightVh}vh, ${previewFrameHeightPx}px)`;
+    const previewFrameHeightBudget = `min(${previewFrameHeightVh}vh, calc(100vh - 320px), ${previewFrameHeightPx}px)`;
     const previewFrameStyle: React.CSSProperties = {
         aspectRatio: previewFrameAspectRatio,
         maxHeight: previewFrameHeightBudget,
@@ -4585,7 +4546,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     </button>
                                                     <div className="h-28 rounded-[12px] bg-zinc-950 overflow-hidden flex items-center justify-center">
                                                         {item.type === 'video' ? (
-                                                            <video src={item.url} className="h-full aspect-[9/16] object-cover" muted loop playsInline />
+                                                            <video src={item.url} className="h-full aspect-[9/16] object-contain bg-black/40" muted loop playsInline />
                                                         ) : (
                                                             <img src={item.url} alt={`翻页素材 ${index + 1}`} className="h-full aspect-[9/16] object-cover" />
                                                         )}
@@ -4881,7 +4842,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     {spotlightSplash.url ? (
                                                         spotlightSplash.file?.type.startsWith('video/') ? (
-                                                            <video src={spotlightSplash.url} className="h-36 aspect-[9/16] object-cover rounded-xl" muted loop playsInline />
+                                                            <video src={spotlightSplash.url} className="h-36 aspect-[9/16] object-contain rounded-xl bg-black/40" muted loop playsInline />
                                                         ) : (
                                                             <img src={spotlightSplash.url} alt="开屏素材预览" className="h-36 aspect-[9/16] object-cover rounded-xl" />
                                                         )
@@ -5176,7 +5137,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     {polyFocal.url ? (
                                                         polyFocal.file?.type.startsWith('video/') ? (
-                                                            <video src={polyFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                            <video src={polyFocal.url} className="h-24 w-full object-contain rounded-xl bg-black/40" muted loop playsInline />
                                                         ) : (
                                                             <img src={polyFocal.url} alt="多态翻卡焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
                                                         )
@@ -5228,7 +5189,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     {activeBreakFocal.url ? (
                                                         activeBreakFocal.file?.type.startsWith('video/') ? (
-                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-contain rounded-xl bg-black/40" muted loop playsInline />
                                                         ) : (
                                                             <img src={activeBreakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
                                                         )
@@ -5647,7 +5608,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     className={`w-full min-h-[150px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'linked-focal' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
                                                 >
                                                     {linkedFocalVideo.url ? (
-                                                        <video src={linkedFocalVideo.url} className="h-28 w-full rounded-[16px] object-cover bg-black/40" muted loop playsInline />
+                                                        <video src={linkedFocalVideo.url} className="h-28 w-full rounded-[16px] object-contain bg-black/40" muted loop playsInline />
                                                     ) : (
                                                         <div className="text-center">
                                                             <span className="material-symbols-outlined text-3xl text-zinc-600">crop_16_9</span>
@@ -5699,7 +5660,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 >
                                                     {activeBreakFocal.url ? (
                                                         activeBreakFocal.file?.type.startsWith('video/') ? (
-                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-cover rounded-xl" muted loop playsInline />
+                                                            <video src={activeBreakFocal.url} className="h-24 w-full object-contain rounded-xl bg-black/40" muted loop playsInline />
                                                         ) : (
                                                             <img src={activeBreakFocal.url} alt="焦点视窗预览" className="h-24 w-full object-cover rounded-xl" />
                                                         )
@@ -6149,7 +6110,7 @@ const ConfigWorkspace: React.FC = () => {
 
                                 <div className="creative-preview-stage-wrap flex-1 flex items-center justify-center min-h-0 overflow-hidden">
                                     <div
-                                        className={`creative-preview-stage relative rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                                        className={`creative-preview-stage relative rounded-[20px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl group/preview ${hoveredPreviewVideoUrl ? 'creative-preview-stage--effect-video' : ''} ${isMagazineTemplate && magazineAssets.length > 1 ? (isMagazineDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
                                         style={previewFrameStyle}
                                         onPointerDown={handleMagazinePointerDown}
                                         onPointerMove={handleMagazinePointerMove}
@@ -6163,7 +6124,7 @@ const ConfigWorkspace: React.FC = () => {
                                             <>
                                                 <video
                                                     src={resolveApiAssetUrl(hoveredPreviewVideoUrl)}
-                                                    className="absolute inset-0 w-full h-full object-contain"
+                                                    className="absolute inset-0 w-full h-full object-contain bg-black"
                                                     autoPlay
                                                     loop
                                                     muted
@@ -6238,7 +6199,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                 <video
                                                                     key={item.id}
                                                                     src={item.url}
-                                                                    className="absolute inset-0 w-full h-full object-cover"
+                                                                    className="absolute inset-0 w-full h-full object-contain bg-black"
                                                                     style={getMagazinePreviewStyle(index)}
                                                                     muted
                                                                     loop
@@ -6265,7 +6226,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     <>
                                                         {spotlightSplash.url ? (
                                                             spotlightSplash.file?.type.startsWith('video/') ? (
-                                                                <video src={spotlightSplash.url} className="absolute inset-0 w-full h-full object-cover" muted loop playsInline autoPlay />
+                                                                <video src={spotlightSplash.url} className="absolute inset-0 w-full h-full object-contain bg-black" muted loop playsInline autoPlay />
                                                             ) : (
                                                                 <img src={spotlightSplash.url} alt="聚光开屏预览" className="absolute inset-0 w-full h-full object-cover" />
                                                             )
@@ -6338,7 +6299,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                     >
                                                                         {polyFocal.url ? (
                                                                             polyFocal.file?.type.startsWith('video/') ? (
-                                                                                <video src={polyFocal.url} className="h-full w-full object-cover" muted loop playsInline autoPlay />
+                                                                                <video src={polyFocal.url} className="h-full w-full object-contain bg-black" muted loop playsInline autoPlay />
                                                                             ) : (
                                                                                 <img src={polyFocal.url} alt="焦点视窗翻转内容" className="h-full w-full object-cover" />
                                                                             )
@@ -6403,7 +6364,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             >
                                                                 {breakFocal.url ? (
                                                                     breakFocal.file?.type.startsWith('video/') ? (
-                                                                        <video src={breakFocal.url} className="w-full h-full object-cover" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
+                                                                        <video src={breakFocal.url} className="w-full h-full object-contain bg-black" muted playsInline preload="metadata" onLoadedData={freezeVideoOnFirstFrame} />
                                                                     ) : (
                                                                         <img src={breakFocal.url} alt="焦点视窗预览" className="w-full h-full object-cover" />
                                                                     )
@@ -6431,7 +6392,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                         refreshBottomNav.file?.type.startsWith('video/') ? (
                                                                             <video
                                                                                 src={refreshBottomNav.url}
-                                                                                className="absolute left-0 bottom-0 w-full object-cover"
+                                                                                className="absolute left-0 bottom-0 w-full object-contain bg-black"
                                                                                 style={{ height: `${(REFRESH_BOTTOM_NAV_H / BREAK_CANVAS_H) * 100}%` }}
                                                                                 muted
                                                                                 playsInline
@@ -6475,7 +6436,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                     <video
                                                                         ref={breakFocalPreviewVideoRef}
                                                                         src={activeBreakFocal.url}
-                                                                        className="w-full h-full object-cover"
+                                                                        className="w-full h-full object-contain bg-black"
                                                                         muted
                                                                         loop
                                                                         playsInline

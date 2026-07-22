@@ -508,6 +508,19 @@ samp {
 .creative-preview-stage {
   flex: 0 1 auto;
   height: auto;
+  max-width: 100%;
+}
+
+.creative-preview-stage--effect-video {
+  aspect-ratio: 1440 / 2340;
+  background: #020203 !important;
+}
+
+.creative-preview-stage--effect-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center;
 }
 
 .creative-board-content {
