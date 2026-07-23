@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { AdAsset, AdConfig } from '../types';
-import { ASSETS_URL } from '../services/api';
+import { ASSETS_URL, reportUsageEvent } from '../services/api';
 import { getDerivedGradientColor, hexToRgb } from '../utils/colorUtils';
 import { useLanguage } from '../contexts/LanguageContext';
 import { compositeAsset } from '../utils/assetCompositor';
@@ -157,6 +157,19 @@ const AdCard: React.FC<{
 
         if (videoLimitMB && !hasVideoOverlay && videoBlob.size <= videoLimitMB * 1024 * 1024) {
           await downloadAsBlob(asset.url, `${safeName}.mp4`);
+          void reportUsageEvent({
+            eventType: '下载素材',
+            pagePath: window.location.pathname,
+            tool: '标准素材看板',
+            adFormat: asset.templateName,
+            assetTypes: ['视频'],
+            outputSpec: asset.dimensions,
+            outputFormat: 'MP4',
+            outputCount: 1,
+            resultId: asset.id,
+            downloaded: true,
+            downloadedAt: Date.now(),
+          });
           setIsDownloading(false);
           return;
         }
@@ -189,6 +202,19 @@ const AdCard: React.FC<{
             throw new Error(`视频导出后仍超过 ${videoLimitMB}MB，请使用更短的视频素材`);
           }
           await downloadAsBlob(`${ASSETS_URL}${result.url}`, `${safeName}.mp4`);
+          void reportUsageEvent({
+            eventType: '下载素材',
+            pagePath: window.location.pathname,
+            tool: '标准素材看板',
+            adFormat: asset.templateName,
+            assetTypes: ['视频'],
+            outputSpec: asset.dimensions,
+            outputFormat: 'MP4',
+            outputCount: 1,
+            resultId: asset.id,
+            downloaded: true,
+            downloadedAt: Date.now(),
+          });
         } else {
           throw new Error(result.error || "Video composition failed");
         }
@@ -217,6 +243,19 @@ const AdCard: React.FC<{
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
+      void reportUsageEvent({
+        eventType: '下载素材',
+        pagePath: window.location.pathname,
+        tool: '标准素材看板',
+        adFormat: asset.templateName,
+        assetTypes: ['图片'],
+        outputSpec: asset.dimensions,
+        outputFormat: ext === 'png' ? 'PNG' : ext === 'webp' ? 'WebP' : 'JPG',
+        outputCount: 1,
+        resultId: asset.id,
+        downloaded: true,
+        downloadedAt: Date.now(),
+      });
       setTimeout(() => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);

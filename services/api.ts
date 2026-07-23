@@ -53,6 +53,29 @@ export const reportVisit = async (visitorId: string, board: 'standard' | 'creati
     await api.post('/analytics/visit', { visitorId, board, path });
 };
 
+export interface UsageEvent {
+    eventType: '进入网站' | '生成素材' | '下载素材' | '其他';
+    pagePath?: string;
+    tool?: string;
+    adFormat?: string;
+    assetTypes?: Array<'图片' | '视频' | 'PSD' | '其他'>;
+    clickedGenerate?: boolean;
+    generatedSuccessfully?: boolean;
+    failureReason?: string;
+    outputSpec?: string;
+    outputFormat?: 'JPG' | 'PNG' | 'WebP' | 'MP4' | 'PSD' | '其他';
+    outputCount?: number;
+    resultId?: string;
+    downloaded?: boolean;
+    downloadedAt?: number;
+    sessionId?: string;
+    eventId?: string;
+}
+
+export const reportUsageEvent = async (event: UsageEvent): Promise<void> => {
+    await api.post('/analytics/event', event);
+};
+
 export const getAnalyticsSummary = async (): Promise<AnalyticsSummary> => {
     const response = await api.get<AnalyticsSummary>('/analytics/summary');
     return response.data;

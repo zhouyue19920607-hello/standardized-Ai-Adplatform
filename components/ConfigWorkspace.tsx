@@ -96,6 +96,7 @@ const dynamicSplashPlatformMasks: Record<CreativeTemplateSettings['platforms'][n
     wink: '/creative-masks/dynamic-splash-wink.png',
 };
 
+const SPOTLIGHT_GALLERY_INTERACTION_PATH = '/creative-masks/spotlight-gallery-interaction.png';
 const SHOW_REFRESH_BOTTOM_NAV_UPLOAD = false;
 const LINKED_TEMPLATE_ID = 'linked-super-video-panorama';
 
@@ -158,6 +159,7 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         name: '聚光开屏',
         dimensions: '小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340',
         preview_video_path: '/template-previews/slide-splash.mp4',
+        interaction_asset_path: SPOTLIGHT_GALLERY_INTERACTION_PATH,
         enabled: true,
     },
     {
@@ -929,7 +931,6 @@ const ConfigWorkspace: React.FC = () => {
     const [saveMessage, setSaveMessage] = useState('');
     const [dragTarget, setDragTarget] = useState<CreativeUploadTarget | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
-    const [generatedVideoType, setGeneratedVideoType] = useState('video/webm');
     const [error, setError] = useState('');
     const previewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFocalPreviewVideoRef = useRef<HTMLVideoElement>(null);
@@ -1130,7 +1131,7 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const resetOutput = () => {
-        if (generatedVideoUrl) URL.revokeObjectURL(generatedVideoUrl);
+        if (generatedVideoUrl?.startsWith('blob:')) URL.revokeObjectURL(generatedVideoUrl);
         setGeneratedVideoUrl(null);
     };
 
@@ -2908,7 +2909,7 @@ const ConfigWorkspace: React.FC = () => {
             maxDurationSec: 5,
         });
         const finalUrl = sizedResult.url || cutoutUrl;
-        const finalFile = await fileFromGeneratedUrl(finalUrl, filename, 'video/webm');
+        const finalFile = await fileFromGeneratedUrl(finalUrl, filename.replace(/\.[^.]+$/, '.mp4'), 'video/mp4');
         return {
             file: finalFile,
             url: finalUrl,
@@ -2981,7 +2982,7 @@ const ConfigWorkspace: React.FC = () => {
                 });
             const foregroundVideo = await createForegroundVideoAsset(
                 result.resultUrl,
-                'break-frame-ai.webm',
+                'break-frame-ai.mp4',
                 promptText,
                 BREAK_FRAME_W,
                 frameHeight,
@@ -3306,9 +3307,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            const outputUrl = URL.createObjectURL(output);
-            setGeneratedVideoUrl(outputUrl);
-            setGeneratedVideoType(mimeType);
+            await setGeneratedVideoFromRecording(
+                output,
+                'magazine-flip-recording.mp4',
+                CANVAS_W,
+                CANVAS_H,
+                Math.ceil(duration / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '杂志翻页视频合成失败');
         } finally {
@@ -3334,6 +3339,17 @@ const ConfigWorkspace: React.FC = () => {
             maxDurationSec,
         });
         return resolveApiAssetUrl(exported.url || uploaded.url);
+    };
+
+    const setGeneratedVideoFromRecording = async (
+        blob: Blob,
+        filename: string,
+        width: number,
+        height: number,
+        maxDurationSec: number,
+    ) => {
+        const outputUrl = await persistRecordedVideoAsMp4(blob, filename, width, height, maxDurationSec);
+        setGeneratedVideoUrl(outputUrl);
     };
 
     const buildSpotlightVideo = async () => {
@@ -3366,6 +3382,9 @@ const ConfigWorkspace: React.FC = () => {
             const splashIsVideo = spotlightSplash.file.type.startsWith('video/');
             const splashImage = splashIsVideo ? null : await loadImage(spotlightSplash.url);
             const splashVideo = splashIsVideo ? await loadVideoElement(spotlightSplash.url) : null;
+            const spotlightTemplate = creativeTemplates.find((tpl) => tpl.id === 'slide-splash');
+            const interactionAssetPath = spotlightTemplate?.interaction_asset_path || SPOTLIGHT_GALLERY_INTERACTION_PATH;
+            const interactionImage = interactionAssetPath ? await loadImage(resolveApiAssetUrl(interactionAssetPath)) : null;
 
             const mimeType = [
                 'video/mp4;codecs=h264',
@@ -3416,6 +3435,9 @@ const ConfigWorkspace: React.FC = () => {
                 }
                 ctx.restore();
                 ctx.globalAlpha = 1;
+                if (interactionImage) {
+                    ctx.drawImage(interactionImage, 0, 0, CANVAS_W, CANVAS_H);
+                }
 
                 if (elapsed < SPOTLIGHT_DURATION) {
                     requestAnimationFrame(drawFrame);
@@ -3427,15 +3449,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            const outputUrl = await persistRecordedVideoAsMp4(
+            await setGeneratedVideoFromRecording(
                 output,
                 'spotlight-splash-recording.mp4',
                 CANVAS_W,
                 CANVAS_H,
                 Math.ceil(SPOTLIGHT_DURATION / 1000),
             );
-            setGeneratedVideoUrl(outputUrl);
-            setGeneratedVideoType('video/mp4');
         } catch (err) {
             setError(err instanceof Error ? err.message : '聚光开屏视频合成失败');
         } finally {
@@ -3599,8 +3619,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            setGeneratedVideoUrl(URL.createObjectURL(output));
-            setGeneratedVideoType(mimeType);
+            await setGeneratedVideoFromRecording(
+                output,
+                `${isJumpingFrame ? 'jumping-focal-window' : 'break-frame-focal-3d'}-recording.mp4`,
+                BREAK_CANVAS_W,
+                BREAK_CANVAS_H,
+                Math.ceil(duration / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '破框焦点视窗3D 合成失败');
         } finally {
@@ -3761,9 +3786,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            const outputUrl = URL.createObjectURL(output);
-            setGeneratedVideoUrl(outputUrl);
-            setGeneratedVideoType(mimeType);
+            await setGeneratedVideoFromRecording(
+                output,
+                'polymorphic-flip-card-recording.mp4',
+                BREAK_CANVAS_W,
+                BREAK_CANVAS_H,
+                Math.ceil(duration / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '多态翻卡视频合成失败');
         } finally {
@@ -3874,8 +3903,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            setGeneratedVideoUrl(URL.createObjectURL(output));
-            setGeneratedVideoType(mimeType);
+            await setGeneratedVideoFromRecording(
+                output,
+                'refresh-ui-bottom-nav-recording.mp4',
+                BREAK_CANVAS_W,
+                BREAK_CANVAS_H,
+                Math.ceil(BREAK_DURATION / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '焕新UI视频合成失败');
         } finally {
@@ -4074,8 +4108,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            setGeneratedVideoUrl(URL.createObjectURL(output));
-            setGeneratedVideoType(mimeType || 'video/webm');
+            await setGeneratedVideoFromRecording(
+                output,
+                'linked-super-video-panorama-recording.mp4',
+                BREAK_CANVAS_W,
+                BREAK_CANVAS_H,
+                Math.ceil(totalDuration / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '联动超视频合成失败');
         } finally {
@@ -4215,9 +4254,13 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            const outputUrl = URL.createObjectURL(output);
-            setGeneratedVideoUrl(outputUrl);
-            setGeneratedVideoType(mimeType);
+            await setGeneratedVideoFromRecording(
+                output,
+                'dynamic-splash-recording.mp4',
+                CANVAS_W,
+                CANVAS_H,
+                Math.ceil(duration / 1000),
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : '合成视频失败');
         } finally {
@@ -4235,6 +4278,7 @@ const ConfigWorkspace: React.FC = () => {
     const selectedTemplateName = categories
         .flatMap((cat) => cat.templates)
         .find((tpl) => tpl.id === expandedTemplate)?.label || '炫动开屏';
+    const activeCreativeTemplate = creativeTemplates.find((tpl) => tpl.id === expandedTemplate) || null;
     const isDynamicSplashTemplate = expandedTemplate === 'dynamic-splash';
     const isMagazineTemplate = expandedTemplate === 'magazine-flip';
     const isSpotlightTemplate = expandedTemplate === 'slide-splash';
@@ -4244,6 +4288,7 @@ const ConfigWorkspace: React.FC = () => {
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
     const isLinkedSuperVideoTemplate = isLinkedSuperVideoTemplateId(expandedTemplate);
+    const spotlightInteractionAssetPath = activeCreativeTemplate?.interaction_asset_path || SPOTLIGHT_GALLERY_INTERACTION_PATH;
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
         ? CREATIVE_EFFECT_PREVIEW_ASPECT_RATIO
@@ -6125,7 +6170,7 @@ const ConfigWorkspace: React.FC = () => {
                                         </button>
                                         <a
                                             href={generatedVideoUrl || undefined}
-                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.${generatedVideoType.includes('mp4') ? 'mp4' : 'webm'}`}
+                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.mp4`}
                                             className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
                                         >
                                             <span className="material-symbols-outlined text-base">download</span>
@@ -6277,6 +6322,13 @@ const ConfigWorkspace: React.FC = () => {
                                                                 alt="大卡预览"
                                                                 className="absolute object-cover rounded-[2px] drop-shadow-2xl"
                                                                 style={spotlightLargePreviewStyle()}
+                                                            />
+                                                        )}
+                                                        {spotlightInteractionAssetPath && (
+                                                            <img
+                                                                src={resolveApiAssetUrl(spotlightInteractionAssetPath)}
+                                                                alt="聚光开屏交互形式"
+                                                                className="absolute inset-0 z-20 h-full w-full object-fill pointer-events-none"
                                                             />
                                                         )}
                                                     </>

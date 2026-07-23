@@ -11,6 +11,7 @@ import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
 import { compressAndCompositeVideo, removeWhiteBackgroundFromVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
+import { recordFeishuUsageSafely } from "./feishuUsage.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -71,7 +72,7 @@ const DEFAULT_CREATIVE_TEMPLATE_SETTINGS = {
 const DEFAULT_CREATIVE_TEMPLATES = [
   { id: "dynamic-splash", groupId: "splash", groupName: "开屏创意模版", name: "炫动开屏", dimensions: "1440 x 2340 / 5s", enabled: true },
   { id: "magazine-flip", groupId: "splash", groupName: "开屏创意模版", name: "杂志翻页", dimensions: "1440 x 2340 / 3-5素材", enabled: true },
-  { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340", enabled: true },
+  { id: "slide-splash", groupId: "splash", groupName: "开屏创意模版", name: "聚光开屏", dimensions: "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340", preview_video_path: "/template-previews/slide-splash.mp4", interaction_asset_path: "/creative-masks/spotlight-gallery-interaction.png", enabled: true },
   { id: "break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "秀秀-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "meiyan-break-frame-focal-3d", groupId: "home", groupName: "首页创意模版", name: "美颜-破框焦点视窗3D", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
   { id: "polymorphic-flip-card", groupId: "home", groupName: "首页创意模版", name: "多态翻卡", dimensions: "预览 1126 x 2436 / 破框 1126 x 1890 / 焦点 1126 x 900", enabled: true },
@@ -925,6 +926,19 @@ app.post("/api/templates/:id/increment", async (req, res) => {
   };
   await writeJson(ANALYTICS_FILE, analytics);
 
+  recordFeishuUsageSafely(req.meituUser, {
+    eventType: "生成素材",
+    pagePath: board === "creative" ? "/config" : "/",
+    tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
+    adFormat: template.name,
+    clickedGenerate: true,
+    generatedSuccessfully: true,
+    outputSpec: template.dimensions || "",
+    outputCount: 1,
+    resultId: `${id}-${Date.now()}`,
+    sessionId: visitorId,
+  });
+
   res.json({ success: true, processedCount: usageStats[id] });
 });
 
@@ -938,7 +952,23 @@ app.post("/api/analytics/visit", async (req, res) => {
   day.lastBoard = board;
   day.lastPath = pagePath;
   await writeJson(ANALYTICS_FILE, analytics);
+  recordFeishuUsageSafely(req.meituUser, {
+    eventType: "进入网站",
+    pagePath: pagePath,
+    tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
+    sessionId: visitorId,
+  });
   res.json({ ok: true, summary: buildAnalyticsSummary(analytics) });
+});
+
+app.post("/api/analytics/event", (req, res) => {
+  const event = req.body || {};
+  const allowedTypes = new Set(["进入网站", "生成素材", "下载素材", "其他"]);
+  recordFeishuUsageSafely(req.meituUser, {
+    ...event,
+    eventType: allowedTypes.has(event.eventType) ? event.eventType : "其他",
+  });
+  res.status(202).json({ accepted: true });
 });
 
 app.get("/api/analytics/summary", async (req, res) => {

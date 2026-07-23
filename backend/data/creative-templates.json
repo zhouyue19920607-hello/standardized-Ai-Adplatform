@@ -24,6 +24,7 @@
     "name": "聚光开屏",
     "dimensions": "小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340",
     "preview_video_path": "/template-previews/slide-splash.mp4",
+    "interaction_asset_path": "/creative-masks/spotlight-gallery-interaction.png",
     "enabled": true
   },
   {

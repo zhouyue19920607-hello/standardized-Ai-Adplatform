@@ -51,7 +51,13 @@ AIGC_PROVIDER_API_STYLE=openapi
 AIGC_PUBLIC_BASE_URL=https://你的线上站点域名
 AIGC_MAX_POLLS=120
 AIGC_POLL_INTERVAL_MS=2000
+FEISHU_APP_ID=飞书应用App ID
+FEISHU_APP_SECRET=飞书应用App Secret
+FEISHU_USAGE_WIKI_TOKEN=Z3zTwTAFViAZH4klt9NcsqNFngb
+FEISHU_USAGE_TABLE_ID=tblHi5s5LQVZZ66v
 ```
+
+网站会在后端异步记录已登录用户的访问、生成和下载事件到飞书多维表格。飞书密钥只能配置在 Matrix 服务环境变量中，不能放到前端变量或提交到仓库。
 
 当前标准化素材看板的图片适配优先走广告图适配管线：
 
