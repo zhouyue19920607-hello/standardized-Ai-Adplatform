@@ -3316,6 +3316,26 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const persistRecordedVideoAsMp4 = async (
+        blob: Blob,
+        filename: string,
+        width: number,
+        height: number,
+        maxDurationSec: number,
+    ) => {
+        const sourceType = blob.type || 'video/webm';
+        const sourceExt = sourceType.includes('mp4') ? 'mp4' : 'webm';
+        const sourceFile = new File([blob], filename.replace(/\.[^.]+$/, `.${sourceExt}`), { type: sourceType });
+        const uploaded = await uploadRawAsset(sourceFile);
+        const exported = await exportVideoWithSize({
+            url: uploaded.url,
+            width,
+            height,
+            maxDurationSec,
+        });
+        return resolveApiAssetUrl(exported.url || uploaded.url);
+    };
+
     const buildSpotlightVideo = async () => {
         setError('');
         resetOutput();
@@ -3407,9 +3427,15 @@ const ConfigWorkspace: React.FC = () => {
 
             requestAnimationFrame(drawFrame);
             const output = await done;
-            const outputUrl = URL.createObjectURL(output);
+            const outputUrl = await persistRecordedVideoAsMp4(
+                output,
+                'spotlight-splash-recording.mp4',
+                CANVAS_W,
+                CANVAS_H,
+                Math.ceil(SPOTLIGHT_DURATION / 1000),
+            );
             setGeneratedVideoUrl(outputUrl);
-            setGeneratedVideoType(mimeType);
+            setGeneratedVideoType('video/mp4');
         } catch (err) {
             setError(err instanceof Error ? err.message : '聚光开屏视频合成失败');
         } finally {
