@@ -900,7 +900,7 @@ app.post("/api/templates/reorder", async (req, res) => {
 // 模版使用次数递增（写入独立的 usage-stats.json，不修改 templates.json）
 app.post("/api/templates/:id/increment", async (req, res) => {
   const { id } = req.params;
-  const { visitorId = "anonymous", board = "standard" } = req.body || {};
+  const { visitorId = "anonymous", sessionId = visitorId, board = "standard" } = req.body || {};
   const templates = await readJson(TEMPLATES_FILE, []);
   const template = templates.find(t => t.id === id);
   if (!template) {
@@ -936,14 +936,14 @@ app.post("/api/templates/:id/increment", async (req, res) => {
     outputSpec: template.dimensions || "",
     outputCount: 1,
     resultId: `${id}-${Date.now()}`,
-    sessionId: visitorId,
+    sessionId,
   });
 
   res.json({ success: true, processedCount: usageStats[id] });
 });
 
 app.post("/api/analytics/visit", async (req, res) => {
-  const { visitorId = "anonymous", board = "standard", path: pagePath = "/" } = req.body || {};
+  const { visitorId = "anonymous", sessionId = visitorId, board = "standard", path: pagePath = "/" } = req.body || {};
   const analytics = await readJson(ANALYTICS_FILE, { days: {} });
   const day = ensureAnalyticsDay(analytics);
   day.visits += 1;
@@ -956,7 +956,7 @@ app.post("/api/analytics/visit", async (req, res) => {
     eventType: "进入网站",
     pagePath: pagePath,
     tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
-    sessionId: visitorId,
+    sessionId,
   });
   res.json({ ok: true, summary: buildAnalyticsSummary(analytics) });
 });

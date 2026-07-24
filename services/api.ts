@@ -9,6 +9,17 @@ export const api = axios.create({
     withCredentials: true,
 });
 
+const VISIT_SESSION_KEY = 'ai_saap_visit_session_id';
+
+export const getVisitSessionId = (): string => {
+    let sessionId = sessionStorage.getItem(VISIT_SESSION_KEY);
+    if (!sessionId) {
+        sessionId = `visit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        sessionStorage.setItem(VISIT_SESSION_KEY, sessionId);
+    }
+    return sessionId;
+};
+
 api.interceptors.response.use(
     response => response,
     error => {
@@ -45,12 +56,16 @@ export const reorderTemplates = async (templates: AdTemplate[]): Promise<void> =
 };
 
 export const incrementTemplateUsage = async (id: string, visitorId?: string): Promise<{ success: boolean; processedCount: number }> => {
-    const response = await api.post(`/templates/${id}/increment`, { visitorId, board: 'standard' });
+    const response = await api.post(`/templates/${id}/increment`, {
+        visitorId,
+        sessionId: getVisitSessionId(),
+        board: 'standard',
+    });
     return response.data;
 };
 
 export const reportVisit = async (visitorId: string, board: 'standard' | 'creative' = 'standard', path = window.location.pathname): Promise<void> => {
-    await api.post('/analytics/visit', { visitorId, board, path });
+    await api.post('/analytics/visit', { visitorId, sessionId: getVisitSessionId(), board, path });
 };
 
 export interface UsageEvent {
@@ -73,7 +88,10 @@ export interface UsageEvent {
 }
 
 export const reportUsageEvent = async (event: UsageEvent): Promise<void> => {
-    await api.post('/analytics/event', event);
+    await api.post('/analytics/event', {
+        ...event,
+        sessionId: event.sessionId || getVisitSessionId(),
+    });
 };
 
 export const getAnalyticsSummary = async (): Promise<AnalyticsSummary> => {

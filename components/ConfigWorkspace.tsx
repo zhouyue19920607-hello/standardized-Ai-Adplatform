@@ -53,16 +53,25 @@ type CreativeUploadTarget =
     | 'spotlight-small'
     | 'spotlight-large'
     | 'spotlight-splash'
+    | 'spotlight-ai-reference'
     | 'break-frame'
     | 'break-splash'
     | 'break-focal'
+    | 'break-reference-first'
+    | 'break-reference-second'
     | 'poly-base'
     | 'poly-cards'
     | 'poly-focal'
+    | 'poly-ai-reference'
     | 'refresh-icons'
+    | 'refresh-ai-reference'
     | 'refresh-bottom-nav'
+    | 'refresh-bottom-nav-ai-reference'
     | 'linked-opening'
-    | 'linked-focal';
+    | 'linked-focal'
+    | 'encounter-opening'
+    | 'encounter-webp'
+    | 'pendant-reference';
 
 const emptyUpload: UploadState = {
     file: null,
@@ -99,6 +108,9 @@ const dynamicSplashPlatformMasks: Record<CreativeTemplateSettings['platforms'][n
 const SPOTLIGHT_GALLERY_INTERACTION_PATH = '/creative-masks/spotlight-gallery-interaction.png';
 const SHOW_REFRESH_BOTTOM_NAV_UPLOAD = false;
 const LINKED_TEMPLATE_ID = 'linked-super-video-panorama';
+const ENCOUNTER_TEMPLATE_ID = 'encounter-egg';
+const ENCOUNTER_DURATION_MS = 5000;
+const ENCOUNTER_WEBP_DURATION_MS = 1500;
 
 const defaultCreativeCategories = [
     {
@@ -109,6 +121,7 @@ const defaultCreativeCategories = [
             { id: 'dynamic-splash', label: '炫动开屏' },
             { id: 'magazine-flip', label: '杂志翻页' },
             { id: 'slide-splash', label: '聚光开屏' },
+            { id: ENCOUNTER_TEMPLATE_ID, label: '奇遇彩蛋' },
         ],
     },
     {
@@ -160,6 +173,15 @@ const defaultCreativeTemplates: CreativeTemplateItem[] = [
         dimensions: '小卡 275 x 370 / 大卡 897 x 370 / 开屏 1440 x 2340',
         preview_video_path: '/template-previews/slide-splash.mp4',
         interaction_asset_path: SPOTLIGHT_GALLERY_INTERACTION_PATH,
+        enabled: true,
+    },
+    {
+        id: ENCOUNTER_TEMPLATE_ID,
+        groupId: 'splash',
+        groupName: '开屏创意模版',
+        name: '奇遇彩蛋',
+        dimensions: '开屏 1440 x 2340 / 5s；WebP 640 x 1040 / 1.5s 内',
+        preview_video_path: '/template-previews/encounter-egg.mp4',
         enabled: true,
     },
     {
@@ -608,6 +630,31 @@ const getVideoMeta = (file: File): Promise<{ width: number; height: number; dura
     })
 );
 
+const getAnimatedImageDuration = async (file: File): Promise<number | null> => {
+    if (typeof window === 'undefined') return null;
+    const Decoder = (window as any).ImageDecoder;
+    if (!Decoder) return null;
+
+    try {
+        const decoder = new Decoder({ data: await file.arrayBuffer(), type: file.type || 'image/webp' });
+        await decoder.tracks.ready;
+        const track = decoder.tracks.selectedTrack;
+        const frameCount = Number(track?.frameCount || 1);
+        let durationMicroseconds = 0;
+
+        for (let index = 0; index < frameCount; index += 1) {
+            const frame = await decoder.decode({ frameIndex: index });
+            durationMicroseconds += Number(frame.image?.duration || 0);
+            frame.image?.close?.();
+        }
+
+        decoder.close?.();
+        return durationMicroseconds > 0 ? durationMicroseconds / 1_000_000 : null;
+    } catch {
+        return null;
+    }
+};
+
 const loadImage = (url: string): Promise<HTMLImageElement> => (
     new Promise((resolve, reject) => {
         const img = new Image();
@@ -867,6 +914,8 @@ const ConfigWorkspace: React.FC = () => {
     const refreshBottomNavAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const linkedOpeningInputRef = useRef<HTMLInputElement>(null);
     const linkedFocalInputRef = useRef<HTMLInputElement>(null);
+    const encounterOpeningInputRef = useRef<HTMLInputElement>(null);
+    const encounterWebpInputRef = useRef<HTMLInputElement>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>('splash');
     const [expandedTemplate, setExpandedTemplate] = useState<string | null>('dynamic-splash');
     const [categories, setCategories] = useState(defaultCreativeCategories);
@@ -921,6 +970,8 @@ const ConfigWorkspace: React.FC = () => {
     const [refreshBottomNavAiReference, setRefreshBottomNavAiReference] = useState<UploadState>(emptyUpload);
     const [linkedOpeningVideo, setLinkedOpeningVideo] = useState<UploadState>(emptyUpload);
     const [linkedFocalVideo, setLinkedFocalVideo] = useState<UploadState>(emptyUpload);
+    const [encounterOpening, setEncounterOpening] = useState<UploadState>(emptyUpload);
+    const [encounterWebp, setEncounterWebp] = useState<UploadState>(emptyUpload);
     const [prompt, setPrompt] = useState('');
     const [interactionType, setInteractionType] = useState<CreativeTemplateSettings['interactionType']>(defaultCreativeSettings.interactionType);
     const [cropAreaEnabled, setCropAreaEnabled] = useState(defaultCreativeSettings.cropAreaEnabled);
@@ -1587,6 +1638,88 @@ const ConfigWorkspace: React.FC = () => {
         } catch (err) {
             URL.revokeObjectURL(url);
             setLinkedFocalVideo({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '焦点视窗视频读取失败' });
+        }
+    };
+
+    const updateEncounterOpening = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+
+        try {
+            if (file.type.startsWith('image/')) {
+                const size = await getImageSize(file);
+                const isValid = size.width === CANVAS_W && size.height === CANVAS_H;
+                setEncounterOpening({
+                    file,
+                    url,
+                    status: isValid ? 'valid' : 'adapted',
+                    message: isValid ? '开屏图片 1440 x 2340，符合规范' : `当前 ${size.width} x ${size.height}，生成时需适配至 1440 x 2340`,
+                });
+                return;
+            }
+
+            if (file.type.startsWith('video/')) {
+                const meta = await getVideoMeta(file);
+                if (meta.duration > 5) {
+                    URL.revokeObjectURL(url);
+                    setEncounterOpening({ file: null, url: null, status: 'invalid', message: `视频时长 ${meta.duration.toFixed(1)}s，需控制在 5s 以内` });
+                    return;
+                }
+                const isValid = meta.width === CANVAS_W && meta.height === CANVAS_H;
+                setEncounterOpening({
+                    file,
+                    url,
+                    status: isValid ? 'valid' : 'adapted',
+                    message: isValid ? `开屏视频 1440 x 2340 / ${meta.duration.toFixed(1)}s` : `视频 ${meta.width} x ${meta.height}，生成时需适配至 1440 x 2340`,
+                });
+                return;
+            }
+
+            URL.revokeObjectURL(url);
+            setEncounterOpening({ file: null, url: null, status: 'invalid', message: '开屏素材仅支持图片或 5s 内视频' });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setEncounterOpening({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '开屏素材读取失败' });
+        }
+    };
+
+    const updateEncounterWebp = async (file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+        const isWebp = file.type === 'image/webp' || file.name.toLowerCase().endsWith('.webp');
+
+        try {
+            if (!isWebp) {
+                URL.revokeObjectURL(url);
+                setEncounterWebp({ file: null, url: null, status: 'invalid', message: '彩蛋素材仅支持 WebP 格式' });
+                return;
+            }
+
+            const size = await getImageSize(file);
+            if (size.width !== 640 || size.height !== 1040) {
+                URL.revokeObjectURL(url);
+                setEncounterWebp({ file: null, url: null, status: 'invalid', message: `WebP 尺寸 ${size.width} x ${size.height}，需为 640 x 1040` });
+                return;
+            }
+
+            const duration = await getAnimatedImageDuration(file);
+            if (duration !== null && duration > 1.5) {
+                URL.revokeObjectURL(url);
+                setEncounterWebp({ file: null, url: null, status: 'invalid', message: `WebP 时长 ${duration.toFixed(1)}s，需控制在 1.5s 内` });
+                return;
+            }
+
+            setEncounterWebp({
+                file,
+                url,
+                status: 'valid',
+                message: duration !== null ? `WebP 640 x 1040 / ${duration.toFixed(1)}s` : 'WebP 640 x 1040，需确认 1.5s 内',
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setEncounterWebp({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : 'WebP 素材读取失败' });
         }
     };
 
@@ -3036,15 +3169,24 @@ const ConfigWorkspace: React.FC = () => {
         else if (target === 'spotlight-small') await addSpotlightSmallCards(files);
         else if (target === 'spotlight-large') await updateSpotlightLargeCard(files[0]);
         else if (target === 'spotlight-splash') await updateSpotlightSplash(files[0]);
+        else if (target === 'spotlight-ai-reference') await updateSpotlightAiReference(files[0]);
         else if (target === 'break-frame') await updateBreakFrameAsset(files[0]);
         else if (target === 'break-splash') await updateBreakSplash(files[0]);
         else if (target === 'break-focal') await updateBreakFocal(files[0]);
+        else if (target === 'break-reference-first') await updateBreakReference(0, files[0]);
+        else if (target === 'break-reference-second') await updateBreakReference(1, files[0]);
         else if (target === 'poly-base') await updatePolyBase(files[0]);
         else if (target === 'poly-focal') await updatePolyFocal(files[0]);
+        else if (target === 'poly-ai-reference') await updatePolyAiReference(files[0]);
         else if (target === 'refresh-icons') await updateRefreshIconSheet(files[0]);
+        else if (target === 'refresh-ai-reference') await updateRefreshAiReference(files[0]);
         else if (target === 'refresh-bottom-nav') await updateRefreshBottomNav(files[0]);
+        else if (target === 'refresh-bottom-nav-ai-reference') await updateRefreshBottomNavAiReference(files[0]);
         else if (target === 'linked-opening') await updateLinkedOpeningVideo(files[0]);
         else if (target === 'linked-focal') await updateLinkedFocalVideo(files[0]);
+        else if (target === 'encounter-opening') await updateEncounterOpening(files[0]);
+        else if (target === 'encounter-webp') await updateEncounterWebp(files[0]);
+        else if (target === 'pendant-reference') await updatePendantReference(files[0]);
         else await addPolyCards(files);
     };
 
@@ -4122,6 +4264,120 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const buildEncounterEggVideo = async () => {
+        setError('');
+        resetOutput();
+
+        if (!encounterOpening.url || !encounterOpening.file || encounterOpening.status === 'invalid') {
+            setError('请先上传 1440 x 2340px / 5s 内的开屏素材');
+            return;
+        }
+        if (!encounterWebp.url || !encounterWebp.file || encounterWebp.status === 'invalid') {
+            setError('请先上传 640 x 1040px / 1.5s 内的 WebP 彩蛋素材');
+            return;
+        }
+
+        setIsGenerating(true);
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = CANVAS_W;
+            canvas.height = CANVAS_H;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('无法创建视频画布');
+
+            const openingIsVideo = encounterOpening.file.type.startsWith('video/');
+            const openingVideo = openingIsVideo ? await loadVideoElement(encounterOpening.url) : null;
+            const openingImage = openingIsVideo ? null : await loadImage(encounterOpening.url);
+            const webpImage = await loadImage(encounterWebp.url);
+
+            if (openingVideo) {
+                try {
+                    openingVideo.currentTime = 0;
+                } catch {
+                    // Keep the loaded frame if seeking is unavailable.
+                }
+            }
+
+            const mimeType = [
+                'video/mp4;codecs=h264',
+                'video/webm;codecs=vp9',
+                'video/webm',
+            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const stream = canvas.captureStream(30);
+            const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
+            const chunks: Blob[] = [];
+
+            recorder.ondataavailable = (event) => {
+                if (event.data.size > 0) chunks.push(event.data);
+            };
+
+            const done = new Promise<Blob>((resolve) => {
+                recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+            });
+
+            const webpStartMs = ENCOUNTER_DURATION_MS - ENCOUNTER_WEBP_DURATION_MS;
+            const webpWidth = 640;
+            const webpHeight = 1040;
+            const webpX = (CANVAS_W - webpWidth) / 2;
+            const webpY = CANVAS_H - webpHeight - 170;
+            const start = performance.now();
+            recorder.start();
+
+            const drawFrame = (now: number) => {
+                const elapsed = Math.min(now - start, ENCOUNTER_DURATION_MS);
+
+                ctx.fillStyle = '#050505';
+                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+                if (openingVideo && openingVideo.readyState >= 2) {
+                    drawCover(ctx, openingVideo, openingVideo.videoWidth || CANVAS_W, openingVideo.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
+                } else if (openingImage) {
+                    drawCover(ctx, openingImage, openingImage.naturalWidth, openingImage.naturalHeight, CANVAS_W, CANVAS_H);
+                }
+
+                if (elapsed >= webpStartMs) {
+                    const localProgress = Math.min((elapsed - webpStartMs) / 320, 1);
+                    const alphaProgress = easeOutCubic(localProgress);
+                    const scale = 0.92 + alphaProgress * 0.08;
+                    const drawW = webpWidth * scale;
+                    const drawH = webpHeight * scale;
+                    ctx.save();
+                    ctx.globalAlpha = alphaProgress;
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+                    ctx.shadowBlur = 36;
+                    ctx.drawImage(
+                        webpImage,
+                        webpX + (webpWidth - drawW) / 2,
+                        webpY + (webpHeight - drawH) / 2,
+                        drawW,
+                        drawH,
+                    );
+                    ctx.restore();
+                }
+
+                if (elapsed < ENCOUNTER_DURATION_MS) {
+                    requestAnimationFrame(drawFrame);
+                } else {
+                    recorder.stop();
+                    if (openingVideo) openingVideo.pause();
+                }
+            };
+
+            requestAnimationFrame(drawFrame);
+            const output = await done;
+            await setGeneratedVideoFromRecording(
+                output,
+                'encounter-egg-recording.mp4',
+                CANVAS_W,
+                CANVAS_H,
+                Math.ceil(ENCOUNTER_DURATION_MS / 1000),
+            );
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '奇遇彩蛋视频合成失败');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     const buildVideo = async () => {
         setError('');
         setHoveredTemplateId(null);
@@ -4148,13 +4404,17 @@ const ConfigWorkspace: React.FC = () => {
             await buildLinkedSuperVideo();
             return;
         }
+        if (expandedTemplate === ENCOUNTER_TEMPLATE_ID) {
+            await buildEncounterEggVideo();
+            return;
+        }
         if (isBreakFrameLikeTemplateId(expandedTemplate)) {
             await buildBreakFrameFocalVideo();
             return;
         }
 
         if (expandedTemplate !== 'dynamic-splash') {
-            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI」「联动超视频-全景视频」模版编辑');
+            setError('当前仅开放「炫动开屏」「杂志翻页」「聚光开屏」「奇遇彩蛋」「秀秀/美颜-破框焦点视窗3D」「跃动焦点视窗」「焕新UI」「联动超视频-全景视频」模版编辑');
             return;
         }
         if (!splash.url || !splash.file || splash.status === 'invalid') {
@@ -4288,6 +4548,7 @@ const ConfigWorkspace: React.FC = () => {
     const isRefreshUiBottomNavTemplate = expandedTemplate === 'refresh-ui-bottom-nav';
     const isPolymorphicFlipCardTemplate = expandedTemplate === 'polymorphic-flip-card';
     const isLinkedSuperVideoTemplate = isLinkedSuperVideoTemplateId(expandedTemplate);
+    const isEncounterEggTemplate = expandedTemplate === ENCOUNTER_TEMPLATE_ID;
     const spotlightInteractionAssetPath = activeCreativeTemplate?.interaction_asset_path || SPOTLIGHT_GALLERY_INTERACTION_PATH;
     const shouldFreezeRefreshPreviewVideo = isRefreshUiBottomNavTemplate;
     const previewFrameAspectRatio = hoveredPreviewVideoUrl
@@ -4324,6 +4585,8 @@ const ConfigWorkspace: React.FC = () => {
                             : 'icon 底图 1228 x 674 / 等比缩小 1028 x 565 后裁进 6 个 icon'
                     : isLinkedSuperVideoTemplate
                         ? '输出规格 1126 x 2436 / 开屏 8s + 焦点视窗'
+                    : isEncounterEggTemplate
+                        ? '输出规格 1440 x 2340 / 开屏 5s + WebP 1.5s 内'
                 : isBreakFocalTemplate
                     ? '输出规格 1126 x 2436 / 破框 3D'
                 : '输出规格 1440 x 2340 / 5s';
@@ -4845,14 +5108,21 @@ const ConfigWorkspace: React.FC = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => spotlightAiReferenceInputRef.current?.click()}
-                                                            className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                            onDragOver={(event) => handleUploadDragOver(event, 'spotlight-ai-reference')}
+                                                            onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-ai-reference')}
+                                                            onDrop={(event) => handleUploadDrop(event, 'spotlight-ai-reference')}
+                                                            className={`absolute inset-0 rounded-[18px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${
+                                                                dragTarget === 'spotlight-ai-reference'
+                                                                    ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                                    : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                            }`}
                                                         >
                                                             {spotlightAiReference.url ? (
                                                                 <img src={spotlightAiReference.url} alt="聚光开屏 AI 参考图" className="h-full w-full object-cover" />
                                                             ) : (
                                                                 <div className="text-center px-2">
                                                                     <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">{dragTarget === 'spotlight-ai-reference' ? '松开上传' : '参考图'}</p>
                                                                 </div>
                                                             )}
                                                         </button>
@@ -5138,15 +5408,23 @@ const ConfigWorkspace: React.FC = () => {
                                                     />
                                                     <div className="relative min-h-[86px]">
                                                         <button
+                                                            type="button"
                                                             onClick={() => polyAiReferenceInputRef.current?.click()}
-                                                            className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                            onDragOver={(event) => handleUploadDragOver(event, 'poly-ai-reference')}
+                                                            onDragLeave={(event) => handleUploadDragLeave(event, 'poly-ai-reference')}
+                                                            onDrop={(event) => handleUploadDrop(event, 'poly-ai-reference')}
+                                                            className={`absolute inset-0 rounded-[18px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${
+                                                                dragTarget === 'poly-ai-reference'
+                                                                    ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                                    : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                            }`}
                                                         >
                                                             {polyAiReference.url ? (
                                                                 <img src={polyAiReference.url} alt="多态翻卡图生图参考图" className="h-full w-full object-cover" />
                                                             ) : (
                                                                 <div className="text-center px-2">
                                                                     <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">{dragTarget === 'poly-ai-reference' ? '松开上传' : '参考图'}</p>
                                                                 </div>
                                                             )}
                                                         </button>
@@ -5368,14 +5646,21 @@ const ConfigWorkspace: React.FC = () => {
                                                         <button
                                                             type="button"
                                                             onClick={() => refreshAiReferenceInputRef.current?.click()}
-                                                            className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                            onDragOver={(event) => handleUploadDragOver(event, 'refresh-ai-reference')}
+                                                            onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-ai-reference')}
+                                                            onDrop={(event) => handleUploadDrop(event, 'refresh-ai-reference')}
+                                                            className={`absolute inset-0 rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${
+                                                                dragTarget === 'refresh-ai-reference'
+                                                                    ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                                    : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                            }`}
                                                         >
                                                             {refreshAiReference.url ? (
                                                                 <img src={refreshAiReference.url} alt="icon 参考图" className="w-full h-full object-cover" />
                                                             ) : (
                                                                 <div className="text-center px-2">
                                                                     <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                    <p className="text-[9px] text-zinc-600 font-black mt-1">{dragTarget === 'refresh-ai-reference' ? '松开上传' : '参考图'}</p>
                                                                 </div>
                                                             )}
                                                         </button>
@@ -5557,14 +5842,21 @@ const ConfigWorkspace: React.FC = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => refreshBottomNavAiReferenceInputRef.current?.click()}
-                                                                className="absolute inset-0 rounded-[16px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                                onDragOver={(event) => handleUploadDragOver(event, 'refresh-bottom-nav-ai-reference')}
+                                                                onDragLeave={(event) => handleUploadDragLeave(event, 'refresh-bottom-nav-ai-reference')}
+                                                                onDrop={(event) => handleUploadDrop(event, 'refresh-bottom-nav-ai-reference')}
+                                                                className={`absolute inset-0 rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${
+                                                                    dragTarget === 'refresh-bottom-nav-ai-reference'
+                                                                        ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                                        : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                                }`}
                                                             >
                                                                 {refreshBottomNavAiReference.url ? (
                                                                     <img src={refreshBottomNavAiReference.url} alt="底导参考图" className="w-full h-full object-cover" />
                                                                 ) : (
                                                                     <div className="text-center px-2">
                                                                         <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">{dragTarget === 'refresh-bottom-nav-ai-reference' ? '松开上传' : '参考图'}</p>
                                                                     </div>
                                                                 )}
                                                             </button>
@@ -5606,6 +5898,101 @@ const ConfigWorkspace: React.FC = () => {
                                                 </div>
                                             </div>
                                         )}
+                                    </>
+                                ) : isEncounterEggTemplate ? (
+                                    <>
+                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h2 className="text-white text-sm font-black">①上传开屏素材</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">图片 / 视频 1440 x 2340px / 视频 5s 内</p>
+                                                </div>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(encounterOpening.status)}`}>{encounterOpening.message}</span>
+                                            </div>
+                                            <input
+                                                ref={encounterOpeningInputRef}
+                                                type="file"
+                                                accept="image/*,video/*"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updateEncounterOpening(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            <div className="relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => encounterOpeningInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'encounter-opening')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'encounter-opening')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'encounter-opening')}
+                                                    className={`w-full min-h-[190px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'encounter-opening' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {encounterOpening.url ? (
+                                                        encounterOpening.file?.type.startsWith('video/') ? (
+                                                            <video src={encounterOpening.url} className="h-48 max-w-full rounded-[16px] object-contain bg-black/40" muted loop playsInline autoPlay />
+                                                        ) : (
+                                                            <img src={encounterOpening.url} alt="奇遇彩蛋开屏素材" className="h-48 max-w-full rounded-[16px] object-contain bg-black/40" />
+                                                        )
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">movie_filter</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'encounter-opening' ? '松开上传开屏素材' : '点击或拖入开屏图片 / 视频'}</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(encounterOpening, () => clearUploadState(encounterOpening, setEncounterOpening), '删除开屏素材', { width: CANVAS_W, height: CANVAS_H, filename: `encounter-opening-${CANVAS_W}x${CANVAS_H}.png` })}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h2 className="text-white text-sm font-black">②上传 WebP 彩蛋素材</h2>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">WEBP / 640 x 1040px / 1.5s 内</p>
+                                                </div>
+                                                <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(encounterWebp.status)}`}>{encounterWebp.message}</span>
+                                            </div>
+                                            <input
+                                                ref={encounterWebpInputRef}
+                                                type="file"
+                                                accept="image/webp,.webp"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updateEncounterWebp(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            <div className="relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => encounterWebpInputRef.current?.click()}
+                                                    onDragOver={(event) => handleUploadDragOver(event, 'encounter-webp')}
+                                                    onDragLeave={(event) => handleUploadDragLeave(event, 'encounter-webp')}
+                                                    onDrop={(event) => handleUploadDrop(event, 'encounter-webp')}
+                                                    className={`w-full min-h-[180px] border border-dashed rounded-[20px] transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'encounter-webp' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}
+                                                >
+                                                    {encounterWebp.url ? (
+                                                        <img src={encounterWebp.url} alt="奇遇彩蛋 WebP 素材" className="h-44 max-w-full rounded-[16px] object-contain bg-black/40" />
+                                                    ) : (
+                                                        <div className="text-center">
+                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">motion_photos_auto</span>
+                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'encounter-webp' ? '松开上传 WebP 彩蛋' : '点击或拖入 1.5s 内 WebP'}</p>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                                {uploadRemoveButton(encounterWebp, () => clearUploadState(encounterWebp, setEncounterWebp), '删除 WebP 彩蛋', { width: 640, height: 1040, filename: 'encounter-egg-640x1040.png' })}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-[20px] border border-white/5 bg-white/[0.035] p-5 text-[11px] font-bold text-zinc-400 leading-6">
+                                            <p className="text-white font-black mb-2">奇遇彩蛋素材规则</p>
+                                            <p>STEP1：上传 1440 x 2340px 开屏素材，图片或 5s 内视频均可。</p>
+                                            <p>STEP2：上传 640 x 1040px WebP 彩蛋素材，动画需控制在 1.5s 内。</p>
+                                            <p>合成预览会优先展示用户上传内容，不上传时展示模版效果视频。</p>
+                                        </div>
                                     </>
                                 ) : isLinkedSuperVideoTemplate ? (
                                     <>
@@ -5921,13 +6308,24 @@ const ConfigWorkspace: React.FC = () => {
                                                                 className="w-full min-h-[86px] resize-none bg-zinc-950/80 border border-white/5 rounded-[18px] p-4 text-xs leading-5 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-white/20"
                                                             />
                                                             <div className="relative min-h-[86px]">
-                                                                <label className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden cursor-pointer">
+                                                                <label
+                                                                    onDragOver={(event) => handleUploadDragOver(event, item.phase === 0 ? 'break-reference-first' : 'break-reference-second')}
+                                                                    onDragLeave={(event) => handleUploadDragLeave(event, item.phase === 0 ? 'break-reference-first' : 'break-reference-second')}
+                                                                    onDrop={(event) => handleUploadDrop(event, item.phase === 0 ? 'break-reference-first' : 'break-reference-second')}
+                                                                    className={`absolute inset-0 rounded-[18px] border border-dashed transition-all flex items-center justify-center overflow-hidden cursor-pointer ${
+                                                                        dragTarget === (item.phase === 0 ? 'break-reference-first' : 'break-reference-second')
+                                                                            ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                                            : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                                    }`}
+                                                                >
                                                                     {item.reference.url ? (
                                                                         <img src={item.reference.url} alt={`${item.title}参考图`} className="w-full h-full object-cover" />
                                                                     ) : (
                                                                         <div className="text-center px-2">
                                                                             <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                                            <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                                            <p className="text-[9px] text-zinc-600 font-black mt-1">
+                                                                                {dragTarget === (item.phase === 0 ? 'break-reference-first' : 'break-reference-second') ? '松开上传' : '参考图'}
+                                                                            </p>
                                                                         </div>
                                                                     )}
                                                                     <input
@@ -6038,15 +6436,23 @@ const ConfigWorkspace: React.FC = () => {
                                         </div>
                                         <div className="relative h-20">
                                             <button
+                                                type="button"
                                                 onClick={() => pendantReferenceInputRef.current?.click()}
-                                                className="absolute inset-0 rounded-[18px] border border-dashed border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition-all flex items-center justify-center overflow-hidden"
+                                                onDragOver={(event) => handleUploadDragOver(event, 'pendant-reference')}
+                                                onDragLeave={(event) => handleUploadDragLeave(event, 'pendant-reference')}
+                                                onDrop={(event) => handleUploadDrop(event, 'pendant-reference')}
+                                                className={`absolute inset-0 rounded-[18px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${
+                                                    dragTarget === 'pendant-reference'
+                                                        ? 'border-primary/70 bg-primary/15 ring-2 ring-primary/25'
+                                                        : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.07]'
+                                                }`}
                                             >
                                                 {pendantReference.url ? (
                                                     <img src={pendantReference.url} alt="挂件图生图参考图" className="h-full w-full object-cover" />
                                                 ) : (
                                                     <div className="text-center px-2">
                                                         <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
-                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">参考图</p>
+                                                        <p className="text-[9px] text-zinc-600 font-black mt-1">{dragTarget === 'pendant-reference' ? '松开上传' : '参考图'}</p>
                                                     </div>
                                                 )}
                                             </button>
@@ -6153,13 +6559,15 @@ const ConfigWorkspace: React.FC = () => {
                                                             ? '沿用秀秀-破框焦点视窗3D能力，破框素材覆盖在焦点视窗上方'
                                                         : isLinkedSuperVideoTemplate
                                                             ? '开屏 0-5s 正常播放，5-8s 缓动回缩，8s 后接焦点视窗视频'
+                                                        : isEncounterEggTemplate
+                                                            ? '上传 5s 开屏素材与 1.5s 内 WebP 彩蛋素材后，可在这里查看组合预览'
                                                     : isBreakFocalTemplate
                                                         ? '套用美图秀秀焦点视窗底层能力，破框素材覆盖在焦点视窗上方'
                                                         : '8 个挂件组成一整块，从上方滑入并在 5s 内滑出画面'}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && !isLinkedSuperVideoTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
+                                        {!isMagazineTemplate && !isSpotlightTemplate && !isBreakFocalTemplate && !isJumpingFocalTemplate && !isRefreshUiBottomNavTemplate && !isPolymorphicFlipCardTemplate && !isLinkedSuperVideoTemplate && !isEncounterEggTemplate && <span className="text-[10px] text-zinc-500 font-bold mr-1">{interactionOptions.find((item) => item.id === interactionType)?.label}</span>}
                                         <button
                                             onClick={buildVideo}
                                             disabled={isGenerating}
@@ -6170,7 +6578,7 @@ const ConfigWorkspace: React.FC = () => {
                                         </button>
                                         <a
                                             href={generatedVideoUrl || undefined}
-                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.mp4`}
+                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isEncounterEggTemplate ? 'encounter-egg' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.mp4`}
                                             className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
                                         >
                                             <span className="material-symbols-outlined text-base">download</span>
@@ -6232,7 +6640,43 @@ const ConfigWorkspace: React.FC = () => {
                                             </>
                                         ) : (
                                             <>
-                                                {isLinkedSuperVideoTemplate ? (
+                                                {isEncounterEggTemplate ? (
+                                                    <div className="absolute inset-0 bg-zinc-950">
+                                                        {encounterOpening.url ? (
+                                                            encounterOpening.file?.type.startsWith('video/') ? (
+                                                                <video
+                                                                    src={encounterOpening.url}
+                                                                    className="absolute inset-0 h-full w-full object-contain bg-black"
+                                                                    muted
+                                                                    loop
+                                                                    playsInline
+                                                                    autoPlay
+                                                                />
+                                                            ) : (
+                                                                <img
+                                                                    src={encounterOpening.url}
+                                                                    alt="奇遇彩蛋开屏预览"
+                                                                    className="absolute inset-0 h-full w-full object-contain bg-black"
+                                                                />
+                                                            )
+                                                        ) : (
+                                                            <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-700">
+                                                                <span className="material-symbols-outlined text-6xl">movie_filter</span>
+                                                                <span className="mt-3 text-[10px] font-black tracking-normal text-left">Encounter Egg Splash</span>
+                                                            </div>
+                                                        )}
+                                                        {encounterWebp.url && (
+                                                            <img
+                                                                src={encounterWebp.url}
+                                                                alt="奇遇彩蛋 WebP 预览"
+                                                                className="absolute left-1/2 bottom-[8%] z-20 max-h-[48%] w-[44%] -translate-x-1/2 object-contain drop-shadow-[0_24px_60px_rgba(0,0,0,0.45)] pointer-events-none"
+                                                            />
+                                                        )}
+                                                        <div className="absolute left-4 top-4 rounded-full bg-black/50 px-3 py-1 text-[10px] font-black text-white backdrop-blur-md">
+                                                            {encounterOpening.url || encounterWebp.url ? '奇遇彩蛋上传预览' : '奇遇彩蛋'}
+                                                        </div>
+                                                    </div>
+                                                ) : isLinkedSuperVideoTemplate ? (
                                                     <div className="absolute inset-0 bg-zinc-950">
                                                         {linkedOpeningVideo.url ? (
                                                             <video
