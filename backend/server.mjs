@@ -972,7 +972,7 @@ app.post("/api/analytics/visit", async (req, res) => {
   }
 });
 
-app.get("/api/analytics/feishu-test", async (req, res) => {
+app.get("/api/feishu-test", async (req, res) => {
   const testId = `codex_test_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
   try {
     const result = await recordFeishuUsage(req.meituUser, {
