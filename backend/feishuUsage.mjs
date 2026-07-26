@@ -151,6 +151,7 @@ export async function recordFeishuUsage(user, event = {}) {
     "会话ID": cleanText(event.sessionId, 300),
     "唯一事件ID": eventId,
   };
+  if (!fields["素材类型"].length) delete fields["素材类型"];
   if (event.downloadedAt) fields["下载时间"] = event.downloadedAt;
 
   const tenantToken = await getTenantToken();
@@ -172,7 +173,7 @@ export async function recordFeishuUsage(user, event = {}) {
       "页面路径": mergeText(current["页面路径"], fields["页面路径"], 500),
       "使用工具": mergeText(current["使用工具"], fields["使用工具"], 300),
       "硬广形式": mergeText(current["硬广形式"], fields["硬广形式"], 1000),
-      "素材类型": uniqueValues([...(current["素材类型"] || []), ...fields["素材类型"]]),
+      "素材类型": uniqueValues([...(current["素材类型"] || []), ...(fields["素材类型"] || [])]),
       "是否点击生成": Boolean(current["是否点击生成"] || fields["是否点击生成"]),
       "是否生成成功": Boolean(current["是否生成成功"] || fields["是否生成成功"]),
       "失败原因": mergeText(current["失败原因"], fields["失败原因"], 1000),
