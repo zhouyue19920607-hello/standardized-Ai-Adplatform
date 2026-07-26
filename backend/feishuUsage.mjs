@@ -110,7 +110,6 @@ export async function recordFeishuUsage(user, event = {}) {
   const eventTypes = Array.isArray(event.eventTypes)
     ? event.eventTypes
     : [event.eventType || "其他"];
-  const eventTypeValue = uniqueValues(eventTypes).join("、") || "其他";
   const isGeneration = eventTypes.includes("生成素材");
   const isDownload = eventTypes.includes("下载素材");
   const fields = {
@@ -118,7 +117,6 @@ export async function recordFeishuUsage(user, event = {}) {
     "用户名称": cleanText(user?.displayName || user?.name || "美图用户", 200),
     "用户标识": cleanText(user?.openid || user?.feishu_user_id, 300),
     "进入时间": event.enteredAt || now,
-    "事件类型": eventTypeValue,
     "页面路径": cleanText(event.pagePath, 500),
     "统计周": period.week,
     "统计月": period.month,
@@ -139,7 +137,6 @@ export async function recordFeishuUsage(user, event = {}) {
     "使用入口": event.entry || "直接访问",
     "使用工具": cleanText(event.tool, 300),
     "硬广形式": cleanText(event.adFormat, 300),
-    "素材类型": Array.isArray(event.assetTypes) ? event.assetTypes.filter(Boolean) : [],
     "是否点击生成": Boolean(event.clickedGenerate),
     "是否生成成功": Boolean(event.generatedSuccessfully),
     "失败原因": cleanText(event.failureReason, 1000),
@@ -151,7 +148,6 @@ export async function recordFeishuUsage(user, event = {}) {
     "会话ID": cleanText(event.sessionId, 300),
     "唯一事件ID": eventId,
   };
-  if (!fields["素材类型"].length) delete fields["素材类型"];
   if (event.downloadedAt) fields["下载时间"] = event.downloadedAt;
 
   const tenantToken = await getTenantToken();
@@ -169,11 +165,9 @@ export async function recordFeishuUsage(user, event = {}) {
       ...fields,
       "事件编号": current["事件编号"] || fields["事件编号"],
       "进入时间": current["进入时间"] || fields["进入时间"],
-      "事件类型": mergeText(current["事件类型"], fields["事件类型"], 300),
       "页面路径": mergeText(current["页面路径"], fields["页面路径"], 500),
       "使用工具": mergeText(current["使用工具"], fields["使用工具"], 300),
       "硬广形式": mergeText(current["硬广形式"], fields["硬广形式"], 1000),
-      "素材类型": uniqueValues([...(current["素材类型"] || []), ...(fields["素材类型"] || [])]),
       "是否点击生成": Boolean(current["是否点击生成"] || fields["是否点击生成"]),
       "是否生成成功": Boolean(current["是否生成成功"] || fields["是否生成成功"]),
       "失败原因": mergeText(current["失败原因"], fields["失败原因"], 1000),
