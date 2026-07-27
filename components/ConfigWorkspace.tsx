@@ -12,6 +12,7 @@ import {
     generateVideoWithAigc,
     getCreativeSettings,
     getCreativeTemplates,
+    reportUsageEvent,
     uploadRawAsset,
 } from '../services/api';
 import { hexToRgb } from '../utils/colorUtils';
@@ -72,6 +73,24 @@ type CreativeUploadTarget =
     | 'encounter-opening'
     | 'encounter-webp'
     | 'pendant-reference';
+
+const trackCreativeUsage = (event: Parameters<typeof reportUsageEvent>[0]) => {
+    void reportUsageEvent({
+        pagePath: window.location.pathname,
+        tool: '创新硬广工具',
+        ...event,
+    }).catch((error) => {
+        console.error('Failed to report creative usage', error);
+    });
+};
+
+const getCreativeAssetType = (file?: File | null): '图片' | '视频' | 'PSD' | '其他' => {
+    if (!file) return '其他';
+    if (file.type.startsWith('image/')) return '图片';
+    if (file.type.startsWith('video/')) return '视频';
+    if (/\.psd$/i.test(file.name)) return 'PSD';
+    return '其他';
+};
 
 const emptyUpload: UploadState = {
     file: null,
@@ -1308,6 +1327,15 @@ const ConfigWorkspace: React.FC = () => {
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+                trackCreativeUsage({
+                    eventType: '下载结果',
+                    adFormat: options.filename || '创新硬广素材',
+                    assetTypes: [getCreativeAssetType(state.file)],
+                    outputFormat: 'MP4',
+                    outputCount: 1,
+                    downloaded: true,
+                    downloadedAt: Date.now(),
+                });
                 return;
             }
             const source = isVideo
@@ -1344,6 +1372,15 @@ const ConfigWorkspace: React.FC = () => {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(objectUrl);
+            trackCreativeUsage({
+                eventType: '下载结果',
+                adFormat: options.filename || '创新硬广素材',
+                assetTypes: [getCreativeAssetType(state.file)],
+                outputFormat: 'PNG',
+                outputCount: 1,
+                downloaded: true,
+                downloadedAt: Date.now(),
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'PNG 下载失败');
         }

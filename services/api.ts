@@ -69,7 +69,20 @@ export const reportVisit = async (visitorId: string, board: 'standard' | 'creati
 };
 
 export interface UsageEvent {
-    eventType: '进入网站' | '生成素材' | '下载素材' | '其他';
+    eventType:
+        | '进入网站'
+        | '选择工具'
+        | '选择硬广形式'
+        | '上传素材'
+        | '点击生成'
+        | '生成成功'
+        | '生成失败'
+        | '下载结果'
+        | '提交反馈'
+        | '离开网站'
+        | '生成素材'
+        | '下载素材'
+        | '其他';
     pagePath?: string;
     tool?: string;
     adFormat?: string;
@@ -85,6 +98,8 @@ export interface UsageEvent {
     downloadedAt?: number;
     sessionId?: string;
     eventId?: string;
+    taskStatus?: '仅访问' | '生成中' | '已完成' | '已放弃';
+    entry?: '机器人' | '飞书菜单' | '直接访问' | '其他';
 }
 
 export const reportUsageEvent = async (event: UsageEvent): Promise<void> => {

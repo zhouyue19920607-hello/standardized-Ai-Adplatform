@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit, getMeituAuthState, getMeituLoginUrl, MeituAuthState } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit, reportUsageEvent, getMeituAuthState, getMeituLoginUrl, MeituAuthState } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -248,6 +248,28 @@ const getVisitorId = () => {
   return visitorId;
 };
 
+const getCurrentToolName = () => window.location.pathname.startsWith('/config') ? '创新硬广工具' : '标准素材看板';
+
+const getAssetTypesFromFiles = (files: FileList | File[]) => {
+  const values = Array.from(files).map(file => {
+    if (file.type.startsWith('image/')) return '图片';
+    if (file.type.startsWith('video/')) return '视频';
+    if (/\.psd$/i.test(file.name)) return 'PSD';
+    return '其他';
+  });
+  return [...new Set(values)] as Array<'图片' | '视频' | 'PSD' | '其他'>;
+};
+
+const getOutputFormatFromAsset = (asset: AdAsset): 'JPG' | 'PNG' | 'WebP' | 'MP4' | 'PSD' | '其他' => {
+  const name = asset.name.toLowerCase();
+  if (asset.type.startsWith('video/') || /\.(mp4|mov)$/i.test(name)) return 'MP4';
+  if (asset.type.includes('png') || /\.png$/i.test(name)) return 'PNG';
+  if (asset.type.includes('webp') || /\.webp$/i.test(name)) return 'WebP';
+  if (asset.type.includes('jpeg') || asset.type.includes('jpg') || /\.(jpe?g)$/i.test(name)) return 'JPG';
+  if (/\.psd$/i.test(name)) return 'PSD';
+  return '其他';
+};
+
 // 浏览器端视频截图辅助函数 - Safari 兼容版
 const captureVideoFrame = (file: File, seekPoint: 'start' | 'end' = 'start'): Promise<string> => {
   return new Promise((resolve) => {
@@ -477,6 +499,18 @@ const App: React.FC = () => {
   }, []);
 
   const handleTemplateToggle = (id: string) => {
+    const target = templates.find(tpl => tpl.id === id);
+    if (target && !target.checked) {
+      void reportUsageEvent({
+        eventType: '选择硬广形式',
+        pagePath: window.location.pathname,
+        tool: getCurrentToolName(),
+        adFormat: target.name,
+        outputSpec: target.dimensions || '',
+      }).catch(error => {
+        console.error('Failed to report template selection', error);
+      });
+    }
     setTemplates(prev => prev.map(tpl => tpl.id === id ? { ...tpl, checked: !tpl.checked } : tpl));
   };
 
@@ -589,6 +623,15 @@ const App: React.FC = () => {
     if (!files || files.length === 0) return;
 
     const newFilesArray = Array.from(files);
+    void reportUsageEvent({
+      eventType: '上传素材',
+      pagePath: window.location.pathname,
+      tool: getCurrentToolName(),
+      assetTypes: getAssetTypesFromFiles(newFilesArray),
+      outputCount: newFilesArray.length,
+    }).catch(error => {
+      console.error('Failed to report upload usage', error);
+    });
 
     newFilesArray.forEach(async (f) => {
       const file = f as File;
@@ -712,6 +755,19 @@ const App: React.FC = () => {
       );
       if (!confirmed) return;
     }
+
+    void reportUsageEvent({
+      eventType: '点击生成',
+      pagePath: window.location.pathname,
+      tool: getCurrentToolName(),
+      adFormat: activeTemplates.map(tpl => tpl.name).join('、'),
+      assetTypes: getAssetTypesFromFiles(rawFiles.map(raw => raw.file)),
+      clickedGenerate: true,
+      outputCount: rawFiles.length * activeTemplates.length,
+      taskStatus: '生成中',
+    }).catch(error => {
+      console.error('Failed to report generate click', error);
+    });
 
     setIsProcessing(true);
     setProcessedAssets([]);
@@ -924,6 +980,19 @@ const App: React.FC = () => {
           } catch (e) {
             console.error('[AIGC Adapt] failed', e);
             const message = getRequestErrorMessage(e);
+            void reportUsageEvent({
+              eventType: '生成失败',
+              pagePath: window.location.pathname,
+              tool: getCurrentToolName(),
+              adFormat: template.name,
+              assetTypes: getAssetTypesFromFiles([raw.file]),
+              generatedSuccessfully: false,
+              failureReason: message,
+              outputSpec: template.dimensions || '',
+              taskStatus: '已放弃',
+            }).catch(error => {
+              console.error('Failed to report generation failure', error);
+            });
             alert(`美图 AI 适配失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
             setProcessedAssets(results);
             setIsProcessing(false);
@@ -937,6 +1006,19 @@ const App: React.FC = () => {
           } catch (e) {
             console.error('[AIGC Video Expand] failed', e);
             const message = getRequestErrorMessage(e);
+            void reportUsageEvent({
+              eventType: '生成失败',
+              pagePath: window.location.pathname,
+              tool: getCurrentToolName(),
+              adFormat: template.name,
+              assetTypes: getAssetTypesFromFiles([raw.file]),
+              generatedSuccessfully: false,
+              failureReason: message,
+              outputSpec: template.dimensions || '',
+              taskStatus: '已放弃',
+            }).catch(error => {
+              console.error('Failed to report generation failure', error);
+            });
             alert(`美图 AI 视频扩展失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
             setProcessedAssets(results);
             setIsProcessing(false);
@@ -1473,6 +1555,21 @@ const App: React.FC = () => {
 
       const content = await zip.generateAsync({ type: "blob" });
       saveAs(content, `${folderName}.zip`);
+      void reportUsageEvent({
+        eventType: '下载结果',
+        pagePath: window.location.pathname,
+        tool: getCurrentToolName(),
+        adFormat: [...new Set(processedAssets.map(asset => asset.templateName).filter(Boolean))].join('、'),
+        assetTypes: [...new Set(processedAssets.map(asset => asset.type.startsWith('video/') ? '视频' : '图片'))] as Array<'图片' | '视频' | '其他'>,
+        outputFormat: [...new Set(processedAssets.map(getOutputFormatFromAsset))].length === 1
+          ? getOutputFormatFromAsset(processedAssets[0])
+          : '其他',
+        outputCount: processedAssets.filter(asset => !asset.type.startsWith('video')).length,
+        downloaded: true,
+        downloadedAt: Date.now(),
+      }).catch(error => {
+        console.error('Failed to report batch download usage', error);
+      });
     } catch (error) {
       console.error("Batch download failed", error);
       alert(t('common.failZip'));

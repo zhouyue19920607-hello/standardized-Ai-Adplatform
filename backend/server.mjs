@@ -927,7 +927,7 @@ app.post("/api/templates/:id/increment", async (req, res) => {
   await writeJson(ANALYTICS_FILE, analytics);
 
   recordFeishuUsageSafely(req.meituUser, {
-    eventType: "生成素材",
+    eventType: "生成成功",
     pagePath: board === "creative" ? "/config" : "/",
     tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
     adFormat: template.name,
@@ -995,7 +995,21 @@ app.get("/api/feishu-test", async (req, res) => {
 });
 app.post("/api/analytics/event", (req, res) => {
   const event = req.body || {};
-  const allowedTypes = new Set(["进入网站", "生成素材", "下载素材", "其他"]);
+  const allowedTypes = new Set([
+    "进入网站",
+    "选择工具",
+    "选择硬广形式",
+    "上传素材",
+    "点击生成",
+    "生成成功",
+    "生成失败",
+    "下载结果",
+    "提交反馈",
+    "离开网站",
+    "生成素材",
+    "下载素材",
+    "其他",
+  ]);
   recordFeishuUsageSafely(req.meituUser, {
     ...event,
     eventType: allowedTypes.has(event.eventType) ? event.eventType : "其他",

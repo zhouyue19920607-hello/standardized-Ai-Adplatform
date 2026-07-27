@@ -158,7 +158,7 @@ const AdCard: React.FC<{
         if (videoLimitMB && !hasVideoOverlay && videoBlob.size <= videoLimitMB * 1024 * 1024) {
           await downloadAsBlob(asset.url, `${safeName}.mp4`);
           void reportUsageEvent({
-            eventType: '下载素材',
+            eventType: '下载结果',
             pagePath: window.location.pathname,
             tool: '标准素材看板',
             adFormat: asset.templateName,
@@ -203,7 +203,7 @@ const AdCard: React.FC<{
           }
           await downloadAsBlob(`${ASSETS_URL}${result.url}`, `${safeName}.mp4`);
           void reportUsageEvent({
-            eventType: '下载素材',
+            eventType: '下载结果',
             pagePath: window.location.pathname,
             tool: '标准素材看板',
             adFormat: asset.templateName,
@@ -244,7 +244,7 @@ const AdCard: React.FC<{
       document.body.appendChild(link);
       link.click();
       void reportUsageEvent({
-        eventType: '下载素材',
+        eventType: '下载结果',
         pagePath: window.location.pathname,
         tool: '标准素材看板',
         adFormat: asset.templateName,
