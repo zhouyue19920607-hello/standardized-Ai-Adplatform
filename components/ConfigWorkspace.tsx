@@ -655,6 +655,56 @@ const getAnimatedImageDuration = async (file: File): Promise<number | null> => {
     }
 };
 
+type AnimatedImageFrame = {
+    image: ImageBitmap;
+    durationMs: number;
+};
+
+type AnimatedImageSequence = {
+    frames: AnimatedImageFrame[];
+    totalDurationMs: number;
+};
+
+const decodeAnimatedImageSequence = async (file: File): Promise<AnimatedImageSequence | null> => {
+    if (typeof window === 'undefined') return null;
+    const Decoder = (window as any).ImageDecoder;
+    if (!Decoder) return null;
+
+    try {
+        const decoder = new Decoder({ data: await file.arrayBuffer(), type: file.type || 'image/webp' });
+        await decoder.tracks.ready;
+        const track = decoder.tracks.selectedTrack;
+        const frameCount = Math.max(1, Number(track?.frameCount || 1));
+        const frames: AnimatedImageFrame[] = [];
+
+        for (let index = 0; index < frameCount; index += 1) {
+            const frame = await decoder.decode({ frameIndex: index });
+            const image = await createImageBitmap(frame.image);
+            const durationMs = Math.max(16, Number(frame.image?.duration || 100_000) / 1000);
+            frame.image?.close?.();
+            frames.push({ image, durationMs });
+        }
+
+        decoder.close?.();
+        const totalDurationMs = frames.reduce((sum, frame) => sum + frame.durationMs, 0);
+        return frames.length ? { frames, totalDurationMs } : null;
+    } catch {
+        return null;
+    }
+};
+
+const getAnimatedFrameAt = (sequence: AnimatedImageSequence, elapsedMs: number): ImageBitmap => {
+    const total = Math.max(sequence.totalDurationMs, 16);
+    let cursor = elapsedMs % total;
+
+    for (const frame of sequence.frames) {
+        if (cursor <= frame.durationMs) return frame.image;
+        cursor -= frame.durationMs;
+    }
+
+    return sequence.frames[sequence.frames.length - 1].image;
+};
+
 const loadImage = (url: string): Promise<HTMLImageElement> => (
     new Promise((resolve, reject) => {
         const img = new Image();
@@ -4288,7 +4338,17 @@ const ConfigWorkspace: React.FC = () => {
             const openingIsVideo = encounterOpening.file.type.startsWith('video/');
             const openingVideo = openingIsVideo ? await loadVideoElement(encounterOpening.url) : null;
             const openingImage = openingIsVideo ? null : await loadImage(encounterOpening.url);
-            const webpImage = await loadImage(encounterWebp.url);
+            const webpSequence = await decodeAnimatedImageSequence(encounterWebp.file);
+            const webpImage = webpSequence ? null : await loadImage(encounterWebp.url);
+            const openingVideoDurationMs = openingVideo && Number.isFinite(openingVideo.duration)
+                ? Math.max(1000, Math.min(ENCOUNTER_DURATION_MS, openingVideo.duration * 1000))
+                : ENCOUNTER_DURATION_MS;
+            const openingDurationMs = openingVideo ? openingVideoDurationMs : ENCOUNTER_DURATION_MS;
+            const webpDurationMs = Math.min(
+                ENCOUNTER_WEBP_DURATION_MS,
+                Math.max(500, webpSequence?.totalDurationMs || ENCOUNTER_WEBP_DURATION_MS),
+            );
+            const totalDurationMs = openingDurationMs + webpDurationMs;
 
             if (openingVideo) {
                 try {
@@ -4315,50 +4375,34 @@ const ConfigWorkspace: React.FC = () => {
                 recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
             });
 
-            const webpStartMs = ENCOUNTER_DURATION_MS - ENCOUNTER_WEBP_DURATION_MS;
-            const webpWidth = 640;
-            const webpHeight = 1040;
-            const webpX = (CANVAS_W - webpWidth) / 2;
-            const webpY = CANVAS_H - webpHeight - 170;
             const start = performance.now();
             recorder.start();
 
             const drawFrame = (now: number) => {
-                const elapsed = Math.min(now - start, ENCOUNTER_DURATION_MS);
+                const elapsed = Math.min(now - start, totalDurationMs);
 
                 ctx.fillStyle = '#050505';
                 ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-                if (openingVideo && openingVideo.readyState >= 2) {
-                    drawCover(ctx, openingVideo, openingVideo.videoWidth || CANVAS_W, openingVideo.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
-                } else if (openingImage) {
-                    drawCover(ctx, openingImage, openingImage.naturalWidth, openingImage.naturalHeight, CANVAS_W, CANVAS_H);
+
+                if (elapsed < openingDurationMs) {
+                    if (openingVideo && openingVideo.readyState >= 2) {
+                        drawCover(ctx, openingVideo, openingVideo.videoWidth || CANVAS_W, openingVideo.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
+                    } else if (openingImage) {
+                        drawCover(ctx, openingImage, openingImage.naturalWidth, openingImage.naturalHeight, CANVAS_W, CANVAS_H);
+                    }
+                } else if (webpSequence) {
+                    const webpFrame = getAnimatedFrameAt(webpSequence, elapsed - openingDurationMs);
+                    drawCover(ctx, webpFrame, webpFrame.width, webpFrame.height, CANVAS_W, CANVAS_H);
+                } else if (webpImage) {
+                    drawCover(ctx, webpImage, webpImage.naturalWidth, webpImage.naturalHeight, CANVAS_W, CANVAS_H);
                 }
 
-                if (elapsed >= webpStartMs) {
-                    const localProgress = Math.min((elapsed - webpStartMs) / 320, 1);
-                    const alphaProgress = easeOutCubic(localProgress);
-                    const scale = 0.92 + alphaProgress * 0.08;
-                    const drawW = webpWidth * scale;
-                    const drawH = webpHeight * scale;
-                    ctx.save();
-                    ctx.globalAlpha = alphaProgress;
-                    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
-                    ctx.shadowBlur = 36;
-                    ctx.drawImage(
-                        webpImage,
-                        webpX + (webpWidth - drawW) / 2,
-                        webpY + (webpHeight - drawH) / 2,
-                        drawW,
-                        drawH,
-                    );
-                    ctx.restore();
-                }
-
-                if (elapsed < ENCOUNTER_DURATION_MS) {
+                if (elapsed < totalDurationMs) {
                     requestAnimationFrame(drawFrame);
                 } else {
                     recorder.stop();
                     if (openingVideo) openingVideo.pause();
+                    webpSequence?.frames.forEach((frame) => frame.image.close?.());
                 }
             };
 
@@ -4369,7 +4413,7 @@ const ConfigWorkspace: React.FC = () => {
                 'encounter-egg-recording.mp4',
                 CANVAS_W,
                 CANVAS_H,
-                Math.ceil(ENCOUNTER_DURATION_MS / 1000),
+                Math.ceil(totalDurationMs / 1000),
             );
         } catch (err) {
             setError(err instanceof Error ? err.message : '奇遇彩蛋视频合成失败');
