@@ -995,6 +995,16 @@ app.get("/api/feishu-test", async (req, res) => {
 });
 app.post("/api/analytics/event", (req, res) => {
   const event = req.body || {};
+  const { visitorId = "anonymous" } = event;
+  if (visitorId && visitorId !== "anonymous") {
+    readJson(ANALYTICS_FILE, { days: {} }).then(async (analytics) => {
+      const day = ensureAnalyticsDay(analytics);
+      if (!day.visitors.includes(visitorId)) day.visitors.push(visitorId);
+      await writeJson(ANALYTICS_FILE, analytics);
+    }).catch(error => {
+      console.error("[Analytics] event visitor update failed", error);
+    });
+  }
   const allowedTypes = new Set([
     "进入网站",
     "选择工具",

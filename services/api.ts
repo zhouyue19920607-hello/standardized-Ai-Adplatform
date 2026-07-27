@@ -10,6 +10,7 @@ export const api = axios.create({
 });
 
 const VISIT_SESSION_KEY = 'ai_saap_visit_session_id';
+const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
 
 export const getVisitSessionId = (): string => {
     let sessionId = sessionStorage.getItem(VISIT_SESSION_KEY);
@@ -18,6 +19,15 @@ export const getVisitSessionId = (): string => {
         sessionStorage.setItem(VISIT_SESSION_KEY, sessionId);
     }
     return sessionId;
+};
+
+const getStoredVisitorId = (): string => {
+    let visitorId = localStorage.getItem(VISITOR_ID_KEY);
+    if (!visitorId) {
+        visitorId = `visitor_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(VISITOR_ID_KEY, visitorId);
+    }
+    return visitorId;
 };
 
 api.interceptors.response.use(
@@ -96,6 +106,7 @@ export interface UsageEvent {
     resultId?: string;
     downloaded?: boolean;
     downloadedAt?: number;
+    visitorId?: string;
     sessionId?: string;
     eventId?: string;
     taskStatus?: '仅访问' | '生成中' | '已完成' | '已放弃';
@@ -105,6 +116,7 @@ export interface UsageEvent {
 export const reportUsageEvent = async (event: UsageEvent): Promise<void> => {
     await api.post('/analytics/event', {
         ...event,
+        visitorId: event.visitorId || getStoredVisitorId(),
         sessionId: event.sessionId || getVisitSessionId(),
     });
 };

@@ -122,8 +122,8 @@ export async function recordFeishuUsage(user, event = {}) {
   const isDownload = Boolean(event.downloaded) || eventTypes.includes("下载结果") || eventTypes.includes("下载素材");
   const fields = {
     "事件编号": `WEB-${now}-${eventId.slice(0, 4).toUpperCase()}`,
-    "用户名称": cleanText(user?.displayName || user?.name || "美图用户", 200),
-    "用户标识": cleanText(user?.openid || user?.feishu_user_id, 300),
+    "用户名称": cleanText(user?.displayName || user?.name || event.visitorId || "美图用户", 200),
+    "用户标识": cleanText(user?.openid || user?.feishu_user_id || event.visitorId, 300),
     "进入时间": event.enteredAt || now,
     "事件类型": cleanList(eventTypes),
     "页面路径": cleanText(event.pagePath, 500),
