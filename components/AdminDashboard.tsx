@@ -49,6 +49,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     // Advanced Management State
     const [filterApp, setFilterApp] = useState<string>('ALL');
     const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [fileDragTarget, setFileDragTarget] = useState<string | null>(null);
 
     useEffect(() => {
         fetchData();
@@ -243,6 +244,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             alert("工作流上传失败。");
         }
     }
+
+    const handleFileDragOver = (event: React.DragEvent<HTMLElement>, target: string) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'copy';
+        setFileDragTarget(target);
+    };
+
+    const handleFileDragLeave = (event: React.DragEvent<HTMLElement>, target: string) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const relatedTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+        if (!relatedTarget || !event.currentTarget.contains(relatedTarget)) {
+            setFileDragTarget(prev => prev === target ? null : prev);
+        }
+    };
+
+    const handleFileDrop = (
+        event: React.DragEvent<HTMLElement>,
+        target: string,
+        onFile: (file: File) => void | Promise<void>
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setFileDragTarget(prev => prev === target ? null : prev);
+        const file = event.dataTransfer.files?.[0];
+        if (file) {
+            void onFile(file);
+        }
+    };
+
+    const uploadDropZoneClass = (target: string) =>
+        fileDragTarget === target ? 'border-indigo-400 ring-2 ring-indigo-200 bg-indigo-50/80' : '';
 
     // ---- Drag and Drop Logic ----
     const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -516,9 +550,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                                 { slot: 'xiuxiu', label: '秀秀图片', icon: '/icons/meitu_mask_icon.png', path: tpl.platform_xiuxiu_path },
                                                                                 { slot: 'meiyan', label: '美颜图片', icon: '/icons/beauty_mask_icon.png', path: tpl.platform_meiyan_path },
                                                                                 { slot: 'wink', label: 'Wink图片', icon: '/icons/wink_mask_icon.png', path: tpl.platform_wink_path },
-                                                                            ]).map(item => (
+                                                                            ]).map(item => {
+                                                                                const uploadTarget = `creative-${tpl.id}-${item.slot}`;
+                                                                                return (
                                                                                 <div key={item.slot} className="rounded-xl bg-white border border-slate-100 p-3">
-                                                                                    <div className="relative h-16 rounded-lg bg-slate-50 border border-dashed border-slate-200 overflow-hidden flex items-center justify-center hover:border-indigo-300 transition-colors">
+                                                                                    <div
+                                                                                        onDragOver={(event) => handleFileDragOver(event, uploadTarget)}
+                                                                                        onDragLeave={(event) => handleFileDragLeave(event, uploadTarget)}
+                                                                                        onDrop={(event) => handleFileDrop(event, uploadTarget, (file) => handleCreativeAssetUpload(tpl.id, item.slot, file))}
+                                                                                        className={`relative h-16 rounded-lg bg-slate-50 border border-dashed border-slate-200 overflow-hidden flex items-center justify-center hover:border-indigo-300 transition-colors ${uploadDropZoneClass(uploadTarget)}`}
+                                                                                    >
                                                                                         {item.path ? (
                                                                                             <img src={`${ASSETS_URL}${item.path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt={item.label} />
                                                                                         ) : typeof item.icon === 'string' && item.icon.startsWith('/') ? (
@@ -536,7 +577,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                                     </div>
                                                                                     <p className="mt-2 text-[10px] font-black text-slate-500 text-center">{item.label}</p>
                                                                                 </div>
-                                                                            ))}
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     </div>
                                                                 )}
@@ -585,9 +627,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         <div className="flex flex-col gap-3 px-2">
                                             {splashGroups.map(group => {
                                                 const representative = getSplashRepresentative(group);
+                                                const groupKey = representative.splashGroup || representative.id;
                                                 const totalCount = group.reduce((sum, tpl) => sum + (tpl.processedCount || 0), 0);
                                                 return (
-                                                    <div key={representative.splashGroup || representative.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-5 hover:border-indigo-200 transition-all">
+                                                    <div key={groupKey} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-5 hover:border-indigo-200 transition-all">
                                                         <div className="flex flex-col gap-2 w-56">
                                                             <div className="flex items-center gap-1.5">
                                                                 {splashPlatformMeta.map(platform => (
@@ -621,7 +664,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                                                         <div className="flex items-center gap-3">
                                                             <div className="relative group/asset">
-                                                                <div className="w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                <div
+                                                                    onDragOver={(event) => handleFileDragOver(event, `splash-crop-${groupKey}`)}
+                                                                    onDragLeave={(event) => handleFileDragLeave(event, `splash-crop-${groupKey}`)}
+                                                                    onDrop={(event) => handleFileDrop(event, `splash-crop-${groupKey}`, (file) => handleSplashGroupCropUpload(group, file))}
+                                                                    className={`w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors ${uploadDropZoneClass(`splash-crop-${groupKey}`)}`}
+                                                                >
                                                                     {representative.crop_overlay_path ? (
                                                                         <img src={`${ASSETS_URL}${representative.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
                                                                     ) : (
@@ -641,9 +689,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                             {splashPlatformMeta.map(platform => {
                                                                 const platformTpl = group.find(tpl => tpl.app === platform.app);
                                                                 if (!platformTpl) return null;
+                                                                const uploadTarget = `splash-mask-${platformTpl.id}`;
                                                                 return (
                                                                     <div key={platform.app} className="relative group/asset">
-                                                                        <div className="w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                        <div
+                                                                            onDragOver={(event) => handleFileDragOver(event, uploadTarget)}
+                                                                            onDragLeave={(event) => handleFileDragLeave(event, uploadTarget)}
+                                                                            onDrop={(event) => handleFileDrop(event, uploadTarget, (file) => handleMaskUpload(platformTpl.id, file))}
+                                                                            className={`w-11 h-11 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors ${uploadDropZoneClass(uploadTarget)}`}
+                                                                        >
                                                                             {platformTpl.mask_path ? (
                                                                                 <img src={`${ASSETS_URL}${platformTpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt={`${platform.label} mask`} />
                                                                             ) : (
@@ -675,7 +729,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                                     <option key={wf.id} value={wf.id}>{wf.name}</option>
                                                                 ))}
                                                             </select>
-                                                            <label className={`relative flex h-9 items-center justify-center gap-1.5 rounded-xl border text-[11px] font-black transition-colors cursor-pointer overflow-hidden ${representative.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                                                            <label
+                                                                onDragOver={(event) => handleFileDragOver(event, `splash-preview-${groupKey}`)}
+                                                                onDragLeave={(event) => handleFileDragLeave(event, `splash-preview-${groupKey}`)}
+                                                                onDrop={(event) => handleFileDrop(event, `splash-preview-${groupKey}`, (file) => handleSplashGroupPreviewVideoUpload(group, file))}
+                                                                className={`relative flex h-9 items-center justify-center gap-1.5 rounded-xl border text-[11px] font-black transition-colors cursor-pointer overflow-hidden ${representative.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'} ${uploadDropZoneClass(`splash-preview-${groupKey}`)}`}
+                                                            >
                                                                 <span className="material-symbols-outlined text-[15px]">{representative.preview_video_path ? 'movie' : 'upload'}</span>
                                                                 <span>{representative.preview_video_path ? '更换展示视频' : '上传展示视频'}</span>
                                                                 <input
@@ -782,7 +841,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                         {/* 4. Assets */}
                                                         <div className="flex items-center gap-3 flex-1">
                                                             <div className="relative group/asset">
-                                                                <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                <div
+                                                                    onDragOver={(event) => handleFileDragOver(event, `mask-${tpl.id}`)}
+                                                                    onDragLeave={(event) => handleFileDragLeave(event, `mask-${tpl.id}`)}
+                                                                    onDrop={(event) => handleFileDrop(event, `mask-${tpl.id}`, (file) => handleMaskUpload(tpl.id, file))}
+                                                                    className={`w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors ${uploadDropZoneClass(`mask-${tpl.id}`)}`}
+                                                                >
                                                                     {tpl.mask_path ? (
                                                                         <img src={`${ASSETS_URL}${tpl.mask_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Mask" />
                                                                     ) : (
@@ -801,7 +865,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                                                             {(tpl.category === '开屏') && (
                                                                 <div className="relative group/asset">
-                                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                    <div
+                                                                        onDragOver={(event) => handleFileDragOver(event, `crop-${tpl.id}`)}
+                                                                        onDragLeave={(event) => handleFileDragLeave(event, `crop-${tpl.id}`)}
+                                                                        onDrop={(event) => handleFileDrop(event, `crop-${tpl.id}`, (file) => handleCropOverlayUpload(tpl.id, file))}
+                                                                        className={`w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors ${uploadDropZoneClass(`crop-${tpl.id}`)}`}
+                                                                    >
                                                                         {tpl.crop_overlay_path ? (
                                                                             <img src={`${ASSETS_URL}${tpl.crop_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Crop" />
                                                                         ) : (
@@ -821,7 +890,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                                                             {(tpl.category === '焦点视窗' || tpl.category === 'icon/banner' || tpl.category === '弹窗' || tpl.category === '信息流') && (
                                                                 <div className="relative group/asset">
-                                                                    <div className="w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors">
+                                                                    <div
+                                                                        onDragOver={(event) => handleFileDragOver(event, `badge-${tpl.id}`)}
+                                                                        onDragLeave={(event) => handleFileDragLeave(event, `badge-${tpl.id}`)}
+                                                                        onDrop={(event) => handleFileDrop(event, `badge-${tpl.id}`, (file) => handleBadgeOverlayUpload(tpl.id, file))}
+                                                                        className={`w-10 h-10 rounded border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center relative hover:border-indigo-200 transition-colors ${uploadDropZoneClass(`badge-${tpl.id}`)}`}
+                                                                    >
                                                                         {tpl.badge_overlay_path ? (
                                                                             <img src={`${ASSETS_URL}${tpl.badge_overlay_path}?v=${assetsVersion}`} className="w-full h-full object-contain" alt="Badge" />
                                                                         ) : (
@@ -858,7 +932,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                         {/* 6. Preview Video */}
                                                         <div className="w-32">
                                                             <label className="text-[9px] text-slate-400 block mb-0.5 uppercase">展示视频</label>
-                                                            <label className={`relative flex h-8 items-center justify-center gap-1.5 rounded-lg border text-[10px] font-black transition-colors cursor-pointer overflow-hidden ${tpl.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}>
+                                                            <label
+                                                                onDragOver={(event) => handleFileDragOver(event, `preview-${tpl.id}`)}
+                                                                onDragLeave={(event) => handleFileDragLeave(event, `preview-${tpl.id}`)}
+                                                                onDrop={(event) => handleFileDrop(event, `preview-${tpl.id}`, (file) => handlePreviewVideoUpload(tpl.id, file))}
+                                                                className={`relative flex h-8 items-center justify-center gap-1.5 rounded-lg border text-[10px] font-black transition-colors cursor-pointer overflow-hidden ${tpl.preview_video_path ? 'border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'border-indigo-100 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'} ${uploadDropZoneClass(`preview-${tpl.id}`)}`}
+                                                            >
                                                                 <span className="material-symbols-outlined text-[14px]">{tpl.preview_video_path ? 'movie' : 'upload'}</span>
                                                                 <span>{tpl.preview_video_path ? '更换视频' : '上传视频'}</span>
                                                                 <input
@@ -998,7 +1077,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     {activeTab === 'workflows' && (
                         <div className="space-y-8 max-w-[1400px] mx-auto">
                             {/* Premium Upload Zone */}
-                            <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10 transition-all duration-300 cursor-pointer relative group overflow-hidden">
+                            <div
+                                onDragOver={(event) => handleFileDragOver(event, 'workflow-upload')}
+                                onDragLeave={(event) => handleFileDragLeave(event, 'workflow-upload')}
+                                onDrop={(event) => handleFileDrop(event, 'workflow-upload', handleWorkflowUpload)}
+                                className={`bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/10 transition-all duration-300 cursor-pointer relative group overflow-hidden ${uploadDropZoneClass('workflow-upload')}`}
+                            >
                                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 to-indigo-50/0 group-hover:from-indigo-50/20 group-hover:to-purple-50/20 transition-all duration-500"></div>
                                 <input
                                     type="file"
