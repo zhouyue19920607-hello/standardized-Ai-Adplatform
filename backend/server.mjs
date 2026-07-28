@@ -12,6 +12,13 @@ import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
 import { compressAndCompositeVideo, removeWhiteBackgroundFromVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
 import { recordFeishuUsage, recordFeishuUsageSafely } from "./feishuUsage.mjs";
+import {
+  caseToolConfigured,
+  downloadCaseVideo,
+  searchCaseLibrary,
+  verifyCaseToolRequest,
+  verifyCaseVideoSignature,
+} from "./caseLibrary.mjs";
 
 
 // ---- 基础路径与环境变量 ----
@@ -807,6 +814,25 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", last_updated: "2026-02-25 10:35", feature: "png_transparency_v7_mtp1_text" });
 });
 
+// ---- API：ArkClaw 案例视频短期签名下载 ----
+// 仅允许 MCP 工具生成的短期签名链接访问，不暴露多维表格权限或飞书 file_token 以外的内部信息。
+app.get("/api/cases/videos/:fileToken", async (req, res) => {
+  try {
+    const { expires, sig } = req.query;
+    if (!verifyCaseVideoSignature(req.params.fileToken, expires, sig)) {
+      return res.status(403).json({ error: "case_video_link_invalid_or_expired" });
+    }
+    const filename = String(req.query.filename || "case-video.mp4").replace(/[\r\n\"]/g, "");
+    const response = await downloadCaseVideo(req.params.fileToken);
+    res.setHeader("Content-Type", response.headers["content-type"] || "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    response.data.pipe(res);
+  } catch (error) {
+    console.error("[CaseLibrary] signed video download failed", error.response?.data || error.message);
+    res.status(502).json({ error: "案例视频暂时无法下载" });
+  }
+});
+
 function requireMeituOAuthApi(req, res, next) {
   if (req.method === "OPTIONS") return next();
   const config = getMeituOAuthConfig();
@@ -1030,6 +1056,88 @@ app.post("/api/analytics/event", (req, res) => {
 app.get("/api/analytics/summary", async (req, res) => {
   const analytics = await readJson(ANALYTICS_FILE, { days: {} });
   res.json(buildAnalyticsSummary(analytics));
+});
+
+app.get("/api/cases/search", async (req, res) => {
+  try {
+    const query = String(req.query.q || "");
+    const limit = Math.min(Math.max(Number(req.query.limit) || 3, 1), 5);
+    const origin = `${req.protocol}://${req.get("host")}`;
+    res.json(await searchCaseLibrary(query, { limit, origin }));
+  } catch (error) {
+    console.error("[CaseLibrary] search failed", error);
+    res.status(502).json({ error: error.message || "案例库检索失败" });
+  }
+});
+
+app.get("/api/cases/videos/:fileToken", async (req, res) => {
+  try {
+    const filename = String(req.query.filename || "case-video.mp4").replace(/[\\r\\n\"]/g, "");
+    const response = await downloadCaseVideo(req.params.fileToken);
+    res.setHeader("Content-Type", response.headers["content-type"] || "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    response.data.pipe(res);
+  } catch (error) {
+    console.error("[CaseLibrary] video download failed", error.response?.data || error.message);
+    res.status(502).json({ error: "案例视频暂时无法下载" });
+  }
+});
+
+app.post("/mcp/case-library", express.json({ limit: "1mb" }), async (req, res) => {
+  if (!caseToolConfigured()) {
+    return res.status(503).json({ error: "case_tool_api_key_not_configured" });
+  }
+  if (!verifyCaseToolRequest(req)) {
+    return res.status(401).json({ error: "case_tool_unauthorized" });
+  }
+  const request = req.body || {};
+  const id = request.id ?? null;
+  const origin = `${req.protocol}://${req.get("host")}`;
+  const ok = (result) => res.json({ jsonrpc: "2.0", id, result });
+  const fail = (code, message) => res.json({ jsonrpc: "2.0", id, error: { code, message } });
+  try {
+    if (request.method === "initialize") {
+      return ok({
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "hard-ad-case-library", version: "1.0.0" },
+      });
+    }
+    if (request.method === "notifications/initialized") {
+      return res.status(202).end();
+    }
+    if (request.method === "tools/list") {
+      return ok({
+        tools: [{
+          name: "search_ad_case_library",
+          description: "按品牌、行业、平台或创新硬广形式检索历史案例库，返回案例摘要和视频下载地址。不要暴露内部多维表格链接。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "用户原始案例需求，例如：给我一个破框案例、Chanel 创新硬广案例、食品饮料开屏案例" },
+              limit: { type: "number", description: "返回案例数量，默认 3，用户说一个/一条时传 1" },
+            },
+            required: ["query"],
+          },
+        }],
+      });
+    }
+    if (request.method === "tools/call") {
+      const { name, arguments: args = {} } = request.params || {};
+      if (name !== "search_ad_case_library") return fail(-32601, "Unknown tool");
+      const result = await searchCaseLibrary(args.query || "", { limit: args.limit || 3, origin });
+      return ok({
+        content: [{
+          type: "text",
+          text: JSON.stringify(result, null, 2),
+        }],
+      });
+    }
+    return fail(-32601, "Method not found");
+  } catch (error) {
+    console.error("[CaseLibraryMCP] failed", error);
+    return fail(-32000, error.message || "案例库工具调用失败");
+  }
 });
 
 const recordAiUsage = async (provider) => {
