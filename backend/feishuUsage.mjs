@@ -8,6 +8,7 @@ const DEFAULT_TABLE_ID = "tblHi5s5LQVZZ66v";
 let tenantTokenCache = null;
 let appTokenCache = null;
 let tableFieldsCache = null;
+let tableFieldMetaCache = null;
 const sessionQueues = new Map();
 
 const usageStatus = {
@@ -119,12 +120,12 @@ function getShanghaiPeriod(now = new Date()) {
   };
 }
 
-async function getTableFieldNames(tenantToken, appToken, tableId) {
+async function getTableFieldMeta(tenantToken, appToken, tableId) {
   const cacheKey = `${appToken}:${tableId}`;
-  if (tableFieldsCache?.key === cacheKey && tableFieldsCache.expiresAt > Date.now()) {
-    return tableFieldsCache.value;
+  if (tableFieldMetaCache?.key === cacheKey && tableFieldMetaCache.expiresAt > Date.now()) {
+    return tableFieldMetaCache.value;
   }
-  const names = new Set();
+  const meta = new Map();
   let pageToken = undefined;
   do {
     const response = await axios.get(
@@ -139,18 +140,55 @@ async function getTableFieldNames(tenantToken, appToken, tableId) {
       throw new Error(response.data?.msg || "读取飞书使用记录字段失败");
     }
     for (const field of response.data?.data?.items || []) {
-      if (field?.field_name) names.add(field.field_name);
+      if (field?.field_name) meta.set(field.field_name, field);
     }
     pageToken = response.data?.data?.page_token;
   } while (pageToken);
-  tableFieldsCache = { key: cacheKey, value: names, expiresAt: Date.now() + 10 * 60_000 };
-  return names;
+  tableFieldMetaCache = { key: cacheKey, value: meta, expiresAt: Date.now() + 10 * 60_000 };
+  tableFieldsCache = { key: cacheKey, value: new Set(meta.keys()), expiresAt: Date.now() + 10 * 60_000 };
+  return meta;
 }
 
-function filterExistingFields(fields, fieldNames) {
-  return Object.fromEntries(
-    Object.entries(fields).filter(([name]) => fieldNames.has(name)),
-  );
+async function getTableFieldNames(tenantToken, appToken, tableId) {
+  const cacheKey = `${appToken}:${tableId}`;
+  if (tableFieldsCache?.key === cacheKey && tableFieldsCache.expiresAt > Date.now()) {
+    return tableFieldsCache.value;
+  }
+  const meta = await getTableFieldMeta(tenantToken, appToken, tableId);
+  return new Set(meta.keys());
+}
+
+function coerceFeishuFieldValue(value, field) {
+  if (value === undefined || value === null) return undefined;
+  const type = Number(field?.type);
+  if ([1, 13, 15].includes(type)) return Array.isArray(value) ? value.join("、") : String(value);
+  if (type === 2) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+  }
+  if (type === 3) return Array.isArray(value) ? String(value[0] || "") : String(value);
+  if (type === 4) return cleanList(value);
+  if (type === 5) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+    const parsed = Date.parse(String(value));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  if (type === 7) return Boolean(value);
+  if ([11, 17, 18, 20, 21, 22, 23, 1001, 1002, 1003, 1005].includes(type)) return undefined;
+  return value;
+}
+
+function filterExistingFields(fields, fieldMetaOrNames) {
+  const result = {};
+  for (const [name, value] of Object.entries(fields)) {
+    const field = fieldMetaOrNames instanceof Map ? fieldMetaOrNames.get(name) : null;
+    const exists = fieldMetaOrNames instanceof Map ? Boolean(field) : fieldMetaOrNames.has(name);
+    if (!exists) continue;
+    const coerced = field ? coerceFeishuFieldValue(value, field) : value;
+    if (coerced !== undefined) result[name] = coerced;
+  }
+  return result;
 }
 
 async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
@@ -242,8 +280,9 @@ export async function recordFeishuUsage(user, event = {}) {
   const tenantToken = await getTenantToken();
   const appToken = await getAppToken();
   const tableId = process.env.FEISHU_USAGE_TABLE_ID || DEFAULT_TABLE_ID;
-  const fieldNames = await getTableFieldNames(tenantToken, appToken, tableId);
-  const writableFields = filterExistingFields(fields, fieldNames);
+  const fieldMeta = await getTableFieldMeta(tenantToken, appToken, tableId);
+  const fieldNames = new Set(fieldMeta.keys());
+  const writableFields = filterExistingFields(fields, fieldMeta);
   const existing = fieldNames.has("会话ID")
     ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
     : null;
@@ -293,7 +332,7 @@ export async function recordFeishuUsage(user, event = {}) {
     }
     response = await axios.put(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${existing.record_id}`,
-      { fields: filterExistingFields(mergedFields, fieldNames) },
+      { fields: filterExistingFields(mergedFields, fieldMeta) },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
     );
   } else {
