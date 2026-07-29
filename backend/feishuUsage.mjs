@@ -19,11 +19,19 @@ const usageStatus = {
   lastErrorAt: null,
   lastError: null,
   lastRecordId: null,
+  lastStage: null,
+  lastStageAt: null,
+  lastDurationMs: 0,
   consecutiveFailures: 0,
   pendingSessions: 0,
 };
 
 const configured = () => Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
+
+function markStage(stage) {
+  usageStatus.lastStage = stage;
+  usageStatus.lastStageAt = new Date().toISOString();
+}
 
 function setUsageError(error) {
   usageStatus.lastErrorAt = new Date().toISOString();
@@ -32,6 +40,7 @@ function setUsageError(error) {
 }
 
 function setUsageSuccess(recordId) {
+  markStage("success");
   usageStatus.lastSuccessAt = new Date().toISOString();
   usageStatus.lastError = null;
   usageStatus.lastRecordId = recordId || null;
@@ -52,8 +61,10 @@ export function getFeishuUsageStatus() {
 
 async function getTenantToken() {
   if (tenantTokenCache && tenantTokenCache.expiresAt > Date.now() + 60_000) {
+    markStage("tenant_token_cached");
     return tenantTokenCache.value;
   }
+  markStage("tenant_token_request");
   const response = await axios.post(`${FEISHU_API}/auth/v3/tenant_access_token/internal`, {
     app_id: process.env.FEISHU_APP_ID,
     app_secret: process.env.FEISHU_APP_SECRET,
@@ -69,9 +80,13 @@ async function getTenantToken() {
 }
 
 async function getAppToken() {
-  if (appTokenCache) return appTokenCache;
+  if (appTokenCache) {
+    markStage("wiki_node_cached");
+    return appTokenCache;
+  }
   const tenantToken = await getTenantToken();
   const wikiToken = process.env.FEISHU_USAGE_WIKI_TOKEN || DEFAULT_WIKI_TOKEN;
+  markStage("wiki_node_request");
   const response = await axios.get(`${FEISHU_API}/wiki/v2/spaces/get_node`, {
     params: { token: wikiToken },
     headers: { Authorization: `Bearer ${tenantToken}` },
@@ -123,10 +138,12 @@ function getShanghaiPeriod(now = new Date()) {
 async function getTableFieldMeta(tenantToken, appToken, tableId) {
   const cacheKey = `${appToken}:${tableId}`;
   if (tableFieldMetaCache?.key === cacheKey && tableFieldMetaCache.expiresAt > Date.now()) {
+    markStage("table_fields_cached");
     return tableFieldMetaCache.value;
   }
   const meta = new Map();
   let pageToken = undefined;
+  markStage("table_fields_request");
   do {
     const response = await axios.get(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/fields`,
@@ -193,6 +210,7 @@ function filterExistingFields(fields, fieldMetaOrNames) {
 
 async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
   if (!sessionId) return null;
+  markStage("record_search_request");
   const response = await axios.post(
     `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
     {
@@ -214,7 +232,9 @@ async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
 }
 
 export async function recordFeishuUsage(user, event = {}) {
+  const startedAt = Date.now();
   usageStatus.lastAttemptAt = new Date().toISOString();
+  markStage("start");
   usageStatus.configured = configured();
   if (!configured()) {
     usageStatus.lastSkippedAt = new Date().toISOString();
@@ -277,6 +297,7 @@ export async function recordFeishuUsage(user, event = {}) {
   };
   if (event.downloadedAt) fields["下载时间"] = event.downloadedAt;
 
+  markStage("build_fields");
   const tenantToken = await getTenantToken();
   const appToken = await getAppToken();
   const tableId = process.env.FEISHU_USAGE_TABLE_ID || DEFAULT_TABLE_ID;
@@ -330,12 +351,14 @@ export async function recordFeishuUsage(user, event = {}) {
     if (current["下载时间"] || fields["下载时间"]) {
       mergedFields["下载时间"] = Math.max(Number(current["下载时间"] || 0), Number(fields["下载时间"] || 0));
     }
+    markStage("record_update_request");
     response = await axios.put(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${existing.record_id}`,
       { fields: filterExistingFields(mergedFields, fieldMeta) },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
     );
   } else {
+    markStage("record_create_request");
     response = await axios.post(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
       { fields: writableFields },
@@ -346,9 +369,11 @@ export async function recordFeishuUsage(user, event = {}) {
     throw new Error(response.data?.msg || "飞书使用记录写入失败");
   }
   const recordId = response.data?.data?.record?.record_id;
+  usageStatus.lastDurationMs = Date.now() - startedAt;
   setUsageSuccess(recordId);
   return { recordId, eventId };
   } catch (error) {
+    usageStatus.lastDurationMs = Date.now() - startedAt;
     setUsageError(error);
     throw error;
   }
