@@ -3638,8 +3638,25 @@ const ConfigWorkspace: React.FC = () => {
         height: number,
         maxDurationSec: number,
     ) => {
-        const outputUrl = await persistRecordedVideoAsMp4(blob, filename, width, height, maxDurationSec);
-        setGeneratedVideoUrl(outputUrl);
+        const localPreviewUrl = URL.createObjectURL(blob);
+        setGeneratedVideoUrl((current) => {
+            if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+            return localPreviewUrl;
+        });
+
+        try {
+            const outputUrl = await persistRecordedVideoAsMp4(blob, filename, width, height, maxDurationSec);
+            setGeneratedVideoUrl((current) => {
+                if (current === localPreviewUrl) {
+                    URL.revokeObjectURL(localPreviewUrl);
+                    return outputUrl;
+                }
+                return current;
+            });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
+            setError((current) => current || `视频已生成，可先下载本地合成结果；正式 MP4 保存失败：${message}`);
+        }
     };
 
     const buildSpotlightVideo = async () => {
