@@ -46,6 +46,7 @@ interface SpotlightCardAsset {
 }
 
 interface GeneratedVideoSource {
+    id: string;
     blob: Blob;
     filename: string;
     width: number;
@@ -1066,6 +1067,8 @@ const ConfigWorkspace: React.FC = () => {
     const [isGeneratedVideoPreparingDownload, setIsGeneratedVideoPreparingDownload] = useState(false);
     const [isGeneratedVideoDownloading, setIsGeneratedVideoDownloading] = useState(false);
     const [error, setError] = useState('');
+    const generatedVideoSourceRef = useRef<GeneratedVideoSource | null>(null);
+    const generatedVideoPrepareRef = useRef<{ id: string; promise: Promise<string> } | null>(null);
     const previewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFocalPreviewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFramePreviewVideoRef = useRef<HTMLVideoElement>(null);
@@ -1265,9 +1268,12 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const resetOutput = () => {
+        const sourceToClean = generatedVideoSourceRef.current || generatedVideoSource;
         if (generatedVideoUrl?.startsWith('blob:')) URL.revokeObjectURL(generatedVideoUrl);
         if (generatedVideoDownloadUrl?.startsWith('blob:') && generatedVideoDownloadUrl !== generatedVideoUrl) URL.revokeObjectURL(generatedVideoDownloadUrl);
-        if (generatedVideoSource?.localUrl?.startsWith('blob:') && generatedVideoSource.localUrl !== generatedVideoUrl && generatedVideoSource.localUrl !== generatedVideoDownloadUrl) URL.revokeObjectURL(generatedVideoSource.localUrl);
+        if (sourceToClean?.localUrl?.startsWith('blob:') && sourceToClean.localUrl !== generatedVideoUrl && sourceToClean.localUrl !== generatedVideoDownloadUrl) URL.revokeObjectURL(sourceToClean.localUrl);
+        generatedVideoSourceRef.current = null;
+        generatedVideoPrepareRef.current = null;
         setGeneratedVideoUrl(null);
         setGeneratedVideoDownloadUrl(null);
         setGeneratedVideoSource(null);
@@ -1307,25 +1313,14 @@ const ConfigWorkspace: React.FC = () => {
 
     const handleGeneratedVideoDownload = async () => {
         if (!generatedVideoUrl || isGeneratedVideoDownloading) return;
-        if (isGeneratedVideoPreparingDownload && !generatedVideoDownloadUrl) {
-            setError('MP4 文件正在准备中，请稍等几秒后再点下载。');
-            return;
-        }
         const filename = getGeneratedVideoFilename();
         setError('');
         setIsGeneratedVideoDownloading(true);
         try {
             let downloadSourceUrl = generatedVideoDownloadUrl;
-            if (!downloadSourceUrl && generatedVideoSource) {
-                setIsGeneratedVideoPreparingDownload(true);
-                downloadSourceUrl = await persistRecordedVideoAsMp4(
-                    generatedVideoSource.blob,
-                    generatedVideoSource.filename,
-                    generatedVideoSource.width,
-                    generatedVideoSource.height,
-                    generatedVideoSource.maxDurationSec,
-                );
-                setGeneratedVideoDownloadUrl(downloadSourceUrl);
+            const sourceForDownload = generatedVideoSourceRef.current || generatedVideoSource;
+            if (!downloadSourceUrl && sourceForDownload) {
+                downloadSourceUrl = await prepareGeneratedVideoMp4(sourceForDownload, true);
             }
             if (!downloadSourceUrl) throw new Error('MP4 下载文件还没有准备好，请重新生成后再试');
 
@@ -3668,6 +3663,49 @@ const ConfigWorkspace: React.FC = () => {
         return resolveApiAssetUrl(exported.url || uploaded.url);
     };
 
+    const prepareGeneratedVideoMp4 = async (source: GeneratedVideoSource, showFailure: boolean) => {
+        if (source.isMp4) {
+            setGeneratedVideoDownloadUrl(source.localUrl);
+            return source.localUrl;
+        }
+        if (generatedVideoPrepareRef.current?.id === source.id) {
+            return generatedVideoPrepareRef.current.promise;
+        }
+
+        setIsGeneratedVideoPreparingDownload(true);
+        const promise = persistRecordedVideoAsMp4(
+            source.blob,
+            source.filename,
+            source.width,
+            source.height,
+            source.maxDurationSec,
+        )
+            .then((outputUrl) => {
+                if (generatedVideoSourceRef.current?.id === source.id) {
+                    setGeneratedVideoDownloadUrl(outputUrl);
+                }
+                return outputUrl;
+            })
+            .catch((err) => {
+                const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
+                if (showFailure && generatedVideoSourceRef.current?.id === source.id) {
+                    setError(`MP4 下载文件准备失败：${message}`);
+                }
+                throw err;
+            })
+            .finally(() => {
+                if (generatedVideoPrepareRef.current?.id === source.id) {
+                    generatedVideoPrepareRef.current = null;
+                }
+                if (generatedVideoSourceRef.current?.id === source.id) {
+                    setIsGeneratedVideoPreparingDownload(false);
+                }
+            });
+
+        generatedVideoPrepareRef.current = { id: source.id, promise };
+        return promise;
+    };
+
     const setGeneratedVideoFromRecording = async (
         blob: Blob,
         filename: string,
@@ -3677,11 +3715,8 @@ const ConfigWorkspace: React.FC = () => {
     ) => {
         const localPreviewUrl = URL.createObjectURL(blob);
         const isRecordingMp4 = (blob.type || '').toLowerCase().includes('mp4');
-        setGeneratedVideoUrl((current) => {
-            if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
-            return localPreviewUrl;
-        });
-        setGeneratedVideoSource({
+        const source: GeneratedVideoSource = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             blob,
             filename,
             width,
@@ -3689,28 +3724,27 @@ const ConfigWorkspace: React.FC = () => {
             maxDurationSec,
             localUrl: localPreviewUrl,
             isMp4: isRecordingMp4,
+        };
+        generatedVideoSourceRef.current = source;
+        generatedVideoPrepareRef.current = null;
+        setGeneratedVideoUrl((current) => {
+            if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+            return localPreviewUrl;
         });
+        setGeneratedVideoSource(source);
         setGeneratedVideoDownloadUrl((current) => {
             if (current?.startsWith('blob:') && current !== localPreviewUrl) URL.revokeObjectURL(current);
             return isRecordingMp4 ? localPreviewUrl : null;
         });
         setIsGeneratedVideoPreparingDownload(!isRecordingMp4);
 
-        try {
-            const outputUrl = await persistRecordedVideoAsMp4(blob, filename, width, height, maxDurationSec);
-            setGeneratedVideoUrl((current) => {
-                if (current === localPreviewUrl) {
-                    URL.revokeObjectURL(localPreviewUrl);
-                    return outputUrl;
+        if (!isRecordingMp4) {
+            void prepareGeneratedVideoMp4(source, false).catch((err) => {
+                const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
+                if (generatedVideoSourceRef.current?.id === source.id) {
+                    setError((current) => current || `视频已生成预览，MP4 下载文件仍在准备或暂未成功：${message}`);
                 }
-                return current;
             });
-            setGeneratedVideoDownloadUrl(outputUrl);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
-            setError((current) => current || `视频已生成预览，但 MP4 下载文件还没有准备成功：${message}`);
-        } finally {
-            setIsGeneratedVideoPreparingDownload(false);
         }
     };
 
