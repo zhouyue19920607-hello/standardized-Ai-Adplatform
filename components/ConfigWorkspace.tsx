@@ -1051,6 +1051,7 @@ const ConfigWorkspace: React.FC = () => {
     const [saveMessage, setSaveMessage] = useState('');
     const [dragTarget, setDragTarget] = useState<CreativeUploadTarget | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+    const [isGeneratedVideoDownloading, setIsGeneratedVideoDownloading] = useState(false);
     const [error, setError] = useState('');
     const previewVideoRef = useRef<HTMLVideoElement>(null);
     const breakFocalPreviewVideoRef = useRef<HTMLVideoElement>(null);
@@ -1253,6 +1254,66 @@ const ConfigWorkspace: React.FC = () => {
     const resetOutput = () => {
         if (generatedVideoUrl?.startsWith('blob:')) URL.revokeObjectURL(generatedVideoUrl);
         setGeneratedVideoUrl(null);
+    };
+
+    const getGeneratedVideoFilename = () => {
+        const templateName = expandedTemplate === 'magazine-flip'
+            ? 'magazine-flip'
+            : expandedTemplate === 'slide-splash'
+                ? 'spotlight-splash'
+                : expandedTemplate === 'polymorphic-flip-card'
+                    ? 'polymorphic-flip-card'
+                    : expandedTemplate === 'linked-super-video-panorama'
+                        ? 'linked-super-video-panorama'
+                        : expandedTemplate === 'encounter-egg'
+                            ? 'encounter-egg'
+                            : expandedTemplate === 'break-frame-focal-3d'
+                                ? 'break-frame-focal-3d'
+                                : expandedTemplate === 'jumping-focal-window'
+                                    ? 'jumping-focal-window'
+                                    : expandedTemplate === 'refresh-ui-bottom-nav'
+                                        ? 'refresh-ui-bottom-nav'
+                                        : 'dynamic-splash';
+        return `${templateName}.mp4`;
+    };
+
+    const triggerDownloadLink = (href: string, filename: string) => {
+        const link = document.createElement('a');
+        link.href = href;
+        link.setAttribute('download', filename);
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleGeneratedVideoDownload = () => {
+        if (!generatedVideoUrl || isGeneratedVideoDownloading) return;
+        const filename = getGeneratedVideoFilename();
+        setError('');
+        setIsGeneratedVideoDownloading(true);
+        try {
+            if (generatedVideoUrl.startsWith('blob:')) {
+                triggerDownloadLink(generatedVideoUrl, filename);
+            } else {
+                const sourceUrl = resolveApiAssetUrl(generatedVideoUrl);
+                const downloadUrl = `${ASSETS_URL}/api/download-static?url=${encodeURIComponent(sourceUrl)}&filename=${encodeURIComponent(filename)}`;
+                triggerDownloadLink(downloadUrl, filename);
+            }
+            trackCreativeUsage({
+                eventType: '下载结果',
+                adFormat: creativeTemplates.find((tpl) => tpl.id === expandedTemplate)?.name || '创新硬广素材',
+                assetTypes: ['视频'],
+                outputFormat: 'MP4',
+                outputCount: 1,
+                downloaded: true,
+                downloadedAt: Date.now(),
+            });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '合成视频下载失败，请重新生成后再试');
+        } finally {
+            window.setTimeout(() => setIsGeneratedVideoDownloading(false), 600);
+        }
     };
 
     const clearUploadState = (
@@ -6657,14 +6718,15 @@ const ConfigWorkspace: React.FC = () => {
                                             <span className={`material-symbols-outlined text-[15px] ${isGenerating ? 'animate-spin' : ''}`}>{isGenerating ? 'sync' : 'bolt'}</span>
                                             {isGenerating ? '生成中' : '③生成视频'}
                                         </button>
-                                        <a
-                                            href={generatedVideoUrl || undefined}
-                                            download={`${isMagazineTemplate ? 'magazine-flip' : isSpotlightTemplate ? 'spotlight-splash' : isPolymorphicFlipCardTemplate ? 'polymorphic-flip-card' : isLinkedSuperVideoTemplate ? 'linked-super-video-panorama' : isEncounterEggTemplate ? 'encounter-egg' : isBreakFocalTemplate ? 'break-frame-focal-3d' : isJumpingFocalTemplate ? 'jumping-focal-window' : isRefreshUiBottomNavTemplate ? 'refresh-ui-bottom-nav' : 'dynamic-splash'}.mp4`}
-                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5 pointer-events-none'}`}
+                                        <button
+                                            type="button"
+                                            onClick={handleGeneratedVideoDownload}
+                                            disabled={!generatedVideoUrl || isGeneratedVideoDownloading}
+                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
-                                            <span className="material-symbols-outlined text-base">download</span>
-                                            下载
-                                        </a>
+                                            <span className={`material-symbols-outlined text-base ${isGeneratedVideoDownloading ? 'animate-spin' : ''}`}>{isGeneratedVideoDownloading ? 'sync' : 'download'}</span>
+                                            {isGeneratedVideoDownloading ? '下载中' : '下载'}
+                                        </button>
                                     </div>
                                 </div>
 

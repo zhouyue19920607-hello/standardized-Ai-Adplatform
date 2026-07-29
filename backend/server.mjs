@@ -2153,6 +2153,25 @@ function staticUrlToLocalPath(staticUrl) {
   return sourcePath;
 }
 
+function normalizeStaticDownloadUrl(value) {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed.startsWith("/static/")) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.pathname.startsWith("/static/") ? parsed.pathname : "";
+  } catch (err) {
+    return "";
+  }
+}
+
+function safeAttachmentFilename(value, fallback = "creative-video.mp4") {
+  const cleaned = String(value || fallback)
+    .replace(/[\\/:*?"<>|\r\n]/g, "_")
+    .trim();
+  return cleaned || fallback;
+}
+
 async function getObserverSecurityToken(config) {
   const hosts = observerHostCandidates(config.host);
   let lastError;
@@ -9394,6 +9413,25 @@ app.post("/api/export-video", async (req, res) => {
   } catch (err) {
     console.error("[ExportVideo] Error:", err.message);
     res.status(500).json({ error: "视频导出失败", details: err.message });
+  }
+});
+
+app.get("/api/download-static", async (req, res) => {
+  try {
+    const staticUrl = normalizeStaticDownloadUrl(req.query.url);
+    if (!staticUrl) {
+      return res.status(400).json({ error: "仅支持下载本站生成的 /static 文件" });
+    }
+
+    const sourcePath = staticUrlToLocalPath(staticUrl);
+    await fs.access(sourcePath);
+    const filename = safeAttachmentFilename(req.query.filename, path.basename(sourcePath));
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.setHeader("Content-Type", "application/octet-stream");
+    createReadStream(sourcePath).pipe(res);
+  } catch (err) {
+    console.error("[DownloadStatic] Error:", err.message);
+    res.status(404).json({ error: "下载文件不存在或已失效", details: err.message });
   }
 });
 
