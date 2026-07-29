@@ -154,7 +154,6 @@ function fallbackUsageFieldMeta() {
     "用户名称": 1,
     "用户标识": 1,
     "进入时间": 5,
-    "事件类型": 4,
     "页面路径": 1,
     "统计周": 1,
     "统计月": 1,
@@ -169,10 +168,10 @@ function fallbackUsageFieldMeta() {
     "使用入口": 3,
     "使用工具": 1,
     "硬广形式": 1,
-    "素材类型": 4,
     "是否点击生成": 7,
     "是否生成成功": 7,
     "失败原因": 1,
+    "操作摘要": 1,
     "生成规格": 1,
     "生成格式": 3,
     "生成数量": 2,
@@ -189,6 +188,35 @@ function shouldSkipFieldLookup() {
 
 function fallbackWritableFields(fields) {
   return filterExistingFields(fields, fallbackUsageFieldMeta());
+}
+
+function minimalWritableFields(fields) {
+  return {
+    "用户名称": cleanText(fields["用户名称"], 200),
+    "进入时间": Number(fields["进入时间"] || Date.now()),
+    "页面路径": cleanText(fields["页面路径"], 500),
+    "使用工具": cleanText(fields["使用工具"], 300),
+    "硬广形式": cleanText(fields["硬广形式"], 300),
+    "会话ID": cleanText(fields["会话ID"], 300),
+    "操作摘要": cleanText(fields["操作摘要"] || "进入网站", 500),
+  };
+}
+
+async function createUsageRecord(tenantToken, appToken, tableId, fields, stage = "record_create_request") {
+  try {
+    return await withDeadline(stage, () => axios.post(
+      `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
+      { fields },
+      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
+    ));
+  } catch (error) {
+    const msg = error?.response?.data?.msg || error?.message || "";
+    if (stage !== "record_create_minimal_request" && /FieldConvFail|field.*convert|字段/i.test(msg)) {
+      usageStatus.lastError = msg;
+      return createUsageRecord(tenantToken, appToken, tableId, minimalWritableFields(fields), "record_create_minimal_request");
+    }
+    throw error;
+  }
 }
 
 async function getTableFieldMeta(tenantToken, appToken, tableId) {
@@ -347,6 +375,7 @@ export async function recordFeishuUsage(user, event = {}) {
     "生成数量": Number(event.outputCount) || 0,
     "结果编号": cleanText(event.resultId, 300),
     "是否下载": Boolean(isDownload),
+    "操作摘要": cleanText(eventTypes.join("、"), 500),
     "会话ID": cleanText(event.sessionId, 300),
     "唯一事件ID": eventId,
   };
@@ -359,11 +388,7 @@ export async function recordFeishuUsage(user, event = {}) {
   let response;
   if (shouldSkipFieldLookup()) {
     markStage("field_lookup_skipped");
-    response = await withDeadline("record_create_request", () => axios.post(
-      `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
-      { fields: fallbackWritableFields(fields) },
-      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
-    ));
+    response = await createUsageRecord(tenantToken, appToken, tableId, fallbackWritableFields(fields));
   } else {
     let fieldMeta;
     try {
@@ -427,11 +452,7 @@ export async function recordFeishuUsage(user, event = {}) {
         { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
       ));
     } else {
-      response = await withDeadline("record_create_request", () => axios.post(
-        `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
-        { fields: writableFields },
-        { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
-      ));
+      response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
     }
   }
   if (response.data?.code !== 0) {
