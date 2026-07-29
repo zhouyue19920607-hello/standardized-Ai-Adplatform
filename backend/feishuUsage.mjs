@@ -27,6 +27,22 @@ const usageStatus = {
 };
 
 const configured = () => Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
+const FEISHU_STEP_TIMEOUT_MS = Number(process.env.FEISHU_STEP_TIMEOUT_MS || 8000);
+
+async function withDeadline(stage, task, timeoutMs = FEISHU_STEP_TIMEOUT_MS) {
+  markStage(stage);
+  let timer;
+  try {
+    return await Promise.race([
+      task(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${stage} 超时 ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function markStage(stage) {
   usageStatus.lastStage = stage;
@@ -64,11 +80,10 @@ async function getTenantToken() {
     markStage("tenant_token_cached");
     return tenantTokenCache.value;
   }
-  markStage("tenant_token_request");
-  const response = await axios.post(`${FEISHU_API}/auth/v3/tenant_access_token/internal`, {
+  const response = await withDeadline("tenant_token_request", () => axios.post(`${FEISHU_API}/auth/v3/tenant_access_token/internal`, {
     app_id: process.env.FEISHU_APP_ID,
     app_secret: process.env.FEISHU_APP_SECRET,
-  }, { timeout: 10_000 });
+  }, { timeout: FEISHU_STEP_TIMEOUT_MS }));
   if (response.data?.code !== 0 || !response.data?.tenant_access_token) {
     throw new Error(response.data?.msg || "无法获取飞书 tenant_access_token");
   }
@@ -86,12 +101,11 @@ async function getAppToken() {
   }
   const tenantToken = await getTenantToken();
   const wikiToken = process.env.FEISHU_USAGE_WIKI_TOKEN || DEFAULT_WIKI_TOKEN;
-  markStage("wiki_node_request");
-  const response = await axios.get(`${FEISHU_API}/wiki/v2/spaces/get_node`, {
+  const response = await withDeadline("wiki_node_request", () => axios.get(`${FEISHU_API}/wiki/v2/spaces/get_node`, {
     params: { token: wikiToken },
     headers: { Authorization: `Bearer ${tenantToken}` },
-    timeout: 10_000,
-  });
+    timeout: FEISHU_STEP_TIMEOUT_MS,
+  }));
   if (response.data?.code !== 0 || !response.data?.data?.node?.obj_token) {
     throw new Error(response.data?.msg || "无法解析飞书使用记录表");
   }
@@ -135,6 +149,40 @@ function getShanghaiPeriod(now = new Date()) {
   };
 }
 
+function fallbackUsageFieldMeta() {
+  const fieldTypes = {
+    "用户名称": 1,
+    "用户标识": 1,
+    "进入时间": 5,
+    "事件类型": 4,
+    "页面路径": 1,
+    "统计周": 1,
+    "统计月": 1,
+    "最后操作时间": 5,
+    "操作次数": 2,
+    "本次使用时长(秒)": 2,
+    "生成尝试次数": 2,
+    "生成成功次数": 2,
+    "生成失败次数": 2,
+    "下载数量": 2,
+    "任务状态": 3,
+    "使用入口": 3,
+    "使用工具": 1,
+    "硬广形式": 1,
+    "素材类型": 4,
+    "是否点击生成": 7,
+    "是否生成成功": 7,
+    "失败原因": 1,
+    "生成规格": 1,
+    "生成格式": 3,
+    "生成数量": 2,
+    "结果编号": 1,
+    "是否下载": 7,
+    "会话ID": 1,
+  };
+  return new Map(Object.entries(fieldTypes).map(([field_name, type]) => [field_name, { field_name, type }]));
+}
+
 async function getTableFieldMeta(tenantToken, appToken, tableId) {
   const cacheKey = `${appToken}:${tableId}`;
   if (tableFieldMetaCache?.key === cacheKey && tableFieldMetaCache.expiresAt > Date.now()) {
@@ -145,14 +193,14 @@ async function getTableFieldMeta(tenantToken, appToken, tableId) {
   let pageToken = undefined;
   markStage("table_fields_request");
   do {
-    const response = await axios.get(
+    const response = await withDeadline("table_fields_request", () => axios.get(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/fields`,
       {
-        params: { page_size: 100, page_token: pageToken },
+        params: { page_size: 100, ...(pageToken ? { page_token: pageToken } : {}) },
         headers: { Authorization: `Bearer ${tenantToken}` },
-        timeout: 10_000,
+        timeout: FEISHU_STEP_TIMEOUT_MS,
       },
-    );
+    ));
     if (response.data?.code !== 0) {
       throw new Error(response.data?.msg || "读取飞书使用记录字段失败");
     }
@@ -210,8 +258,7 @@ function filterExistingFields(fields, fieldMetaOrNames) {
 
 async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
   if (!sessionId) return null;
-  markStage("record_search_request");
-  const response = await axios.post(
+  const response = await withDeadline("record_search_request", () => axios.post(
     `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
     {
       filter: {
@@ -222,9 +269,9 @@ async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
     {
       params: { page_size: 1 },
       headers: { Authorization: `Bearer ${tenantToken}` },
-      timeout: 10_000,
+      timeout: FEISHU_STEP_TIMEOUT_MS,
     },
-  );
+  ));
   if (response.data?.code !== 0) {
     throw new Error(response.data?.msg || "查询飞书访问会话失败");
   }
@@ -301,7 +348,14 @@ export async function recordFeishuUsage(user, event = {}) {
   const tenantToken = await getTenantToken();
   const appToken = await getAppToken();
   const tableId = process.env.FEISHU_USAGE_TABLE_ID || DEFAULT_TABLE_ID;
-  const fieldMeta = await getTableFieldMeta(tenantToken, appToken, tableId);
+  let fieldMeta;
+  try {
+    fieldMeta = await getTableFieldMeta(tenantToken, appToken, tableId);
+  } catch (error) {
+    usageStatus.lastError = error?.message || String(error);
+    markStage("table_fields_fallback");
+    fieldMeta = fallbackUsageFieldMeta();
+  }
   const fieldNames = new Set(fieldMeta.keys());
   const writableFields = filterExistingFields(fields, fieldMeta);
   const existing = fieldNames.has("会话ID")
@@ -351,19 +405,17 @@ export async function recordFeishuUsage(user, event = {}) {
     if (current["下载时间"] || fields["下载时间"]) {
       mergedFields["下载时间"] = Math.max(Number(current["下载时间"] || 0), Number(fields["下载时间"] || 0));
     }
-    markStage("record_update_request");
-    response = await axios.put(
+    response = await withDeadline("record_update_request", () => axios.put(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${existing.record_id}`,
       { fields: filterExistingFields(mergedFields, fieldMeta) },
-      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
-    );
+      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
+    ));
   } else {
-    markStage("record_create_request");
-    response = await axios.post(
+    response = await withDeadline("record_create_request", () => axios.post(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
       { fields: writableFields },
-      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
-    );
+      { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
+    ));
   }
   if (response.data?.code !== 0) {
     throw new Error(response.data?.msg || "飞书使用记录写入失败");
