@@ -3558,6 +3558,26 @@ const ConfigWorkspace: React.FC = () => {
         }
     };
 
+    const getPreferredRecordingMimeType = () => {
+        if (typeof MediaRecorder === 'undefined') return '';
+        const candidates = [
+            'video/mp4;codecs=avc1.42E01E',
+            'video/mp4;codecs=h264',
+            'video/mp4',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+        ];
+        for (const type of candidates) {
+            try {
+                if (MediaRecorder.isTypeSupported(type)) return type;
+            } catch {
+                // Ignore unsupported codec strings and continue trying the next one.
+            }
+        }
+        return '';
+    };
+
     const buildMagazineVideo = async () => {
         setError('');
         resetOutput();
@@ -3583,11 +3603,7 @@ const ConfigWorkspace: React.FC = () => {
                 return { type: 'video' as const, source: video, width: video.videoWidth || CANVAS_W, height: video.videoHeight || CANVAS_H };
             }));
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -3739,16 +3755,7 @@ const ConfigWorkspace: React.FC = () => {
             if (current?.startsWith('blob:') && current !== localPreviewUrl) URL.revokeObjectURL(current);
             return isRecordingMp4 ? localPreviewUrl : null;
         });
-        setIsGeneratedVideoPreparingDownload(!isRecordingMp4);
-
-        if (!isRecordingMp4) {
-            void prepareGeneratedVideoMp4(source, false).catch((err) => {
-                const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
-                if (generatedVideoSourceRef.current?.id === source.id) {
-                    setError((current) => current || `视频已生成预览，MP4 下载文件仍在准备或暂未成功：${message}`);
-                }
-            });
-        }
+        setIsGeneratedVideoPreparingDownload(false);
     };
 
     const buildSpotlightVideo = async () => {
@@ -3785,11 +3792,7 @@ const ConfigWorkspace: React.FC = () => {
             const interactionAssetPath = spotlightTemplate?.interaction_asset_path || SPOTLIGHT_GALLERY_INTERACTION_PATH;
             const interactionImage = interactionAssetPath ? await loadImage(resolveApiAssetUrl(interactionAssetPath)) : null;
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -3905,11 +3908,7 @@ const ConfigWorkspace: React.FC = () => {
                 loadImage('/focal-window/icon_bg.png'),
             ]);
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -4068,11 +4067,7 @@ const ConfigWorkspace: React.FC = () => {
                 loadImage('/focal-window/icon_bg.png'),
             ]);
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -4240,11 +4235,7 @@ const ConfigWorkspace: React.FC = () => {
                 loadImage('/focal-window/gradient_layer.png'),
             ]);
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -4386,11 +4377,7 @@ const ConfigWorkspace: React.FC = () => {
             const immersiveIconCanvas = createTintedIconLayer(immersiveFocalIconMask);
             const focalIconCanvas = createTintedIconLayer(focalIconMask);
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 8_000_000 } : { videoBitsPerSecond: 8_000_000 });
             const chunks: Blob[] = [];
@@ -4566,11 +4553,7 @@ const ConfigWorkspace: React.FC = () => {
                 }
             }
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -4706,11 +4689,7 @@ const ConfigWorkspace: React.FC = () => {
                 await splashVideo.play().catch(() => undefined);
             }
 
-            const mimeType = [
-                'video/mp4;codecs=h264',
-                'video/webm;codecs=vp9',
-                'video/webm',
-            ].find((type) => MediaRecorder.isTypeSupported(type)) || '';
+            const mimeType = getPreferredRecordingMimeType();
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : { videoBitsPerSecond: 6_000_000 });
             const chunks: Blob[] = [];
@@ -7360,7 +7339,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 className="absolute inset-0 z-[90] h-full w-full object-contain pointer-events-none"
                                             />
                                         )}
-                                        {cropAreaEnabled && !hoveredPreviewVideoUrl && (
+                                        {cropAreaEnabled && !hoveredPreviewVideoUrl && !generatedVideoUrl && (
                                             <div
                                                 className="absolute left-[10%] right-[10%] top-[12%] bottom-[16%] z-[100] border border-dashed border-emerald-300/80 bg-emerald-300/5 pointer-events-none"
                                             >
