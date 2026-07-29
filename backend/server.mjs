@@ -956,20 +956,25 @@ app.post("/api/templates/:id/increment", async (req, res) => {
   };
   await writeJson(ANALYTICS_FILE, analytics);
 
-  recordFeishuUsageSafely(req.meituUser, {
-    eventType: "生成成功",
-    pagePath: board === "creative" ? "/config" : "/",
-    tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
-    adFormat: template.name,
-    clickedGenerate: true,
-    generatedSuccessfully: true,
-    outputSpec: template.dimensions || "",
-    outputCount: 1,
-    resultId: `${id}-${Date.now()}`,
-    sessionId,
-  });
+  let feishu = null;
+  try {
+    feishu = await recordFeishuUsage(req.meituUser, {
+      eventType: "生成成功",
+      pagePath: board === "creative" ? "/config" : "/",
+      tool: board === "creative" ? "创新硬广工具" : "标准素材看板",
+      adFormat: template.name,
+      clickedGenerate: true,
+      generatedSuccessfully: true,
+      outputSpec: template.dimensions || "",
+      outputCount: 1,
+      resultId: `${id}-${Date.now()}`,
+      sessionId,
+    });
+  } catch (error) {
+    console.error("[FeishuUsage] 生成记录写入失败", error.response?.data || error.message);
+  }
 
-  res.json({ success: true, processedCount: usageStats[id] });
+  res.json({ success: true, processedCount: usageStats[id], feishu });
 });
 
 app.post("/api/analytics/visit", async (req, res) => {
@@ -1023,17 +1028,18 @@ app.get("/api/feishu-test", async (req, res) => {
     });
   }
 });
-app.post("/api/analytics/event", (req, res) => {
+app.post("/api/analytics/event", async (req, res) => {
   const event = req.body || {};
   const { visitorId = "anonymous" } = event;
   if (visitorId && visitorId !== "anonymous") {
-    readJson(ANALYTICS_FILE, { days: {} }).then(async (analytics) => {
+    try {
+      const analytics = await readJson(ANALYTICS_FILE, { days: {} });
       const day = ensureAnalyticsDay(analytics);
       if (!day.visitors.includes(visitorId)) day.visitors.push(visitorId);
       await writeJson(ANALYTICS_FILE, analytics);
-    }).catch(error => {
+    } catch (error) {
       console.error("[Analytics] event visitor update failed", error);
-    });
+    }
   }
   const allowedTypes = new Set([
     "进入网站",
@@ -1050,11 +1056,20 @@ app.post("/api/analytics/event", (req, res) => {
     "下载素材",
     "其他",
   ]);
-  recordFeishuUsageSafely(req.meituUser, {
-    ...event,
-    eventType: allowedTypes.has(event.eventType) ? event.eventType : "其他",
-  });
-  res.status(202).json({ accepted: true });
+  try {
+    const feishu = await recordFeishuUsage(req.meituUser, {
+      ...event,
+      eventType: allowedTypes.has(event.eventType) ? event.eventType : "其他",
+    });
+    res.status(202).json({ accepted: true, feishu });
+  } catch (error) {
+    console.error("[FeishuUsage] 行为记录写入失败", error.response?.data || error.message);
+    res.status(202).json({
+      accepted: true,
+      feishu: null,
+      feishuError: error?.response?.data?.msg || error?.message || "飞书行为记录写入失败",
+    });
+  }
 });
 
 app.get("/api/analytics/summary", async (req, res) => {
