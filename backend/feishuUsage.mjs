@@ -10,7 +10,44 @@ let appTokenCache = null;
 let tableFieldsCache = null;
 const sessionQueues = new Map();
 
+const usageStatus = {
+  configured: false,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastSkippedAt: null,
+  lastErrorAt: null,
+  lastError: null,
+  lastRecordId: null,
+  consecutiveFailures: 0,
+  pendingSessions: 0,
+};
+
 const configured = () => Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
+
+function setUsageError(error) {
+  usageStatus.lastErrorAt = new Date().toISOString();
+  usageStatus.lastError = error?.response?.data?.msg || error?.response?.data?.message || error?.message || String(error);
+  usageStatus.consecutiveFailures += 1;
+}
+
+function setUsageSuccess(recordId) {
+  usageStatus.lastSuccessAt = new Date().toISOString();
+  usageStatus.lastError = null;
+  usageStatus.lastRecordId = recordId || null;
+  usageStatus.consecutiveFailures = 0;
+}
+
+export function getFeishuUsageStatus() {
+  return {
+    ...usageStatus,
+    configured: configured(),
+    pendingSessions: sessionQueues.size,
+    wikiTokenConfigured: Boolean(process.env.FEISHU_USAGE_WIKI_TOKEN),
+    tableIdConfigured: Boolean(process.env.FEISHU_USAGE_TABLE_ID),
+    defaultWikiToken: DEFAULT_WIKI_TOKEN,
+    defaultTableId: DEFAULT_TABLE_ID,
+  };
+}
 
 async function getTenantToken() {
   if (tenantTokenCache && tenantTokenCache.expiresAt > Date.now() + 60_000) {
@@ -139,10 +176,16 @@ async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
 }
 
 export async function recordFeishuUsage(user, event = {}) {
+  usageStatus.lastAttemptAt = new Date().toISOString();
+  usageStatus.configured = configured();
   if (!configured()) {
+    usageStatus.lastSkippedAt = new Date().toISOString();
+    usageStatus.lastError = "FEISHU_APP_ID/FEISHU_APP_SECRET 未配置";
     console.warn("[FeishuUsage] skipped: FEISHU_APP_ID/FEISHU_APP_SECRET 未配置");
     return { skipped: true };
   }
+
+  try {
 
   const eventId = cleanText(event.eventId || crypto.randomUUID(), 200);
   const now = Date.now();
@@ -263,7 +306,13 @@ export async function recordFeishuUsage(user, event = {}) {
   if (response.data?.code !== 0) {
     throw new Error(response.data?.msg || "飞书使用记录写入失败");
   }
-  return { recordId: response.data?.data?.record?.record_id, eventId };
+  const recordId = response.data?.data?.record?.record_id;
+  setUsageSuccess(recordId);
+  return { recordId, eventId };
+  } catch (error) {
+    setUsageError(error);
+    throw error;
+  }
 }
 
 export function recordFeishuUsageSafely(user, event) {

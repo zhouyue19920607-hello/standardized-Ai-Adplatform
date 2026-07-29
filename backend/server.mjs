@@ -11,7 +11,7 @@ import axios from "axios";
 import sharp from "sharp";
 import { processImage } from "./utils/imageProcessor.mjs";
 import { compressAndCompositeVideo, removeWhiteBackgroundFromVideo, resizeVideoToDimensions, resizeVideoToMaxSide } from "./ffmpegUtils.mjs";
-import { recordFeishuUsage, recordFeishuUsageSafely } from "./feishuUsage.mjs";
+import { getFeishuUsageStatus, recordFeishuUsage, recordFeishuUsageSafely } from "./feishuUsage.mjs";
 import {
   caseToolConfigured,
   downloadCaseVideo,
@@ -811,7 +811,11 @@ app.post("/api/auth/meitu/logout", (req, res) => {
 
 // ---- API：模版管理 ----
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", last_updated: "2026-02-25 10:35", feature: "png_transparency_v7_mtp1_text" });
+  res.json({ status: "ok", last_updated: "2026-07-29", feature: "feishu_usage_status" });
+});
+
+app.get("/api/feishu-usage/status", (req, res) => {
+  res.json({ ok: true, feishuUsage: getFeishuUsageStatus() });
 });
 
 // ---- API：ArkClaw 案例视频短期签名下载 ----
