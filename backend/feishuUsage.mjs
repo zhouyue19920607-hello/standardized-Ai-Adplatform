@@ -7,6 +7,7 @@ const DEFAULT_TABLE_ID = "tblHi5s5LQVZZ66v";
 
 let tenantTokenCache = null;
 let appTokenCache = null;
+let tableFieldsCache = null;
 const sessionQueues = new Map();
 
 const configured = () => Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET);
@@ -79,6 +80,40 @@ function getShanghaiPeriod(now = new Date()) {
     month: `${values.year}-${values.month}`,
     week: `${localDate.getUTCFullYear()}-W${String(week).padStart(2, "0")}`,
   };
+}
+
+async function getTableFieldNames(tenantToken, appToken, tableId) {
+  const cacheKey = `${appToken}:${tableId}`;
+  if (tableFieldsCache?.key === cacheKey && tableFieldsCache.expiresAt > Date.now()) {
+    return tableFieldsCache.value;
+  }
+  const names = new Set();
+  let pageToken = undefined;
+  do {
+    const response = await axios.get(
+      `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/fields`,
+      {
+        params: { page_size: 100, page_token: pageToken },
+        headers: { Authorization: `Bearer ${tenantToken}` },
+        timeout: 10_000,
+      },
+    );
+    if (response.data?.code !== 0) {
+      throw new Error(response.data?.msg || "读取飞书使用记录字段失败");
+    }
+    for (const field of response.data?.data?.items || []) {
+      if (field?.field_name) names.add(field.field_name);
+    }
+    pageToken = response.data?.data?.page_token;
+  } while (pageToken);
+  tableFieldsCache = { key: cacheKey, value: names, expiresAt: Date.now() + 10 * 60_000 };
+  return names;
+}
+
+function filterExistingFields(fields, fieldNames) {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([name]) => fieldNames.has(name)),
+  );
 }
 
 async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
@@ -164,7 +199,11 @@ export async function recordFeishuUsage(user, event = {}) {
   const tenantToken = await getTenantToken();
   const appToken = await getAppToken();
   const tableId = process.env.FEISHU_USAGE_TABLE_ID || DEFAULT_TABLE_ID;
-  const existing = await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"]);
+  const fieldNames = await getTableFieldNames(tenantToken, appToken, tableId);
+  const writableFields = filterExistingFields(fields, fieldNames);
+  const existing = fieldNames.has("会话ID")
+    ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
+    : null;
   let response;
   if (existing) {
     const current = existing.fields || {};
@@ -211,13 +250,13 @@ export async function recordFeishuUsage(user, event = {}) {
     }
     response = await axios.put(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${existing.record_id}`,
-      { fields: mergedFields },
+      { fields: filterExistingFields(mergedFields, fieldNames) },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
     );
   } else {
     response = await axios.post(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
-      { fields },
+      { fields: writableFields },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: 10_000 },
     );
   }
