@@ -1413,6 +1413,7 @@ const ConfigWorkspace: React.FC = () => {
                     width,
                     height,
                     maxDurationSec: 5,
+                    fast: true,
                 });
                 const link = document.createElement('a');
                 link.href = resolveApiAssetUrl(exported.url);
@@ -3220,6 +3221,7 @@ const ConfigWorkspace: React.FC = () => {
             width: maxWidth,
             height: maxHeight,
             maxDurationSec: 5,
+            fast: true,
         });
         const finalUrl = sizedResult.url || cutoutUrl;
         const finalFile = await fileFromGeneratedUrl(finalUrl, filename.replace(/\.[^.]+$/, '.mp4'), 'video/mp4');
@@ -3659,6 +3661,7 @@ const ConfigWorkspace: React.FC = () => {
             width,
             height,
             maxDurationSec,
+            fast: true,
         });
         return resolveApiAssetUrl(exported.url || uploaded.url);
     };
@@ -4066,6 +4069,7 @@ const ConfigWorkspace: React.FC = () => {
             ]);
 
             const mimeType = [
+                'video/mp4;codecs=h264',
                 'video/webm;codecs=vp9',
                 'video/webm',
             ].find((type) => MediaRecorder.isTypeSupported(type)) || '';

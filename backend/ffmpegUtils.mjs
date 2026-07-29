@@ -4,6 +4,13 @@ import fs from 'fs/promises';
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
+const settleOnce = (resolve, reject, timeoutRef, fn, value) => {
+    if (timeoutRef.settled) return;
+    timeoutRef.settled = true;
+    if (timeoutRef.timer) clearTimeout(timeoutRef.timer);
+    fn === 'resolve' ? resolve(value) : reject(value);
+};
+
 export async function compressAndCompositeVideo(
     videoPath, targetW, targetH, videoRect, bgPath, fgPath, outputPath, options = {}
 ) {
@@ -105,13 +112,21 @@ export async function compressAndCompositeVideo(
 
 export async function resizeVideoToDimensions(videoPath, targetW, targetH, outputPath, options = {}) {
     const duration = Number(options.maxDurationSec) > 0 ? Number(options.maxDurationSec) : null;
+    const fps = Number(options.fps) > 0 ? Math.round(Number(options.fps)) : null;
+    const crf = Number(options.crf) > 0 ? Math.round(Number(options.crf)) : 18;
+    const preset = typeof options.preset === 'string' ? options.preset : 'medium';
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Math.round(Number(options.timeoutMs)) : 0;
     const outputOptions = [
         '-c:v libx264',
-        '-crf 18',
-        '-preset medium',
+        `-crf ${crf}`,
+        `-preset ${preset}`,
         '-movflags +faststart',
         '-pix_fmt yuv420p'
     ];
+
+    if (options.videoBitrate) {
+        outputOptions.push(`-b:v ${options.videoBitrate}`);
+    }
 
     if (options.keepAudio) {
         outputOptions.push('-c:a aac', '-b:a 128k');
@@ -123,15 +138,28 @@ export async function resizeVideoToDimensions(videoPath, targetW, targetH, outpu
         let command = ffmpeg(videoPath);
         if (duration) command = command.duration(duration);
 
-        command
-            .videoFilters([
+        const filters = [
                 `scale=${Math.round(targetW)}:${Math.round(targetH)}:force_original_aspect_ratio=increase`,
                 `crop=${Math.round(targetW)}:${Math.round(targetH)}:(in_w-${Math.round(targetW)})/2:(in_h-${Math.round(targetH)})/2`
-            ])
+        ];
+        if (fps) filters.push(`fps=${fps}`);
+
+        const timeoutRef = { timer: null, settled: false };
+        if (timeoutMs) {
+            timeoutRef.timer = setTimeout(() => {
+                try {
+                    command.kill('SIGKILL');
+                } catch (_) { }
+                settleOnce(resolve, reject, timeoutRef, 'reject', new Error(`视频导出超时，请使用更短的视频或稍后重试`));
+            }, timeoutMs);
+        }
+
+        command
+            .videoFilters(filters)
             .outputOptions(outputOptions)
             .save(outputPath)
-            .on('end', () => resolve())
-            .on('error', (err) => reject(err));
+            .on('end', () => settleOnce(resolve, reject, timeoutRef, 'resolve'))
+            .on('error', (err) => settleOnce(resolve, reject, timeoutRef, 'reject', err));
     });
 }
 

@@ -199,8 +199,9 @@ export const exportVideoWithSize = async (payload: {
     width: number;
     height: number;
     maxDurationSec?: number;
+    fast?: boolean;
 }): Promise<{ ok: boolean; url: string; width: number; height: number; sizeMB?: number }> => {
-    const response = await api.post('/export-video', payload);
+    const response = await api.post('/export-video', payload, payload.fast ? { timeout: 5 * 60 * 1000 } : undefined);
     return response.data;
 };
 

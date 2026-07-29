@@ -9376,7 +9376,7 @@ app.post("/api/composite-video", upload.fields([{ name: "video", maxCount: 1 }, 
 
 app.post("/api/export-video", async (req, res) => {
   try {
-    const { url, width, height, maxDurationSec } = req.body || {};
+    const { url, width, height, maxDurationSec, fast } = req.body || {};
     const targetWidth = Math.max(1, parseInt(width, 10) || 0);
     const targetHeight = Math.max(1, parseInt(height, 10) || 0);
     if (!url || typeof url !== "string") {
@@ -9400,7 +9400,15 @@ app.post("/api/export-video", async (req, res) => {
     await ensureDir(STORAGE_DIR);
     const outputFilename = `video_export_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.mp4`;
     const outputPath = path.join(STORAGE_DIR, outputFilename);
-    await resizeVideoToDimensions(sourcePath, targetWidth, targetHeight, outputPath, { maxDurationSec });
+    await resizeVideoToDimensions(sourcePath, targetWidth, targetHeight, outputPath, fast ? {
+      maxDurationSec,
+      keepAudio: false,
+      preset: "veryfast",
+      crf: 28,
+      fps: 24,
+      videoBitrate: "3500k",
+      timeoutMs: 4 * 60 * 1000
+    } : { maxDurationSec });
     const outputStats = await fs.stat(outputPath);
 
     res.json({
