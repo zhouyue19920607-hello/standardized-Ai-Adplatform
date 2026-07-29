@@ -45,6 +45,16 @@ interface SpotlightCardAsset {
     message: string;
 }
 
+interface GeneratedVideoSource {
+    blob: Blob;
+    filename: string;
+    width: number;
+    height: number;
+    maxDurationSec: number;
+    localUrl: string;
+    isMp4: boolean;
+}
+
 type SpotlightAiTarget = 'large' | `small-${0 | 1 | 2}`;
 type PolyAiTarget = 'base' | `card-${0 | 1 | 2 | 3}`;
 type CreativeUploadTarget =
@@ -1052,6 +1062,7 @@ const ConfigWorkspace: React.FC = () => {
     const [dragTarget, setDragTarget] = useState<CreativeUploadTarget | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
     const [generatedVideoDownloadUrl, setGeneratedVideoDownloadUrl] = useState<string | null>(null);
+    const [generatedVideoSource, setGeneratedVideoSource] = useState<GeneratedVideoSource | null>(null);
     const [isGeneratedVideoPreparingDownload, setIsGeneratedVideoPreparingDownload] = useState(false);
     const [isGeneratedVideoDownloading, setIsGeneratedVideoDownloading] = useState(false);
     const [error, setError] = useState('');
@@ -1256,8 +1267,10 @@ const ConfigWorkspace: React.FC = () => {
     const resetOutput = () => {
         if (generatedVideoUrl?.startsWith('blob:')) URL.revokeObjectURL(generatedVideoUrl);
         if (generatedVideoDownloadUrl?.startsWith('blob:') && generatedVideoDownloadUrl !== generatedVideoUrl) URL.revokeObjectURL(generatedVideoDownloadUrl);
+        if (generatedVideoSource?.localUrl?.startsWith('blob:') && generatedVideoSource.localUrl !== generatedVideoUrl && generatedVideoSource.localUrl !== generatedVideoDownloadUrl) URL.revokeObjectURL(generatedVideoSource.localUrl);
         setGeneratedVideoUrl(null);
         setGeneratedVideoDownloadUrl(null);
+        setGeneratedVideoSource(null);
         setIsGeneratedVideoPreparingDownload(false);
     };
 
@@ -1292,16 +1305,34 @@ const ConfigWorkspace: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    const handleGeneratedVideoDownload = () => {
-        if (!generatedVideoDownloadUrl || isGeneratedVideoDownloading || isGeneratedVideoPreparingDownload) return;
+    const handleGeneratedVideoDownload = async () => {
+        if (!generatedVideoUrl || isGeneratedVideoDownloading) return;
+        if (isGeneratedVideoPreparingDownload && !generatedVideoDownloadUrl) {
+            setError('MP4 文件正在准备中，请稍等几秒后再点下载。');
+            return;
+        }
         const filename = getGeneratedVideoFilename();
         setError('');
         setIsGeneratedVideoDownloading(true);
         try {
-            if (generatedVideoDownloadUrl.startsWith('blob:')) {
-                triggerDownloadLink(generatedVideoDownloadUrl, filename);
+            let downloadSourceUrl = generatedVideoDownloadUrl;
+            if (!downloadSourceUrl && generatedVideoSource) {
+                setIsGeneratedVideoPreparingDownload(true);
+                downloadSourceUrl = await persistRecordedVideoAsMp4(
+                    generatedVideoSource.blob,
+                    generatedVideoSource.filename,
+                    generatedVideoSource.width,
+                    generatedVideoSource.height,
+                    generatedVideoSource.maxDurationSec,
+                );
+                setGeneratedVideoDownloadUrl(downloadSourceUrl);
+            }
+            if (!downloadSourceUrl) throw new Error('MP4 下载文件还没有准备好，请重新生成后再试');
+
+            if (downloadSourceUrl.startsWith('blob:')) {
+                triggerDownloadLink(downloadSourceUrl, filename);
             } else {
-                const sourceUrl = resolveApiAssetUrl(generatedVideoDownloadUrl);
+                const sourceUrl = resolveApiAssetUrl(downloadSourceUrl);
                 const downloadUrl = `${ASSETS_URL}/api/download-static?url=${encodeURIComponent(sourceUrl)}&filename=${encodeURIComponent(filename)}`;
                 triggerDownloadLink(downloadUrl, filename);
             }
@@ -1317,6 +1348,7 @@ const ConfigWorkspace: React.FC = () => {
         } catch (err) {
             setError(err instanceof Error ? err.message : '合成视频下载失败，请重新生成后再试');
         } finally {
+            setIsGeneratedVideoPreparingDownload(false);
             window.setTimeout(() => setIsGeneratedVideoDownloading(false), 600);
         }
     };
@@ -3648,6 +3680,15 @@ const ConfigWorkspace: React.FC = () => {
         setGeneratedVideoUrl((current) => {
             if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
             return localPreviewUrl;
+        });
+        setGeneratedVideoSource({
+            blob,
+            filename,
+            width,
+            height,
+            maxDurationSec,
+            localUrl: localPreviewUrl,
+            isMp4: isRecordingMp4,
         });
         setGeneratedVideoDownloadUrl((current) => {
             if (current?.startsWith('blob:') && current !== localPreviewUrl) URL.revokeObjectURL(current);
@@ -6752,8 +6793,8 @@ const ConfigWorkspace: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={handleGeneratedVideoDownload}
-                                            disabled={!generatedVideoDownloadUrl || isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading}
-                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoDownloadUrl && !isGeneratedVideoPreparingDownload ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            disabled={!generatedVideoUrl || isGeneratedVideoDownloading}
+                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
                                             <span className={`material-symbols-outlined text-base ${(isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading) ? 'animate-spin' : ''}`}>{isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading ? 'sync' : 'download'}</span>
                                             {isGeneratedVideoPreparingDownload ? 'MP4处理中' : isGeneratedVideoDownloading ? '下载中' : '下载'}
