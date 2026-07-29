@@ -211,7 +211,7 @@ export async function exportVideoElements(asset: AdAsset, config: AdConfig, vide
         }
 
         if (showMask) {
-            const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
+            const isUpDownSliding = (asset.templateName.includes('上下滑动') || asset.templateName.includes('胶囊上滑')) && !asset.templateName.includes('非全屏');
             const isTwistOpening = asset.templateName === '扭动全屏';
             const isNonFullscreenSplash = asset.templateName.includes('非全屏');
             let fontSize = 42;

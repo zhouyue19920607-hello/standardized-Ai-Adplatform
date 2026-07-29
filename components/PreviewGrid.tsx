@@ -60,7 +60,7 @@ const AdCard: React.FC<{
   const isRecipeContent = asset.id.includes('mt-fe-1');
   const isStaticFocal = asset.category === '焦点视窗' && !isImmersiveFocal && !asset.templateName.includes('动态');
   const isNonFullscreenSplash = asset.id.includes('mt-s-5') || asset.id.includes('mt-s-6') || asset.templateName.includes('非全屏');
-  const isUpDownSliding = asset.templateName.includes('上下滑动') && !asset.templateName.includes('非全屏');
+  const isUpDownSliding = (asset.templateName.includes('上下滑动') || asset.templateName.includes('胶囊上滑')) && !asset.templateName.includes('非全屏');
   const focalAssetsPath = isImmersiveFocal ? '/focal-window-immersive' : '/focal-window';
   const shouldUsePlatformFocalMask = localShowMask && isStaticFocal && (asset.app === '美颜' || asset.app === 'wink') && !!effectiveMaskUrl;
   const shouldRenderFixedFocalChrome = localShowMask && asset.category === '焦点视窗' && !asset.templateName.includes('动态') && !shouldUsePlatformFocalMask;
@@ -1021,8 +1021,8 @@ const PreviewGrid: React.FC<PreviewGridProps> = ({ assets, config, onClear, onTo
             {/* Modal Splash Text Overlay (Fullscreen 開屏) */}
             {selectedAsset.category === '开屏' && selectedAssetInfo.showMask && (
               <div className="absolute inset-x-0 text-center pointer-events-none z-[60]"
-                style={{ bottom: (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) ? 'calc(26.07% - 5px)' : (selectedAsset.templateName.includes('上下滑动') ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动全屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3')) ? 'translateY(2px)' : 'none' }}>
-                <div className="inline-block" style={{ fontSize: ((selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) || selectedAsset.templateName.includes('上下滑动')) ? '2.48cqh' : (selectedAsset.templateName === '扭动全屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
+                style={{ bottom: (selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) ? 'calc(26.07% - 5px)' : ((selectedAsset.templateName.includes('上下滑动') || selectedAsset.templateName.includes('胶囊上滑')) ? 'calc(12.18% - 5px)' : (selectedAsset.templateName === '扭动全屏' ? '12.48%' : '8.97%')), transform: selectedAsset.id.includes('mt-s-2') ? 'translateY(-2px)' : (selectedAsset.id.includes('mt-s-1') || selectedAsset.id.includes('mt-s-3')) ? 'translateY(2px)' : 'none' }}>
+                <div className="inline-block" style={{ fontSize: ((selectedAsset.id.includes('mt-s-5') || selectedAsset.id.includes('mt-s-6') || selectedAsset.templateName.includes('非全屏')) || selectedAsset.templateName.includes('上下滑动') || selectedAsset.templateName.includes('胶囊上滑')) ? '2.48cqh' : (selectedAsset.templateName === '扭动全屏' ? '1.54cqh' : '1.79cqh'), letterSpacing: '0.05em' }}>
                   <span className="text-white text-center block font-bold shadow-sm">{selectedAsset.splashText || t('preview.defaultSplashText')}</span>
                 </div>
               </div>
