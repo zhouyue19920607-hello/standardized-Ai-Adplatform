@@ -3821,8 +3821,6 @@ const ConfigWorkspace: React.FC = () => {
                 }
 
                 ctx.save();
-                ctx.shadowColor = 'rgba(0,0,0,0.34)';
-                ctx.shadowBlur = 34;
                 smallImages.forEach((image, index) => {
                     const frame = getSpotlightSmallFrame(index, elapsed);
                     if (frame.opacity <= 0.01) return;
@@ -6988,7 +6986,7 @@ const ConfigWorkspace: React.FC = () => {
                                                                 key={item.id}
                                                                 src={item.url}
                                                                 alt={`小卡预览 ${index + 1}`}
-                                                                className="absolute object-cover rounded-[2px] drop-shadow-2xl"
+                                                                className="absolute object-cover rounded-[2px]"
                                                                 style={getSpotlightSmallPreviewStyle(index)}
                                                             />
                                                         ))}
@@ -6996,7 +6994,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             <img
                                                                 src={spotlightLargeCard.url}
                                                                 alt="大卡预览"
-                                                                className="absolute object-cover rounded-[2px] drop-shadow-2xl"
+                                                                className="absolute object-cover rounded-[2px]"
                                                                 style={spotlightLargePreviewStyle()}
                                                             />
                                                         )}
