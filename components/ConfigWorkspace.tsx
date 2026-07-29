@@ -1051,6 +1051,8 @@ const ConfigWorkspace: React.FC = () => {
     const [saveMessage, setSaveMessage] = useState('');
     const [dragTarget, setDragTarget] = useState<CreativeUploadTarget | null>(null);
     const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+    const [generatedVideoDownloadUrl, setGeneratedVideoDownloadUrl] = useState<string | null>(null);
+    const [isGeneratedVideoPreparingDownload, setIsGeneratedVideoPreparingDownload] = useState(false);
     const [isGeneratedVideoDownloading, setIsGeneratedVideoDownloading] = useState(false);
     const [error, setError] = useState('');
     const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -1253,7 +1255,10 @@ const ConfigWorkspace: React.FC = () => {
 
     const resetOutput = () => {
         if (generatedVideoUrl?.startsWith('blob:')) URL.revokeObjectURL(generatedVideoUrl);
+        if (generatedVideoDownloadUrl?.startsWith('blob:') && generatedVideoDownloadUrl !== generatedVideoUrl) URL.revokeObjectURL(generatedVideoDownloadUrl);
         setGeneratedVideoUrl(null);
+        setGeneratedVideoDownloadUrl(null);
+        setIsGeneratedVideoPreparingDownload(false);
     };
 
     const getGeneratedVideoFilename = () => {
@@ -1288,15 +1293,15 @@ const ConfigWorkspace: React.FC = () => {
     };
 
     const handleGeneratedVideoDownload = () => {
-        if (!generatedVideoUrl || isGeneratedVideoDownloading) return;
+        if (!generatedVideoDownloadUrl || isGeneratedVideoDownloading || isGeneratedVideoPreparingDownload) return;
         const filename = getGeneratedVideoFilename();
         setError('');
         setIsGeneratedVideoDownloading(true);
         try {
-            if (generatedVideoUrl.startsWith('blob:')) {
-                triggerDownloadLink(generatedVideoUrl, filename);
+            if (generatedVideoDownloadUrl.startsWith('blob:')) {
+                triggerDownloadLink(generatedVideoDownloadUrl, filename);
             } else {
-                const sourceUrl = resolveApiAssetUrl(generatedVideoUrl);
+                const sourceUrl = resolveApiAssetUrl(generatedVideoDownloadUrl);
                 const downloadUrl = `${ASSETS_URL}/api/download-static?url=${encodeURIComponent(sourceUrl)}&filename=${encodeURIComponent(filename)}`;
                 triggerDownloadLink(downloadUrl, filename);
             }
@@ -3639,10 +3644,16 @@ const ConfigWorkspace: React.FC = () => {
         maxDurationSec: number,
     ) => {
         const localPreviewUrl = URL.createObjectURL(blob);
+        const isRecordingMp4 = (blob.type || '').toLowerCase().includes('mp4');
         setGeneratedVideoUrl((current) => {
             if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
             return localPreviewUrl;
         });
+        setGeneratedVideoDownloadUrl((current) => {
+            if (current?.startsWith('blob:') && current !== localPreviewUrl) URL.revokeObjectURL(current);
+            return isRecordingMp4 ? localPreviewUrl : null;
+        });
+        setIsGeneratedVideoPreparingDownload(!isRecordingMp4);
 
         try {
             const outputUrl = await persistRecordedVideoAsMp4(blob, filename, width, height, maxDurationSec);
@@ -3653,9 +3664,12 @@ const ConfigWorkspace: React.FC = () => {
                 }
                 return current;
             });
+            setGeneratedVideoDownloadUrl(outputUrl);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'MP4 转码保存失败';
-            setError((current) => current || `视频已生成，可先下载本地合成结果；正式 MP4 保存失败：${message}`);
+            setError((current) => current || `视频已生成预览，但 MP4 下载文件还没有准备成功：${message}`);
+        } finally {
+            setIsGeneratedVideoPreparingDownload(false);
         }
     };
 
@@ -6738,11 +6752,11 @@ const ConfigWorkspace: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={handleGeneratedVideoDownload}
-                                            disabled={!generatedVideoUrl || isGeneratedVideoDownloading}
-                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoUrl ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                            disabled={!generatedVideoDownloadUrl || isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading}
+                                            className={`h-9 px-4 rounded-[14px] text-[11px] font-black flex items-center justify-center gap-1.5 transition-all border ${generatedVideoDownloadUrl && !isGeneratedVideoPreparingDownload ? 'bg-white/[0.07] text-zinc-200 hover:bg-white/[0.12] border-white/10' : 'bg-white/[0.04] text-zinc-700 border-white/5'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                         >
-                                            <span className={`material-symbols-outlined text-base ${isGeneratedVideoDownloading ? 'animate-spin' : ''}`}>{isGeneratedVideoDownloading ? 'sync' : 'download'}</span>
-                                            {isGeneratedVideoDownloading ? '下载中' : '下载'}
+                                            <span className={`material-symbols-outlined text-base ${(isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading) ? 'animate-spin' : ''}`}>{isGeneratedVideoPreparingDownload || isGeneratedVideoDownloading ? 'sync' : 'download'}</span>
+                                            {isGeneratedVideoPreparingDownload ? 'MP4处理中' : isGeneratedVideoDownloading ? '下载中' : '下载'}
                                         </button>
                                     </div>
                                 </div>
