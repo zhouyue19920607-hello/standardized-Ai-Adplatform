@@ -191,29 +191,80 @@ function fallbackWritableFields(fields) {
 }
 
 function minimalWritableFields(fields) {
+  const summary = buildUsageSummary(fields);
   return {
     "用户名称": cleanText(fields["用户名称"], 200),
-    "进入时间": Number(fields["进入时间"] || Date.now()),
     "页面路径": cleanText(fields["页面路径"], 500),
     "使用工具": cleanText(fields["使用工具"], 300),
     "硬广形式": cleanText(fields["硬广形式"], 300),
-    "会话ID": cleanText(fields["会话ID"], 300),
-    "操作摘要": cleanText(fields["操作摘要"] || "进入网站", 500),
+    "操作摘要": summary,
   };
 }
 
-async function createUsageRecord(tenantToken, appToken, tableId, fields, stage = "record_create_request") {
+function buildUsageSummary(fields) {
+  const lines = [
+    `用户：${cleanText(fields["用户名称"] || "美图用户", 200)}`,
+    `操作：${Array.isArray(fields["事件类型"]) ? fields["事件类型"].join("、") : cleanText(fields["操作摘要"] || fields["事件类型"] || "进入网站", 300)}`,
+    `工具：${cleanText(fields["使用工具"] || "未选择", 200)}`,
+    `形式：${cleanText(fields["硬广形式"] || "未选择", 200)}`,
+    `页面：${cleanText(fields["页面路径"] || "未知页面", 300)}`,
+    `结果：${cleanText(fields["任务状态"] || "仅访问", 100)}`,
+    `时间：${new Date(Number(fields["最后操作时间"] || fields["进入时间"] || Date.now())).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}`,
+  ];
+  const failureReason = cleanText(fields["失败原因"], 500);
+  if (failureReason) lines.push(`失败原因：${failureReason}`);
+  return cleanText(lines.join("\n"), 1000);
+}
+
+function getRecordCreateAttempts(fields) {
+  const summary = buildUsageSummary(fields);
+  return [
+    ["record_create_request", fields],
+    ["record_create_minimal_request", minimalWritableFields(fields)],
+    ["record_create_summary_request", { "操作摘要": summary }],
+    ["record_create_user_request", { "用户名称": summary }],
+    ["record_create_blank_request", {}],
+  ];
+}
+
+function isRecoverableFieldError(error) {
+  const msg = error?.response?.data?.msg || error?.response?.data?.message || error?.message || "";
+  return /FieldConvFail|field.*convert|字段|FieldName|field_name|field not found|InvalidField/i.test(msg);
+}
+
+async function createUsageRecord(tenantToken, appToken, tableId, fields) {
+  let lastError;
+  for (const [stage, attemptFields] of getRecordCreateAttempts(fields)) {
+    try {
+      return await withDeadline(stage, () => axios.post(
+        `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
+        { fields: attemptFields },
+        { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
+      ));
+    } catch (error) {
+      lastError = error;
+      usageStatus.lastError = error?.response?.data?.msg || error?.response?.data?.message || error?.message || String(error);
+      if (!isRecoverableFieldError(error)) break;
+    }
+  }
+  throw lastError;
+}
+
+async function updateUsageRecord(tenantToken, appToken, tableId, recordId, fields) {
   try {
-    return await withDeadline(stage, () => axios.post(
-      `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
+    return await withDeadline("record_update_request", () => axios.put(
+      `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
       { fields },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
     ));
   } catch (error) {
-    const msg = error?.response?.data?.msg || error?.message || "";
-    if (stage !== "record_create_minimal_request" && /FieldConvFail|field.*convert|字段/i.test(msg)) {
-      usageStatus.lastError = msg;
-      return createUsageRecord(tenantToken, appToken, tableId, minimalWritableFields(fields), "record_create_minimal_request");
+    if (isRecoverableFieldError(error)) {
+      usageStatus.lastError = error?.response?.data?.msg || error?.response?.data?.message || error?.message || String(error);
+      return withDeadline("record_update_minimal_request", () => axios.put(
+        `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
+        { fields: minimalWritableFields(fields) },
+        { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
+      ));
     }
     throw error;
   }
@@ -446,11 +497,7 @@ export async function recordFeishuUsage(user, event = {}) {
       if (current["下载时间"] || fields["下载时间"]) {
         mergedFields["下载时间"] = Math.max(Number(current["下载时间"] || 0), Number(fields["下载时间"] || 0));
       }
-      response = await withDeadline("record_update_request", () => axios.put(
-        `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${existing.record_id}`,
-        { fields: filterExistingFields(mergedFields, fieldMeta) },
-        { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
-      ));
+      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, filterExistingFields(mergedFields, fieldMeta));
     } else {
       response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
     }
