@@ -131,11 +131,22 @@ const mergeText = (current, incoming, max = 1000) => {
 };
 
 function mapUsageEventType(eventType) {
-  if (eventType === "进入网站") return "进入网站";
-  if (["生成素材", "生成成功", "生成失败", "点击生成", "上传素材", "选择工具", "选择硬广形式"].includes(eventType)) {
-    return "生成素材";
-  }
-  if (["下载素材", "下载结果"].includes(eventType)) return "下载素材";
+  const allowed = new Set([
+    "进入网站",
+    "选择工具",
+    "选择硬广形式",
+    "上传素材",
+    "点击生成",
+    "生成成功",
+    "生成失败",
+    "下载结果",
+    "提交反馈",
+    "离开网站",
+    "其他",
+  ]);
+  if (allowed.has(eventType)) return eventType;
+  if (eventType === "生成素材") return "生成成功";
+  if (eventType === "下载素材") return "下载结果";
   return "其他";
 }
 
@@ -174,7 +185,19 @@ function fallbackUsageFieldMeta() {
     makeField("用户名称", 1),
     makeField("用户标识", 1),
     makeField("进入时间", 5),
-    makeField("事件类型", 4, ["进入网站", "生成素材", "下载素材", "其他"]),
+    makeField("事件类型", 4, [
+      "进入网站",
+      "选择工具",
+      "选择硬广形式",
+      "上传素材",
+      "点击生成",
+      "生成成功",
+      "生成失败",
+      "下载结果",
+      "提交反馈",
+      "离开网站",
+      "其他",
+    ]),
     makeField("页面路径", 1),
     makeField("统计周", 1),
     makeField("统计月", 1),
@@ -195,7 +218,25 @@ function fallbackUsageFieldMeta() {
     makeField("未采用原因", 4, ["画质不达标", "尺寸不匹配", "排版问题", "品牌还原不足", "操作困难", "生成速度慢", "其他"]),
     makeField("使用入口", 3, ["机器人", "飞书菜单", "直接访问", "其他"]),
     makeField("使用工具", 1),
-    makeField("硬广形式", 4, ["焦点视窗", "气泡全屏"]),
+    makeField("硬广形式", 4, [
+      "焦点视窗",
+      "气泡全屏",
+      "聚光开屏",
+      "多态翻卡",
+      "奇遇彩蛋",
+      "奇遇彩蛋开屏",
+      "跃境 PLUS 开屏",
+      "跃境PLUS开屏",
+      "杂志翻页",
+      "聚光开屏",
+      "炫动开屏",
+      "破框焦点视窗",
+      "破框焦点视窗 3D",
+      "跃动焦点视窗",
+      "焕新 UI",
+      "联动超视频-全景视频",
+      "联动超视频-3D",
+    ]),
     makeField("素材类型", 4, ["图片", "视频", "PSD", "其他"]),
     makeField("是否点击生成", 7),
     makeField("是否生成成功", 7),
@@ -218,8 +259,42 @@ function shouldSkipFieldLookup() {
   return String(process.env.FEISHU_USAGE_SKIP_FIELD_LOOKUP || "true").toLowerCase() !== "false";
 }
 
+const CORE_USAGE_FIELD_NAMES = [
+  "事件编号",
+  "用户名称",
+  "进入时间",
+  "使用入口",
+  "使用工具",
+  "硬广形式",
+  "素材类型",
+  "事件类型",
+  "是否点击生成",
+  "是否生成成功",
+  "失败原因",
+  "生成规格",
+  "生成格式",
+  "生成数量",
+  "是否下载",
+  "操作次数",
+  "本次使用时长(秒)",
+  "生成尝试次数",
+  "生成成功次数",
+  "生成失败次数",
+  "下载数量",
+  "任务状态",
+  "会话ID",
+];
+
+function pickCoreUsageFields(fields, fieldMeta) {
+  const picked = {};
+  for (const name of CORE_USAGE_FIELD_NAMES) {
+    if (Object.prototype.hasOwnProperty.call(fields, name)) picked[name] = fields[name];
+  }
+  return filterExistingFields(picked, fieldMeta);
+}
+
 function fallbackWritableFields(fields) {
-  return filterExistingFields(fields, fallbackUsageFieldMeta());
+  return pickCoreUsageFields(fields, fallbackUsageFieldMeta());
 }
 
 function minimalWritableFields(fields) {
@@ -540,13 +615,13 @@ export async function recordFeishuUsage(user, event = {}) {
   if (shouldSkipFieldLookup()) {
     markStage("field_lookup_skipped");
     const fieldMeta = fallbackUsageFieldMeta();
-    const writableFields = filterExistingFields(fields, fieldMeta);
+    const writableFields = pickCoreUsageFields(fields, fieldMeta);
     const existing = fields["会话ID"]
       ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
       : null;
     if (existing) {
       const mergedFields = mergeSessionFields(existing.fields || {}, fields, now, isGeneration);
-      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, filterExistingFields(mergedFields, fieldMeta));
+      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, pickCoreUsageFields(mergedFields, fieldMeta));
     } else {
       response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
     }
@@ -560,13 +635,13 @@ export async function recordFeishuUsage(user, event = {}) {
       fieldMeta = fallbackUsageFieldMeta();
     }
     const fieldNames = new Set(fieldMeta.keys());
-    const writableFields = filterExistingFields(fields, fieldMeta);
+    const writableFields = pickCoreUsageFields(fields, fieldMeta);
     const existing = fieldNames.has("会话ID")
       ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
       : null;
     if (existing) {
       const mergedFields = mergeSessionFields(existing.fields || {}, fields, now, isGeneration);
-      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, filterExistingFields(mergedFields, fieldMeta));
+      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, pickCoreUsageFields(mergedFields, fieldMeta));
     } else {
       response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
     }
