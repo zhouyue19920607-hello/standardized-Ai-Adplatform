@@ -4371,6 +4371,8 @@ function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
 }
 
 const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 346;
+const BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH = 1080;
+const BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT = 1540;
 
 function isBoxInsidePixelSafeArea(box, width, height, marginPx = STANDARD_SPLASH_INFO_SAFE_MARGIN_PX) {
   if (!box || !width || !height) return true;
@@ -5701,6 +5703,36 @@ function isStandardSplashTemplateForAdapt(context = {}) {
   return /(开屏|splash)/i.test(text) && !/(炫动|杂志|聚光|创新|dynamic|magazine|gallery)/i.test(text);
 }
 
+function isBubbleFullscreenTemplateForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
+  const width = toPositiveInt(targetWidth || context.targetWidth || context.width);
+  const height = toPositiveInt(targetHeight || context.targetHeight || context.height);
+  if (width !== 1440 || height !== 2340) return false;
+  const templateId = String(context.templateId || "").toLowerCase();
+  const templateName = String(context.templateName || "");
+  const appName = String(context.appName || "");
+  const text = `${appName}${templateName}${templateId}`.toLowerCase();
+  return (
+    /气泡全屏/.test(text) ||
+    /bubble.*full|full.*bubble/.test(text) ||
+    /^(mt|my|wk)-s-1$/.test(templateId)
+  );
+}
+
+function getBubbleFullscreenSafeCoreForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
+  if (!isBubbleFullscreenTemplateForAdapt(context, targetWidth, targetHeight)) return null;
+  const width = toPositiveInt(targetWidth || context.targetWidth || context.width);
+  const height = toPositiveInt(targetHeight || context.targetHeight || context.height);
+  return {
+    mode: "bubble_fullscreen_safe_core",
+    width: BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH,
+    height: BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT,
+    targetWidth: width,
+    targetHeight: height,
+    offsetX: Math.round((width - BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH) / 2),
+    offsetY: Math.round((height - BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT) / 2)
+  };
+}
+
 function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight, targetWidth, targetHeight, context = {}) {
   if (!isStandardSplashTemplateForAdapt(context)) return null;
   if (context.splashSafeAreaAdjustment?.infoSafeArea?.applies) {
@@ -6751,11 +6783,12 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     targetWidth,
     targetHeight
   }));
-  if (plan.strategy === "direct") {
+  const bubbleSafeCore = getBubbleFullscreenSafeCoreForAdapt(context, targetWidth, targetHeight);
+  if (plan.strategy === "direct" && !bubbleSafeCore) {
     console.log("[AdaptImage] execute direct");
     return ensureFinalAdaptSize(imageUrl, targetWidth, targetHeight, context, analysis);
   }
-  if (plan.strategy === "crop") {
+  if (plan.strategy === "crop" && !bubbleSafeCore) {
     console.log("[AdaptImage] execute crop");
     const croppedUrl = await cropWithFallbackForAdapt(imageUrl, targetWidth, targetHeight, context, analysis);
     return ensureFinalAdaptSize(croppedUrl, targetWidth, targetHeight, context, analysis);
@@ -6786,6 +6819,111 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     prompt || ""
   ].filter(Boolean).join(" ");
   let workingUrl = imageUrl;
+
+  if (bubbleSafeCore && !context.bubbleSafeCoreAdapt?.running) {
+    plan.safeCoreAdapt = {
+      ...bubbleSafeCore,
+      status: "running"
+    };
+    context.bubbleSafeCoreAdapt = {
+      ...bubbleSafeCore,
+      running: true,
+      stage: "core_adapt"
+    };
+    console.log("[AdaptImage] bubble fullscreen safe-core test start", JSON.stringify(bubbleSafeCore));
+
+    const coreContext = {
+      ...context,
+      targetWidth: bubbleSafeCore.width,
+      targetHeight: bubbleSafeCore.height,
+      bubbleSafeCoreAdapt: {
+        ...bubbleSafeCore,
+        running: true,
+        stage: "core_adapt"
+      }
+    };
+    const corePlan = {
+      ...plan,
+      strategy: "outpaint",
+      orientationChange: "same-direction",
+      layoutIntent: "bubble_fullscreen_safe_core",
+      infoSafeArea: null,
+      safeCoreAdapt: {
+        ...bubbleSafeCore,
+        stage: "core_adapt"
+      },
+      steps: ["detect", "safe_core_adapt", "background_extension", "final_safe_area_qa"],
+      reasons: [
+        ...(plan.reasons || []),
+        `气泡全屏测试：先把内容适配到 ${bubbleSafeCore.width}x${bubbleSafeCore.height} 核心安全画面，再扩展到 ${targetWidth}x${targetHeight}`
+      ]
+    };
+    const corePrompt = [
+      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+      `Bubble fullscreen safe-core test. First create a ${bubbleSafeCore.width}x${bubbleSafeCore.height} complete poster core. Keep the original subject, product, all readable text, slogan, logo, button copy and brand marks fully visible inside this core. Do not add, duplicate, translate, rewrite, redraw, blur, stretch, or cover any text, logo, product, person, button, icon, badge, sticker, watermark or decoration. Only extend missing background naturally.`
+    ].join(" ");
+    const coreUrl = await executeAdaptPlan(
+      imageUrl,
+      bubbleSafeCore.width,
+      bubbleSafeCore.height,
+      corePlan,
+      coreContext,
+      corePrompt,
+      analysis,
+      masks
+    );
+
+    context.bubbleSafeCoreAdapt = {
+      ...bubbleSafeCore,
+      applied: true,
+      running: false,
+      stage: "outer_expand",
+      coreUrl
+    };
+    plan.safeCoreAdapt = {
+      ...plan.safeCoreAdapt,
+      status: "core_done",
+      coreUrl
+    };
+
+    const outerPrompt = [
+      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+      `Place the ${bubbleSafeCore.width}x${bubbleSafeCore.height} poster core visually centered inside the ${targetWidth}x${targetHeight} canvas. The poster core must remain unchanged. Do not move internal elements, rewrite, redraw, duplicate, blur, stretch, cover, or regenerate any original subject, product, person, text, logo, brand mark, button copy or packaging text. Only extend the outer surrounding background to fill the canvas. The added outer background must contain no text, no logos, no products, no people, no icons, no badges, no stickers and no new decorative objects. Prefer clean natural background continuation over adding content.`
+    ].join(" ");
+    const expandedUrl = await expandImageV4ForAdapt(
+      coreUrl,
+      targetWidth,
+      targetHeight,
+      {
+        ...context,
+        bubbleSafeCoreAdapt: {
+          ...context.bubbleSafeCoreAdapt,
+          stage: "outer_expand"
+        }
+      },
+      outerPrompt
+    );
+    if (!expandedUrl) {
+      const err = new Error("气泡全屏安全核心外扩没有返回结果，已停止生成");
+      err.stage = "bubble-safe-core-outer-expand";
+      throw err;
+    }
+    context.bubbleSafeCoreAdapt = {
+      ...context.bubbleSafeCoreAdapt,
+      stage: "done",
+      expandedUrl
+    };
+    plan.safeCoreAdapt = {
+      ...plan.safeCoreAdapt,
+      status: "done",
+      expandedUrl
+    };
+    console.log("[AdaptImage] bubble fullscreen safe-core test done", JSON.stringify({
+      coreUrl,
+      expandedUrl
+    }));
+    return ensureFinalAdaptSize(expandedUrl, targetWidth, targetHeight, context, analysis);
+  }
 
   if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
     try {
@@ -9722,14 +9860,21 @@ async function cleanupStorage() {
 }
 
 // 每 30 分钟跑一次清理
-setInterval(cleanupStorage, 30 * 60 * 1000);
+const storageCleanupDisabled = process.env.DISABLE_STORAGE_CLEANUP === "1";
+if (!storageCleanupDisabled) {
+  setInterval(cleanupStorage, 30 * 60 * 1000);
+}
 
 // ---- 启动 ----
 ensureDataFiles().then(() => {
   const server = app.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
     // 启动时先跑一次清理
-    cleanupStorage();
+    if (!storageCleanupDisabled) {
+      cleanupStorage();
+    } else {
+      console.log("[Cleanup] Disabled by DISABLE_STORAGE_CLEANUP=1");
+    }
   });
   server.requestTimeout = 40 * 60 * 1000;
   server.headersTimeout = 40 * 60 * 1000 + 5000;
