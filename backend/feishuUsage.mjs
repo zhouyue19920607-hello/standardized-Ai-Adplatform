@@ -371,7 +371,8 @@ function coerceFeishuFieldValue(value, field) {
   if (type === 4) {
     const list = cleanList(value);
     const optionNames = new Set((field?.property?.options || []).map(option => option.name).filter(Boolean));
-    return optionNames.size ? list.filter(item => optionNames.has(item)) : list;
+    const filtered = optionNames.size ? list.filter(item => optionNames.has(item)) : list;
+    return filtered.length ? filtered : undefined;
   }
   if (type === 5) {
     const number = Number(value);
@@ -394,6 +395,51 @@ function filterExistingFields(fields, fieldMetaOrNames) {
     if (coerced !== undefined) result[name] = coerced;
   }
   return result;
+}
+
+function mergeSessionFields(current, fields, now, isGeneration) {
+  const enteredAt = Number(current["进入时间"] || fields["进入时间"] || now);
+  const firstGenerationSeconds = isGeneration
+    ? Number(current["首次生成耗时(秒)"] || Math.max(0, Math.round((now - enteredAt) / 1000)))
+    : Number(current["首次生成耗时(秒)"] || 0);
+  const mergedFields = {
+    ...fields,
+    "事件编号": current["事件编号"] || fields["事件编号"],
+    "进入时间": current["进入时间"] || fields["进入时间"],
+    "页面路径": mergeText(current["页面路径"], fields["页面路径"], 500),
+    "事件类型": cleanList([...(Array.isArray(current["事件类型"]) ? current["事件类型"] : [current["事件类型"]]), ...fields["事件类型"]]),
+    "是否点击生成": Boolean(current["是否点击生成"] || fields["是否点击生成"]),
+    "是否生成成功": Boolean(current["是否生成成功"] || fields["是否生成成功"]),
+    "失败原因": mergeText(current["失败原因"], fields["失败原因"], 1000),
+    "生成规格": mergeText(current["生成规格"], fields["生成规格"], 1000),
+    "生成格式": fields["生成格式"] !== "其他" ? fields["生成格式"] : (current["生成格式"] || fields["生成格式"]),
+    "生成数量": Number(current["生成数量"] || 0) + Number(fields["生成数量"] || 0),
+    "结果编号": mergeText(current["结果编号"], fields["结果编号"], 1000),
+    "是否下载": Boolean(current["是否下载"] || fields["是否下载"]),
+    "任务状态": fields["任务状态"] !== "仅访问" ? fields["任务状态"] : (current["任务状态"] || fields["任务状态"]),
+    "采用情况": current["采用情况"] || fields["采用情况"],
+    "未采用原因": cleanList([...(Array.isArray(current["未采用原因"]) ? current["未采用原因"] : [current["未采用原因"]]), ...fields["未采用原因"]]),
+    "使用入口": current["使用入口"] || fields["使用入口"],
+    "使用工具": mergeText(current["使用工具"], fields["使用工具"], 500),
+    "硬广形式": mergeText(current["硬广形式"], fields["硬广形式"], 500),
+    "素材类型": cleanList([...(Array.isArray(current["素材类型"]) ? current["素材类型"] : [current["素材类型"]]), ...fields["素材类型"]]),
+    "操作次数": Number(current["操作次数"] || 0) + 1,
+    "首次生成耗时(秒)": firstGenerationSeconds,
+    "本次使用时长(秒)": Math.max(0, Math.round((now - enteredAt) / 1000)),
+    "生成尝试次数": Number(current["生成尝试次数"] || 0) + Number(fields["生成尝试次数"] || 0),
+    "生成成功次数": Number(current["生成成功次数"] || 0) + Number(fields["生成成功次数"] || 0),
+    "生成失败次数": Number(current["生成失败次数"] || 0) + Number(fields["生成失败次数"] || 0),
+    "下载数量": Number(current["下载数量"] || 0) + Number(fields["下载数量"] || 0),
+    "返工次数": Number(current["返工次数"] || 0),
+    "传统制作预计耗时(分钟)": Number(current["传统制作预计耗时(分钟)"] || 0),
+    "AI节省时间(分钟)": Number(current["AI节省时间(分钟)"] || 0),
+    "满意度(1-5分)": Number(current["满意度(1-5分)"] || 0),
+    "唯一事件ID": current["唯一事件ID"] || fields["唯一事件ID"],
+  };
+  if (current["下载时间"] || fields["下载时间"]) {
+    mergedFields["下载时间"] = Math.max(Number(current["下载时间"] || 0), Number(fields["下载时间"] || 0));
+  }
+  return mergedFields;
 }
 
 async function findSessionRecord(tenantToken, appToken, tableId, sessionId) {
@@ -493,7 +539,17 @@ export async function recordFeishuUsage(user, event = {}) {
   let response;
   if (shouldSkipFieldLookup()) {
     markStage("field_lookup_skipped");
-    response = await createUsageRecord(tenantToken, appToken, tableId, fallbackWritableFields(fields));
+    const fieldMeta = fallbackUsageFieldMeta();
+    const writableFields = filterExistingFields(fields, fieldMeta);
+    const existing = fields["会话ID"]
+      ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
+      : null;
+    if (existing) {
+      const mergedFields = mergeSessionFields(existing.fields || {}, fields, now, isGeneration);
+      response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, filterExistingFields(mergedFields, fieldMeta));
+    } else {
+      response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
+    }
   } else {
     let fieldMeta;
     try {
@@ -509,48 +565,7 @@ export async function recordFeishuUsage(user, event = {}) {
       ? await findSessionRecord(tenantToken, appToken, tableId, fields["会话ID"])
       : null;
     if (existing) {
-      const current = existing.fields || {};
-      const enteredAt = Number(current["进入时间"] || fields["进入时间"] || now);
-      const firstGenerationSeconds = isGeneration
-        ? Number(current["首次生成耗时(秒)"] || Math.max(0, Math.round((now - enteredAt) / 1000)))
-        : Number(current["首次生成耗时(秒)"] || 0);
-      const mergedFields = {
-        ...fields,
-        "事件编号": current["事件编号"] || fields["事件编号"],
-        "进入时间": current["进入时间"] || fields["进入时间"],
-        "页面路径": mergeText(current["页面路径"], fields["页面路径"], 500),
-        "事件类型": cleanList([...(Array.isArray(current["事件类型"]) ? current["事件类型"] : [current["事件类型"]]), ...fields["事件类型"]]),
-        "是否点击生成": Boolean(current["是否点击生成"] || fields["是否点击生成"]),
-        "是否生成成功": Boolean(current["是否生成成功"] || fields["是否生成成功"]),
-        "失败原因": mergeText(current["失败原因"], fields["失败原因"], 1000),
-        "生成规格": mergeText(current["生成规格"], fields["生成规格"], 1000),
-        "生成格式": fields["生成格式"] !== "其他" ? fields["生成格式"] : (current["生成格式"] || fields["生成格式"]),
-        "生成数量": Number(current["生成数量"] || 0) + Number(fields["生成数量"] || 0),
-        "结果编号": mergeText(current["结果编号"], fields["结果编号"], 1000),
-        "是否下载": Boolean(current["是否下载"] || fields["是否下载"]),
-        "任务状态": fields["任务状态"] !== "仅访问" ? fields["任务状态"] : (current["任务状态"] || fields["任务状态"]),
-        "采用情况": current["采用情况"] || fields["采用情况"],
-        "未采用原因": cleanList([...(Array.isArray(current["未采用原因"]) ? current["未采用原因"] : [current["未采用原因"]]), ...fields["未采用原因"]]),
-        "使用入口": current["使用入口"] || fields["使用入口"],
-        "使用工具": mergeText(current["使用工具"], fields["使用工具"], 500),
-        "硬广形式": mergeText(current["硬广形式"], fields["硬广形式"], 500),
-        "素材类型": cleanList([...(Array.isArray(current["素材类型"]) ? current["素材类型"] : [current["素材类型"]]), ...fields["素材类型"]]),
-        "操作次数": Number(current["操作次数"] || 0) + 1,
-        "首次生成耗时(秒)": firstGenerationSeconds,
-        "本次使用时长(秒)": Math.max(0, Math.round((now - enteredAt) / 1000)),
-        "生成尝试次数": Number(current["生成尝试次数"] || 0) + Number(fields["生成尝试次数"] || 0),
-        "生成成功次数": Number(current["生成成功次数"] || 0) + Number(fields["生成成功次数"] || 0),
-        "生成失败次数": Number(current["生成失败次数"] || 0) + Number(fields["生成失败次数"] || 0),
-        "下载数量": Number(current["下载数量"] || 0) + Number(fields["下载数量"] || 0),
-        "返工次数": Number(current["返工次数"] || 0),
-        "传统制作预计耗时(分钟)": Number(current["传统制作预计耗时(分钟)"] || 0),
-        "AI节省时间(分钟)": Number(current["AI节省时间(分钟)"] || 0),
-        "满意度(1-5分)": Number(current["满意度(1-5分)"] || 0),
-        "唯一事件ID": current["唯一事件ID"] || fields["唯一事件ID"],
-      };
-      if (current["下载时间"] || fields["下载时间"]) {
-        mergedFields["下载时间"] = Math.max(Number(current["下载时间"] || 0), Number(fields["下载时间"] || 0));
-      }
+      const mergedFields = mergeSessionFields(existing.fields || {}, fields, now, isGeneration);
       response = await updateUsageRecord(tenantToken, appToken, tableId, existing.record_id, filterExistingFields(mergedFields, fieldMeta));
     } else {
       response = await createUsageRecord(tenantToken, appToken, tableId, writableFields);
