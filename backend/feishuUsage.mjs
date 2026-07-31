@@ -232,15 +232,23 @@ function isRecoverableFieldError(error) {
   return /FieldConvFail|field.*convert|字段|FieldName|field_name|field not found|InvalidField/i.test(msg);
 }
 
+function makeFeishuApiError(response, fallbackMessage = "飞书接口返回失败") {
+  const error = new Error(response?.data?.msg || response?.data?.message || fallbackMessage);
+  error.response = response;
+  return error;
+}
+
 async function createUsageRecord(tenantToken, appToken, tableId, fields) {
   let lastError;
   for (const [stage, attemptFields] of getRecordCreateAttempts(fields)) {
     try {
-      return await withDeadline(stage, () => axios.post(
+      const response = await withDeadline(stage, () => axios.post(
         `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records`,
         { fields: attemptFields },
         { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
       ));
+      if (response.data?.code === 0) return response;
+      throw makeFeishuApiError(response, "飞书使用记录写入失败");
     } catch (error) {
       lastError = error;
       usageStatus.lastError = error?.response?.data?.msg || error?.response?.data?.message || error?.message || String(error);
@@ -252,19 +260,23 @@ async function createUsageRecord(tenantToken, appToken, tableId, fields) {
 
 async function updateUsageRecord(tenantToken, appToken, tableId, recordId, fields) {
   try {
-    return await withDeadline("record_update_request", () => axios.put(
+    const response = await withDeadline("record_update_request", () => axios.put(
       `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
       { fields },
       { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
     ));
+    if (response.data?.code === 0) return response;
+    throw makeFeishuApiError(response, "飞书使用记录更新失败");
   } catch (error) {
     if (isRecoverableFieldError(error)) {
       usageStatus.lastError = error?.response?.data?.msg || error?.response?.data?.message || error?.message || String(error);
-      return withDeadline("record_update_minimal_request", () => axios.put(
+      const response = await withDeadline("record_update_minimal_request", () => axios.put(
         `${FEISHU_API}/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
         { fields: minimalWritableFields(fields) },
         { headers: { Authorization: `Bearer ${tenantToken}` }, timeout: FEISHU_STEP_TIMEOUT_MS },
       ));
+      if (response.data?.code === 0) return response;
+      throw makeFeishuApiError(response, "飞书使用记录降级更新失败");
     }
     throw error;
   }
