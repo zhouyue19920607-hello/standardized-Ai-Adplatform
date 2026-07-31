@@ -130,6 +130,20 @@ const mergeText = (current, incoming, max = 1000) => {
   return cleanText(values.join("、"), max);
 };
 
+function mapUsageEventType(eventType) {
+  if (eventType === "进入网站") return "进入网站";
+  if (["生成素材", "生成成功", "生成失败", "点击生成", "上传素材", "选择工具", "选择硬广形式"].includes(eventType)) {
+    return "生成素材";
+  }
+  if (["下载素材", "下载结果"].includes(eventType)) return "下载素材";
+  return "其他";
+}
+
+function mapUsageEventTypes(eventTypes) {
+  const mapped = cleanList(eventTypes).map(mapUsageEventType);
+  return uniqueValues(mapped.length ? mapped : ["其他"]);
+}
+
 function getShanghaiPeriod(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
@@ -150,36 +164,54 @@ function getShanghaiPeriod(now = new Date()) {
 }
 
 function fallbackUsageFieldMeta() {
-  const fieldTypes = {
-    "用户名称": 1,
-    "用户标识": 1,
-    "进入时间": 5,
-    "页面路径": 1,
-    "统计周": 1,
-    "统计月": 1,
-    "最后操作时间": 5,
-    "操作次数": 2,
-    "本次使用时长(秒)": 2,
-    "生成尝试次数": 2,
-    "生成成功次数": 2,
-    "生成失败次数": 2,
-    "下载数量": 2,
-    "任务状态": 3,
-    "使用入口": 3,
-    "使用工具": 1,
-    "硬广形式": 1,
-    "是否点击生成": 7,
-    "是否生成成功": 7,
-    "失败原因": 1,
-    "操作摘要": 1,
-    "生成规格": 1,
-    "生成格式": 3,
-    "生成数量": 2,
-    "结果编号": 1,
-    "是否下载": 7,
-    "会话ID": 1,
-  };
-  return new Map(Object.entries(fieldTypes).map(([field_name, type]) => [field_name, { field_name, type }]));
+  const makeField = (field_name, type, options = []) => ({
+    field_name,
+    type,
+    property: options.length ? { options: options.map(name => ({ name })) } : undefined,
+  });
+  const fields = [
+    makeField("事件编号", 1),
+    makeField("用户名称", 1),
+    makeField("用户标识", 1),
+    makeField("进入时间", 5),
+    makeField("事件类型", 4, ["进入网站", "生成素材", "下载素材", "其他"]),
+    makeField("页面路径", 1),
+    makeField("统计周", 1),
+    makeField("统计月", 1),
+    makeField("最后操作时间", 5),
+    makeField("操作次数", 2),
+    makeField("首次生成耗时(秒)", 2),
+    makeField("本次使用时长(秒)", 2),
+    makeField("生成尝试次数", 2),
+    makeField("生成成功次数", 2),
+    makeField("生成失败次数", 2),
+    makeField("下载数量", 2),
+    makeField("任务状态", 3, ["仅访问", "生成中", "已完成", "已放弃"]),
+    makeField("采用情况", 3, ["待确认", "直接采用", "修改后采用", "未采用"]),
+    makeField("返工次数", 2),
+    makeField("传统制作预计耗时(分钟)", 2),
+    makeField("AI节省时间(分钟)", 2),
+    makeField("满意度(1-5分)", 2),
+    makeField("未采用原因", 4, ["画质不达标", "尺寸不匹配", "排版问题", "品牌还原不足", "操作困难", "生成速度慢", "其他"]),
+    makeField("使用入口", 3, ["机器人", "飞书菜单", "直接访问", "其他"]),
+    makeField("使用工具", 1),
+    makeField("硬广形式", 4, ["焦点视窗", "气泡全屏"]),
+    makeField("素材类型", 4, ["图片", "视频", "PSD", "其他"]),
+    makeField("是否点击生成", 7),
+    makeField("是否生成成功", 7),
+    makeField("失败原因", 1),
+    makeField("操作摘要", 1),
+    makeField("生成规格", 1),
+    makeField("生成格式", 3, ["JPG", "PNG", "WebP", "MP4", "PSD", "其他"]),
+    makeField("生成数量", 2),
+    makeField("结果编号", 1),
+    makeField("结果受控链接", 15),
+    makeField("是否下载", 7),
+    makeField("下载时间", 5),
+    makeField("会话ID", 1),
+    makeField("唯一事件ID", 1),
+  ];
+  return new Map(fields.map(field => [field.field_name, field]));
 }
 
 function shouldSkipFieldLookup() {
@@ -330,8 +362,17 @@ function coerceFeishuFieldValue(value, field) {
     const number = Number(value);
     return Number.isFinite(number) ? number : 0;
   }
-  if (type === 3) return Array.isArray(value) ? String(value[0] || "") : String(value);
-  if (type === 4) return cleanList(value);
+  if (type === 3) {
+    const optionNames = new Set((field?.property?.options || []).map(option => option.name).filter(Boolean));
+    const text = Array.isArray(value) ? String(value[0] || "") : String(value);
+    if (optionNames.size && !optionNames.has(text)) return undefined;
+    return text;
+  }
+  if (type === 4) {
+    const list = cleanList(value);
+    const optionNames = new Set((field?.property?.options || []).map(option => option.name).filter(Boolean));
+    return optionNames.size ? list.filter(item => optionNames.has(item)) : list;
+  }
   if (type === 5) {
     const number = Number(value);
     if (Number.isFinite(number)) return number;
@@ -397,6 +438,7 @@ export async function recordFeishuUsage(user, event = {}) {
   const eventTypes = Array.isArray(event.eventTypes)
     ? event.eventTypes
     : [event.eventType || "其他"];
+  const feishuEventTypes = mapUsageEventTypes(eventTypes);
   const isGenerateClick = Boolean(event.clickedGenerate) || eventTypes.includes("点击生成");
   const isGenerationSuccess = Boolean(event.generatedSuccessfully) || eventTypes.includes("生成成功") || eventTypes.includes("生成素材");
   const isGenerationFailure = eventTypes.includes("生成失败") || Boolean(event.failureReason);
@@ -407,7 +449,7 @@ export async function recordFeishuUsage(user, event = {}) {
     "用户名称": cleanText(user?.displayName || user?.name || event.visitorId || "美图用户", 200),
     "用户标识": cleanText(user?.openid || user?.feishu_user_id || event.visitorId, 300),
     "进入时间": event.enteredAt || now,
-    "事件类型": cleanList(eventTypes),
+    "事件类型": feishuEventTypes,
     "页面路径": cleanText(event.pagePath, 500),
     "统计周": period.week,
     "统计月": period.month,
