@@ -5733,6 +5733,71 @@ function getBubbleFullscreenSafeCoreForAdapt(context = {}, targetWidth = 0, targ
   };
 }
 
+async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCore = {}) {
+  const targetWidth = toPositiveInt(safeCore.targetWidth);
+  const targetHeight = toPositiveInt(safeCore.targetHeight);
+  const coreWidth = toPositiveInt(safeCore.width);
+  const coreHeight = toPositiveInt(safeCore.height);
+  if (!coreUrl || !expandedUrl || !targetWidth || !targetHeight || !coreWidth || !coreHeight) {
+    throw new Error("气泡全屏安全核心合成参数不完整，已停止生成");
+  }
+
+  const coreStaticUrl = await ensureStaticImageUrlForResize(coreUrl);
+  const expandedStaticUrl = await ensureStaticImageUrlForResize(expandedUrl);
+  if (!coreStaticUrl?.startsWith("/static/") || !expandedStaticUrl?.startsWith("/static/")) {
+    throw new Error("气泡全屏安全核心合成需要可处理的本地图片，已停止生成");
+  }
+
+  const offsetX = Math.round(Number.isFinite(Number(safeCore.offsetX)) ? Number(safeCore.offsetX) : (targetWidth - coreWidth) / 2);
+  const offsetY = Math.round(Number.isFinite(Number(safeCore.offsetY)) ? Number(safeCore.offsetY) : (targetHeight - coreHeight) / 2);
+  const corePath = staticUrlToLocalPath(coreStaticUrl);
+  const expandedPath = staticUrlToLocalPath(expandedStaticUrl);
+  const backgroundBuffer = await sharp(expandedPath)
+    .rotate()
+    .resize({
+      width: targetWidth,
+      height: targetHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+  const coreBuffer = await sharp(corePath)
+    .rotate()
+    .resize({
+      width: coreWidth,
+      height: coreHeight,
+      fit: "cover",
+      position: "center",
+      kernel: sharp.kernel.lanczos3
+    })
+    .png()
+    .toBuffer();
+
+  await ensureDir(STORAGE_DIR);
+  const filename = `aigc_bubble_safe_core_locked_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  const outputPath = path.join(STORAGE_DIR, filename);
+  await sharp(backgroundBuffer)
+    .composite([{ input: coreBuffer, left: offsetX, top: offsetY }])
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toFile(outputPath);
+
+  const lockedUrl = `/static/${filename}`;
+  console.log("[AdaptImage] bubble fullscreen safe-core locked", JSON.stringify({
+    coreUrl: coreStaticUrl,
+    expandedUrl: expandedStaticUrl,
+    lockedUrl,
+    coreWidth,
+    coreHeight,
+    targetWidth,
+    targetHeight,
+    offsetX,
+    offsetY
+  }));
+  return lockedUrl;
+}
+
 function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight, targetWidth, targetHeight, context = {}) {
   if (!isStandardSplashTemplateForAdapt(context)) return null;
   if (context.splashSafeAreaAdjustment?.infoSafeArea?.applies) {
@@ -6908,21 +6973,25 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       err.stage = "bubble-safe-core-outer-expand";
       throw err;
     }
+    const lockedUrl = await lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, bubbleSafeCore);
     context.bubbleSafeCoreAdapt = {
       ...context.bubbleSafeCoreAdapt,
       stage: "done",
-      expandedUrl
+      expandedUrl,
+      lockedUrl
     };
     plan.safeCoreAdapt = {
       ...plan.safeCoreAdapt,
       status: "done",
-      expandedUrl
+      expandedUrl,
+      lockedUrl
     };
     console.log("[AdaptImage] bubble fullscreen safe-core test done", JSON.stringify({
       coreUrl,
-      expandedUrl
+      expandedUrl,
+      lockedUrl
     }));
-    return ensureFinalAdaptSize(expandedUrl, targetWidth, targetHeight, context, analysis);
+    return ensureFinalAdaptSize(lockedUrl, targetWidth, targetHeight, context, analysis);
   }
 
   if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
