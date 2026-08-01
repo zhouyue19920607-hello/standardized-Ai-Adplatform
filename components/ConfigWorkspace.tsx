@@ -978,6 +978,7 @@ const ConfigWorkspace: React.FC = () => {
     const splashInputRef = useRef<HTMLInputElement>(null);
     const magazineInputRef = useRef<HTMLInputElement>(null);
     const spotlightSmallInputRef = useRef<HTMLInputElement>(null);
+    const spotlightSmallUploadIndexRef = useRef(0);
     const spotlightLargeInputRef = useRef<HTMLInputElement>(null);
     const spotlightAiReferenceInputRef = useRef<HTMLInputElement>(null);
     const spotlightSplashInputRef = useRef<HTMLInputElement>(null);
@@ -2006,6 +2007,34 @@ const ConfigWorkspace: React.FC = () => {
         }
 
         setSpotlightSmallCards((current) => [...current, ...nextCards].slice(0, 3));
+    };
+
+    const updateSpotlightSmallCardAt = async (index: number, file: File) => {
+        setError('');
+        resetOutput();
+        const url = URL.createObjectURL(file);
+
+        try {
+            if (!isPngFile(file)) {
+                URL.revokeObjectURL(url);
+                setError(`「${file.name}」小卡素材仅支持 PNG`);
+                return;
+            }
+            const size = await getImageSize(file);
+            const isValidSize = size.width === SPOTLIGHT_SMALL_W && size.height === SPOTLIGHT_SMALL_H;
+            if (!isValidSize) {
+                setError(`「${file.name}」尺寸为 ${size.width} x ${size.height}，建议小卡使用宽 275 x 高 370px`);
+            }
+            upsertSpotlightSmallCardAt(index, {
+                id: `${Date.now()}-${file.name}-${index}`,
+                file,
+                url,
+                message: isValidSize ? 'PNG 275 x 370' : `当前 ${size.width} x ${size.height}`,
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setError(err instanceof Error ? err.message : '小卡素材读取失败');
+        }
     };
 
     const removeSpotlightSmallCard = (id: string) => {
@@ -4943,7 +4972,7 @@ const ConfigWorkspace: React.FC = () => {
                 </div>
             )}
             <div className="creative-board-stage relative z-10 flex h-full gap-6 p-6">
-                <aside className="creative-board-glass creative-board-sidebar w-80 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+                <aside className="creative-board-glass creative-board-sidebar w-64 bg-zinc-950/40 backdrop-blur-3xl rounded-[20px] border border-white/5 p-5 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden">
                     <div className="px-2 py-3 mb-6 flex items-center gap-3 shrink-0">
                         <div className="w-10 h-10 bg-white/5 rounded-[20px] flex items-center justify-center border border-white/10 shadow-inner">
                             <span className="material-symbols-outlined text-white text-2xl">auto_awesome_motion</span>
@@ -5046,23 +5075,17 @@ const ConfigWorkspace: React.FC = () => {
                     </div>
                 </aside>
 
-                <main className="creative-board-glass creative-board-main relative flex-1 bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
-                    {renderAiLoadingOverlay('*')}
+                <main className="creative-board-main relative flex-1 min-w-0 h-full grid grid-cols-1 xl:grid-cols-[minmax(360px,0.78fr)_minmax(520px,1.22fr)] gap-6 overflow-hidden">
+                    <div className="creative-board-glass relative min-w-0 h-full bg-zinc-950/20 backdrop-blur-3xl rounded-[20px] border border-white/5 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+                        {renderAiLoadingOverlay('*')}
                     <header className="creative-board-main-header px-10 pt-10 pb-8 border-b border-white/5 bg-black/10 backdrop-blur-md flex justify-between items-start shrink-0">
                         <div>
                             <h1 className="creative-board-title text-3xl font-black text-white tracking-normal text-left antialiased">{selectedTemplateName}模版</h1>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {saveMessage && <span className="text-[10px] font-bold text-zinc-500">{saveMessage}</span>}
-                            <div className="creative-board-output-pill px-5 py-3 rounded-[20px] bg-white/5 text-zinc-400 text-[10px] font-bold border border-white/5">
-                                {outputSpec}
-                            </div>
-                        </div>
                     </header>
 
                     <div className="creative-board-content flex-1 overflow-auto p-5 md:p-8 xl:p-10 custom-scrollbar">
-                        <div className="grid min-w-0 grid-cols-1 xl:grid-cols-[minmax(340px,420px)_minmax(360px,1fr)] gap-5 xl:gap-8 min-h-full">
-                            <section className="creative-workflow-column space-y-5">
+                            <section className="creative-workflow-column min-w-0 space-y-5">
                                 {isMagazineTemplate ? (
                                     <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
                                         <div className="flex items-center justify-between">
@@ -5128,7 +5151,7 @@ const ConfigWorkspace: React.FC = () => {
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h2 className="text-white text-sm font-black">小卡与大卡素材</h2>
-                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">上传 3 张小卡和 1 张大卡；使用 AI 前先点击目标素材</p>
+                                                    <p className="text-[10px] text-zinc-600 font-bold mt-1">在下方 4 个素材窗口中分别上传图片；点击卡片可选择 AI 目标</p>
                                                 </div>
                                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightSmallCards.length === 3 && spotlightLargeCard.status === 'valid' ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>
                                                     小卡 {spotlightSmallCards.length}/3 · {spotlightLargeCard.status === 'valid' ? '大卡已上传' : '大卡待上传'}
@@ -5138,11 +5161,13 @@ const ConfigWorkspace: React.FC = () => {
                                                 ref={spotlightSmallInputRef}
                                                 type="file"
                                                 accept="image/png,.png"
-                                                multiple
                                                 className="hidden"
                                                 onChange={async (e) => {
                                                     const input = e.currentTarget;
-                                                    if (input.files?.length) await addSpotlightSmallCards(input.files);
+                                                    if (input.files?.[0]) {
+                                                        await updateSpotlightSmallCardAt(spotlightSmallUploadIndexRef.current, input.files[0]);
+                                                        setSpotlightAiTarget(`small-${spotlightSmallUploadIndexRef.current}` as SpotlightAiTarget);
+                                                    }
                                                     input.value = '';
                                                 }}
                                             />
@@ -5157,42 +5182,6 @@ const ConfigWorkspace: React.FC = () => {
                                                     input.value = '';
                                                 }}
                                             />
-                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => spotlightSmallInputRef.current?.click()}
-                                                        onDragOver={(event) => handleUploadDragOver(event, 'spotlight-small')}
-                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-small')}
-                                                        onDrop={(event) => handleUploadDrop(event, 'spotlight-small')}
-                                                        className={`min-h-[110px] rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-small' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
-                                                    >
-                                                        <div className="text-center px-4">
-                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">dashboard_customize</span>
-                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'spotlight-small' ? '松开上传小卡素材' : '上传小卡 PNG'}</p>
-                                                            <p className="text-[8px] text-zinc-700 font-bold mt-1">3 张 / 275 x 370px</p>
-                                                        </div>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => spotlightLargeInputRef.current?.click()}
-                                                        onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
-                                                        onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
-                                                        onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
-                                                        className={`min-h-[110px] rounded-[16px] border border-dashed transition-all flex items-center justify-center overflow-hidden ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-zinc-950/70 hover:bg-zinc-900/80'}`}
-                                                    >
-                                                        <div className="text-center px-4">
-                                                            <span className="material-symbols-outlined text-3xl text-zinc-600">featured_play_list</span>
-                                                            <p className="text-[10px] text-zinc-500 font-black mt-2">{dragTarget === 'spotlight-large' ? '松开上传大卡素材' : '上传大卡 PNG'}</p>
-                                                            <p className="text-[8px] text-zinc-700 font-bold mt-1">1 张 / 897 x 370px</p>
-                                                        </div>
-                                                    </button>
-                                                </div>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${spotlightSmallCards.length === 3 ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/20' : 'text-zinc-500 bg-white/5 border-white/5'}`}>小卡 {spotlightSmallCards.length} / 3</span>
-                                                    <span className={`text-[9px] font-black px-3 py-1 rounded-full border ${statusClass(spotlightLargeCard.status)}`}>{spotlightLargeCard.message}</span>
-                                                </div>
-                                            </div>
                                             <div className="grid grid-cols-3 gap-2">
                                                 {Array.from({ length: 3 }).map((_, index) => {
                                                     const item = spotlightSmallCards[index];
@@ -5238,7 +5227,22 @@ const ConfigWorkspace: React.FC = () => {
                                                                     <span className="material-symbols-outlined text-[18px] text-zinc-600">add_photo_alternate</span>
                                                                 </div>
                                                             )}
-                                                            <p className="mt-1 text-[9px] font-bold text-zinc-500">小卡 {index + 1}</p>
+                                                            <div className="mt-1 flex items-center justify-between gap-1">
+                                                                <p className="text-[9px] font-bold text-zinc-500">小卡 {index + 1}</p>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        spotlightSmallUploadIndexRef.current = index;
+                                                                        spotlightSmallInputRef.current?.click();
+                                                                    }}
+                                                                    className="h-7 w-7 rounded-full bg-white/10 hover:bg-white/15 text-white flex items-center justify-center"
+                                                                    title={`上传小卡 ${index + 1}`}
+                                                                    aria-label={`上传小卡 ${index + 1}`}
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[15px]">upload</span>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -6770,8 +6774,10 @@ const ConfigWorkspace: React.FC = () => {
                                     </div>
                                 )}
                             </section>
+                    </div>
+                    </div>
 
-                            <section className="creative-preview-panel bg-white/[0.04] border border-white/5 rounded-[20px] p-5 md:p-6 xl:p-8 flex flex-col">
+                    <section className="creative-board-glass creative-preview-panel min-w-0 h-full overflow-y-auto custom-scrollbar bg-white/[0.04] backdrop-blur-3xl border border-white/5 rounded-[20px] p-5 md:p-6 xl:p-8 shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col">
                                 <div className="flex items-center justify-between gap-4 mb-4">
                                     <div>
                                         <h2 className="text-white text-sm font-black">合成预览</h2>
@@ -7404,8 +7410,6 @@ const ConfigWorkspace: React.FC = () => {
                                 </div>
                                 )}
                             </section>
-                        </div>
-                    </div>
                 </main>
             </div>
         </div>

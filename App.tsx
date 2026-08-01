@@ -15,6 +15,7 @@ import fallbackTemplates from './backend/data/templates.json';
 
 const HEADER_HEIGHT = 73;
 const VISITOR_ID_KEY = 'standardized_adplatform_visitor_id';
+const LOCAL_OA_BYPASS = import.meta.env.DEV && import.meta.env.VITE_SKIP_OA_LOGIN === 'true';
 // 标准素材看板临时切到外采 Gemini / Nano Banner 图像适配；视频 AI 扩展仍关闭，避免触发美图视频链路。
 const STANDARD_BOARD_EXTERNAL_IMAGE_ADAPTATION_ENABLED = true;
 const STANDARD_BOARD_AIGC_VIDEO_ADAPTATION_ENABLED = false;
@@ -393,7 +394,9 @@ const getVideoMeta = (file: File): Promise<{ width: number; height: number; dura
 
 const App: React.FC = () => {
   const { t } = useLanguage();
-  const [authState, setAuthState] = useState<MeituAuthState | null>(null);
+  const [authState, setAuthState] = useState<MeituAuthState | null>(() =>
+    LOCAL_OA_BYPASS ? { configured: true, authenticated: true, user: null } : null
+  );
   const [authError, setAuthError] = useState('');
   const [templates, setTemplates] = useState<AdTemplate[]>([]);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -406,6 +409,7 @@ const App: React.FC = () => {
   const hasAppAccess = Boolean(authState?.configured && authState.authenticated);
 
   useEffect(() => {
+    if (LOCAL_OA_BYPASS) return;
     let cancelled = false;
     getMeituAuthState()
       .then(state => {
