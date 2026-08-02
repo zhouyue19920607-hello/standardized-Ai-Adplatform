@@ -5853,6 +5853,47 @@ async function expandBubbleFullscreenBackgroundInSteps(coreUrl, safeCore, contex
   context.bubbleSteppedOutpaint = stageResults;
   return currentUrl;
 }
+async function composeBubbleForegroundOnExpandedBackground(coreUrl, expandedBackgroundUrl, protectedMaskUrl, safeCore = {}) {
+  const targetWidth = toPositiveInt(safeCore.targetWidth);
+  const targetHeight = toPositiveInt(safeCore.targetHeight);
+  const coreWidth = toPositiveInt(safeCore.width);
+  const coreHeight = toPositiveInt(safeCore.height);
+  const offsetX = Math.round(Number.isFinite(Number(safeCore.offsetX)) ? Number(safeCore.offsetX) : (targetWidth - coreWidth) / 2);
+  const offsetY = Math.round(Number.isFinite(Number(safeCore.offsetY)) ? Number(safeCore.offsetY) : (targetHeight - coreHeight) / 2);
+  const coreStaticUrl = await ensureStaticImageUrlForResize(coreUrl);
+  const backgroundStaticUrl = await ensureStaticImageUrlForResize(expandedBackgroundUrl);
+  if (!coreStaticUrl?.startsWith("/static/") || !backgroundStaticUrl?.startsWith("/static/") || !protectedMaskUrl?.startsWith("/static/")) {
+    throw new Error("气泡全屏前景与扩展背景合成参数不完整，已停止生成");
+  }
+
+  const maskBuffer = await sharp(staticUrlToLocalPath(protectedMaskUrl))
+    .rotate()
+    .resize({ width: coreWidth, height: coreHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .greyscale()
+    .blur(1.2)
+    .png()
+    .toBuffer();
+  const foregroundBuffer = await sharp(staticUrlToLocalPath(coreStaticUrl))
+    .rotate()
+    .resize({ width: coreWidth, height: coreHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
+    .removeAlpha()
+    .joinChannel(maskBuffer)
+    .png()
+    .toBuffer();
+  const backgroundBuffer = await sharp(staticUrlToLocalPath(backgroundStaticUrl))
+    .rotate()
+    .resize({ width: targetWidth, height: targetHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+
+  await ensureDir(STORAGE_DIR);
+  const filename = `aigc_bubble_layered_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  await sharp(backgroundBuffer)
+    .composite([{ input: foregroundBuffer, left: offsetX, top: offsetY, blend: "over" }])
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toFile(path.join(STORAGE_DIR, filename));
+  return `/static/${filename}`;
+}
 async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCore = {}) {
   const targetWidth = toPositiveInt(safeCore.targetWidth);
   const targetHeight = toPositiveInt(safeCore.targetHeight);
@@ -7072,20 +7113,70 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       coreUrl
     };
 
-    // 第二阶段分四次小步外扩，每轮只开放新增外圈，上一轮与安全核心持续锁定。
-    const expandedUrl = await expandBubbleFullscreenBackgroundInSteps(
-      coreUrl,
-      bubbleSafeCore,
-      {
-        ...context,
-        bubbleSafeCoreAdapt: {
-          ...context.bubbleSafeCoreAdapt,
-          stage: "stepped_masked_outpaint"
-        }
-      }
+    // 第二阶段拆分为纯背景与原像素前景：只扩展完整背景层，再按原位置合成前景层。
+    const backgroundContext = {
+      ...context,
+      sourceWidth: bubbleSafeCore.width,
+      sourceHeight: bubbleSafeCore.height,
+      targetWidth: bubbleSafeCore.width,
+      targetHeight: bubbleSafeCore.height,
+      bubbleSafeCoreAdapt: { ...context.bubbleSafeCoreAdapt, stage: "background_layer_extraction" }
+    };
+    const coreLayerAnalysis = await analyzeAdImageForAdapt(coreUrl, backgroundContext);
+    const coreLayerMasks = await buildProtectedMaskForAdapt(
+      coreLayerAnalysis,
+      bubbleSafeCore.width,
+      bubbleSafeCore.height
     );
-    const lockedUrl = await lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, bubbleSafeCore);
-    context.bubbleSafeCoreAdapt = {
+    if (!coreLayerMasks.protectedMaskUrl) {
+      const err = new Error("气泡全屏未能提取主体、文案与 Logo 前景层，已停止生成");
+      err.stage = "bubble-safe-core-layer-mask";
+      throw err;
+    }
+    const cleanBackgroundUrl = await inpaintImageForAdapt(
+      coreUrl,
+      coreLayerMasks.protectedMaskUrl,
+      backgroundContext,
+      "Remove all masked foreground content, including subject, product, package, text, logo, awards, icons, shadows and reflections. Reconstruct one continuous clean background using only surrounding color, texture, lighting and perspective. Do not add text, logo, object, border, frame or decoration."
+    );
+    if (!cleanBackgroundUrl) {
+      const err = new Error("气泡全屏纯背景层生成失败，已停止生成");
+      err.stage = "bubble-safe-core-clean-background";
+      throw err;
+    }
+
+    const expandedBackgroundPrompt = [
+      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+      `Expand this complete clean background from ${bubbleSafeCore.width}x${bubbleSafeCore.height} to ${targetWidth}x${targetHeight}. Preserve and continue the same background color, texture, lighting, depth and perspective across the whole canvas. This is a background-only layer: no text, fake letters, logo, brand mark, subject, product, person, package, award, icon, button, border, frame, poster shadow or foreground object.`
+    ].join(" ");
+    let expandedBackgroundUrl = await expandImageV4ForAdapt(
+      cleanBackgroundUrl,
+      targetWidth,
+      targetHeight,
+      { ...context, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height, bubbleSafeCoreAdapt: { stage: "background_layer_expand" } },
+      expandedBackgroundPrompt
+    );
+    if (!expandedBackgroundUrl) {
+      const err = new Error("气泡全屏完整背景层扩展失败，已停止生成");
+      err.stage = "bubble-safe-core-background-expand";
+      throw err;
+    }
+    const backgroundCleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(
+      expandedBackgroundUrl,
+      targetWidth,
+      targetHeight,
+      { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight },
+      { subject: null, logo: null, text: null },
+      3
+    );
+    expandedBackgroundUrl = backgroundCleanup.url || expandedBackgroundUrl;
+    const lockedUrl = await composeBubbleForegroundOnExpandedBackground(
+      coreUrl,
+      expandedBackgroundUrl,
+      coreLayerMasks.protectedMaskUrl,
+      bubbleSafeCore
+    );
+    const expandedUrl = expandedBackgroundUrl;    context.bubbleSafeCoreAdapt = {
       ...context.bubbleSafeCoreAdapt,
       stage: "done",
       expandedUrl,
