@@ -13,7 +13,7 @@ interface DashboardWorkspaceProps {
     isProcessing: boolean;
     isDragging: boolean;
     isCollapsed: boolean;
-    generationProgress: { current: number; total: number } | null;
+    generationProgress: { current: number; total: number; status?: string } | null;
     fileInputRef: React.RefObject<HTMLInputElement>;
     handleTemplateToggle: (id: string) => void;
     handleConfigChange: (newConfig: Partial<AdConfig>) => void;
@@ -350,6 +350,7 @@ const DashboardWorkspace: React.FC<DashboardWorkspaceProps> = ({
                                         <span className="text-xs font-bold text-blue-500 bg-blue-500/10 backdrop-blur-md border border-blue-500/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                                             <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
                                             生成中 {generationProgress.current} / {generationProgress.total}
+                                            {generationProgress.status ? ` · ${generationProgress.status}` : ''}
                                         </span>
                                     )}
                                 </div>

@@ -6,7 +6,7 @@ import Header from './components/Header';
 import DashboardWorkspace from './components/DashboardWorkspace';
 import ConfigWorkspace from './components/ConfigWorkspace';
 import { AdTemplate, AdAsset, AdConfig, ColorScheme, RawFile } from './types';
-import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, expandVideoWithAigc, incrementTemplateUsage, reportVisit, reportUsageEvent, getMeituAuthState, getMeituLoginUrl, MeituAuthState } from './services/api';
+import { getTemplates, uploadRawAsset, generateComfyUI, ASSETS_URL, smartCropImage, adaptImageWithAigc, adaptImageWithAigcAsync, expandVideoWithAigc, incrementTemplateUsage, reportVisit, reportUsageEvent, getMeituAuthState, getMeituLoginUrl, MeituAuthState } from './services/api';
 import AdminDashboard from './components/AdminDashboard';
 import { useLanguage } from './contexts/LanguageContext';
 import { extractSmartColor, extractSmartPalette } from './utils/smartColor';
@@ -475,7 +475,7 @@ const App: React.FC = () => {
   const [rawFiles, setRawFiles] = useState<RawFile[]>([]);
   const [processedAssets, setProcessedAssets] = useState<AdAsset[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; status?: string } | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const visitReportedRef = useRef(false);
@@ -768,7 +768,7 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     setProcessedAssets([]);
-    setGenerationProgress({ current: 0, total: rawFiles.length * activeTemplates.length });
+    setGenerationProgress({ current: 0, total: rawFiles.length * activeTemplates.length, status: '准备生成' });
 
     // NOTE: 先插入所有占位 loading 卡，让用户即时看到即将生成的卡片数量
     const placeholders: AdAsset[] = [];
@@ -951,7 +951,7 @@ const App: React.FC = () => {
               `Template: ${template.app}${template.name}`,
               `Target size: ${aigcTarget.width} x ${aigcTarget.height}`
             ].join(' ');
-            const aigcResult = await adaptImageWithAigc({
+            const adaptPayload = {
               imageUrl: uploaded.url,
               targetWidth: aigcTarget.width,
               targetHeight: aigcTarget.height,
@@ -960,7 +960,16 @@ const App: React.FC = () => {
               app: template.app,
               prompt: imageAdaptPrompt,
               allowRelayout: true
-            });
+            };
+            const isBubbleFullscreen = template.name.includes('气泡全屏') || ['mt-s-1', 'my-s-1', 'wk-s-1'].includes(template.id);
+            const aigcResult = isBubbleFullscreen
+              ? await adaptImageWithAigcAsync(adaptPayload, status => {
+                  const statusText = status.stage === 'queued'
+                    ? 'AI 任务已进入后台队列'
+                    : `AI 后台适配中${status.elapsedMs ? `（${Math.max(1, Math.floor(status.elapsedMs / 60000))} 分钟）` : ''}`;
+                  setGenerationProgress(prev => prev ? { ...prev, status: statusText } : prev);
+                })
+              : await adaptImageWithAigc(adaptPayload);
             if (aigcResult.qa && !aigcResult.qa.passed) {
               console.warn('[AIGC Adapt] QA warnings', aigcResult.qa.warnings);
             }

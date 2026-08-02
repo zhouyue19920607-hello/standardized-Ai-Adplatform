@@ -7944,6 +7944,126 @@ app.post("/api/aigc/adapt-image-agent", async (req, res) => {
   }
 });
 
+const adaptImagePipelineJobs = new Map();
+
+function cleanupAdaptImagePipelineJobs() {
+  const now = Date.now();
+  const maxAgeMs = 3 * 60 * 60 * 1000;
+  for (const [jobId, job] of adaptImagePipelineJobs.entries()) {
+    if (now - Number(job.createdAt || now) > maxAgeMs) adaptImagePipelineJobs.delete(jobId);
+  }
+}
+
+app.post("/api/aigc/adapt-image-async/start", (req, res) => {
+  cleanupAdaptImagePipelineJobs();
+  const {
+    imageUrl,
+    targetWidth,
+    targetHeight,
+    templateId,
+    templateName,
+    app: appName
+  } = req.body || {};
+  const validationError = validateRemoteOrStaticUrl(imageUrl, "imageUrl");
+  if (validationError) return res.status(400).json({ ok: false, error: validationError });
+  const width = toPositiveInt(targetWidth);
+  const height = toPositiveInt(targetHeight);
+  if (!width || !height) {
+    return res.status(400).json({ ok: false, error: "targetWidth / targetHeight 必须是正整数" });
+  }
+
+  const jobId = crypto.randomUUID();
+  const createdAt = Date.now();
+  const originalCookie = String(req.headers.cookie || "");
+  const forwardedHost = String(req.headers["x-forwarded-host"] || req.get("host") || "").split(",")[0].trim();
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  const payload = { ...req.body, targetWidth: width, targetHeight: height };
+  adaptImagePipelineJobs.set(jobId, {
+    status: "queued",
+    stage: "queued",
+    createdAt,
+    updatedAt: createdAt,
+    target: { width, height },
+    template: { id: templateId, name: templateName, app: appName }
+  });
+
+  setImmediate(async () => {
+    const current = adaptImagePipelineJobs.get(jobId);
+    if (!current) return;
+    adaptImagePipelineJobs.set(jobId, {
+      ...current,
+      status: "processing",
+      stage: "ai_adapting",
+      updatedAt: Date.now()
+    });
+    try {
+      const response = await axios.post(`http://127.0.0.1:${PORT}/api/aigc/adapt-image`, payload, {
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: originalCookie,
+          "X-Forwarded-Host": forwardedHost,
+          "X-Forwarded-Proto": forwardedProto,
+          "X-Adapt-Async-Job": jobId
+        },
+        timeout: 0,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+      });
+      const latest = adaptImagePipelineJobs.get(jobId) || current;
+      adaptImagePipelineJobs.set(jobId, {
+        ...latest,
+        status: "success",
+        stage: "completed",
+        updatedAt: Date.now(),
+        response: response.data
+      });
+    } catch (err) {
+      const providerData = err.response?.data;
+      const details = providerData?.details || providerData?.message || providerData?.error || err.message;
+      console.error("[AIGC Adapt Image Async] failed:", details);
+      const latest = adaptImagePipelineJobs.get(jobId) || current;
+      adaptImagePipelineJobs.set(jobId, {
+        ...latest,
+        status: "failed",
+        stage: providerData?.stage || "failed",
+        updatedAt: Date.now(),
+        error: providerData?.error || "AI 广告图适配管线失败",
+        details,
+        routeFailures: providerData?.routeFailures
+      });
+    }
+  });
+
+  return res.status(202).json({ ok: true, jobId, status: "queued", stage: "queued" });
+});
+
+app.get("/api/aigc/adapt-image-async/status/:jobId", (req, res) => {
+  cleanupAdaptImagePipelineJobs();
+  const job = adaptImagePipelineJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: "任务不存在或已过期" });
+  if (job.status === "success") return res.json(job.response);
+  if (job.status === "failed") {
+    return res.status(500).json({
+      ok: false,
+      error: job.error || "AI 广告图适配失败",
+      details: job.details || "",
+      stage: job.stage,
+      routeFailures: job.routeFailures
+    });
+  }
+  return res.json({
+    ok: true,
+    jobId: req.params.jobId,
+    status: job.status,
+    stage: job.stage,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    elapsedMs: Date.now() - job.createdAt,
+    target: job.target,
+    template: job.template
+  });
+});
+
 app.post("/api/aigc/adapt-image", async (req, res) => {
   try {
     const {

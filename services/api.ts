@@ -402,6 +402,46 @@ export const adaptImageWithAigc = async (payload: {
     return response.data;
 };
 
+export interface AdaptImageAsyncStatus {
+    ok: boolean;
+    jobId: string;
+    status: 'queued' | 'processing';
+    stage: string;
+    elapsedMs?: number;
+}
+
+export const adaptImageWithAigcAsync = async (
+    payload: {
+        imageUrl: string;
+        targetWidth: number;
+        targetHeight: number;
+        templateId?: string;
+        templateName?: string;
+        app?: string;
+        prompt?: string;
+        allowRelayout?: boolean;
+    },
+    onStatus?: (status: AdaptImageAsyncStatus) => void
+): Promise<AdaptImageWithAigcResponse> => {
+    const startResponse = await api.post<AdaptImageAsyncStatus>('/aigc/adapt-image-async/start', payload);
+    const jobId = startResponse.data.jobId;
+    if (!jobId) throw new Error('AI 适配任务启动失败：未返回任务 ID');
+    onStatus?.(startResponse.data);
+
+    const startedAt = Date.now();
+    const timeoutMs = 45 * 60 * 1000;
+    const pollIntervalMs = 3000;
+    while (Date.now() - startedAt < timeoutMs) {
+        await new Promise(resolve => window.setTimeout(resolve, pollIntervalMs));
+        const response = await api.get<AdaptImageWithAigcResponse | AdaptImageAsyncStatus>(`/aigc/adapt-image-async/status/${jobId}`);
+        if ('resultUrl' in response.data && response.data.resultUrl) {
+            return response.data as AdaptImageWithAigcResponse;
+        }
+        onStatus?.(response.data as AdaptImageAsyncStatus);
+    }
+    throw new Error(`AI 适配任务等待超过 45 分钟：${jobId}`);
+};
+
 export const adaptImageWithAigcAgent = async (payload: {
     imageUrl: string;
     targetWidth: number;
