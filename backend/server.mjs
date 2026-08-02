@@ -5733,233 +5733,6 @@ function getBubbleFullscreenSafeCoreForAdapt(context = {}, targetWidth = 0, targ
   };
 }
 
-async function buildBubbleOutpaintStepInput(imageUrl, sourceWidth, sourceHeight, targetWidth, targetHeight) {
-  const sourceStaticUrl = await ensureStaticImageUrlForResize(imageUrl);
-  if (!sourceStaticUrl?.startsWith("/static/") || !sourceWidth || !sourceHeight || !targetWidth || !targetHeight) {
-    throw new Error("气泡全屏分段外扩输入参数不完整，已停止生成");
-  }
-  const sourcePath = staticUrlToLocalPath(sourceStaticUrl);
-  const sourceBuffer = await sharp(sourcePath)
-    .rotate()
-    .resize({ width: sourceWidth, height: sourceHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
-    .png()
-    .toBuffer();
-  const offsetX = Math.round((targetWidth - sourceWidth) / 2);
-  const offsetY = Math.round((targetHeight - sourceHeight) / 2);
-  // 新增区域只使用上一轮边缘的低频颜色与光影作为初始参考，随后由蒙版局部重绘。
-  const edgeReference = await sharp(sourceBuffer)
-    .resize({ width: targetWidth, height: targetHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
-    .blur(Math.max(18, Math.round(Math.min(targetWidth, targetHeight) * 0.018)))
-    .png()
-    .toBuffer();
-  const inputBuffer = await sharp(edgeReference)
-    .composite([{ input: sourceBuffer, left: offsetX, top: offsetY }])
-    .png()
-    .toBuffer();
-  // 白色仅覆盖本轮新增外圈；黑色区域锁定上一轮的全部像素。
-  const maskSvg = Buffer.from(`<svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="white"/><rect x="${offsetX}" y="${offsetY}" width="${sourceWidth}" height="${sourceHeight}" fill="black"/></svg>`);
-  await ensureDir(STORAGE_DIR);
-  const token = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-  const inputFilename = `aigc_bubble_step_input_${token}_${targetWidth}x${targetHeight}.png`;
-  const maskFilename = `aigc_bubble_step_mask_${token}_${targetWidth}x${targetHeight}.png`;
-  await sharp(inputBuffer).png().toFile(path.join(STORAGE_DIR, inputFilename));
-  await sharp(maskSvg).png().toFile(path.join(STORAGE_DIR, maskFilename));
-  return {
-    inputUrl: `/static/${inputFilename}`,
-    maskUrl: `/static/${maskFilename}`,
-    protectedBox: { x: offsetX, y: offsetY, width: sourceWidth, height: sourceHeight }
-  };
-}
-
-async function validateBubbleOutpaintRing(resultUrl, targetWidth, targetHeight, protectedBox, context) {
-  const issues = [];
-  const isOutsideProtectedBox = box => {
-    const safe = clampBoxToImage(box, targetWidth, targetHeight);
-    if (!safe) return false;
-    return boxIntersectionCoverage(safe, protectedBox) < 0.45;
-  };
-  try {
-    const detectedText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
-    const outsideText = (detectedText.boxes || []).filter(isOutsideProtectedBox);
-    if (outsideText.length) issues.push(`新增区域检测到 ${outsideText.length} 处文字或伪文字`);
-  } catch (err) {
-    console.warn("[AdaptImage] bubble step text validation unavailable:", err.message);
-  }
-  try {
-    const detectedLogo = await detectLogoForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
-    const outsideLogo = (detectedLogo.boxes || []).filter(isOutsideProtectedBox);
-    if (outsideLogo.length) issues.push(`新增区域检测到 ${outsideLogo.length} 处 Logo 或品牌图形`);
-  } catch (err) {
-    console.warn("[AdaptImage] bubble step logo validation unavailable:", err.message);
-  }
-  return { passed: issues.length === 0, issues };
-}
-
-async function expandBubbleFullscreenBackgroundInSteps(coreUrl, safeCore, context) {
-  const stages = [
-    { width: 1200, height: 1740 },
-    { width: 1320, height: 1940 },
-    { width: 1440, height: 2140 },
-    { width: safeCore.targetWidth, height: safeCore.targetHeight }
-  ];
-  let currentUrl = coreUrl;
-  let currentWidth = safeCore.width;
-  let currentHeight = safeCore.height;
-  const stageResults = [];
-
-  for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
-    const stage = stages[stageIndex];
-    let acceptedUrl = "";
-    let lastIssues = [];
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const stepInput = await buildBubbleOutpaintStepInput(currentUrl, currentWidth, currentHeight, stage.width, stage.height);
-      const stepContext = {
-        ...context,
-        sourceWidth: stage.width,
-        sourceHeight: stage.height,
-        targetWidth: stage.width,
-        targetHeight: stage.height,
-        bubbleSafeCoreAdapt: { stage: "stepped_masked_outpaint", stageIndex, attempt }
-      };
-      const resultUrl = await inpaintImageForAdapt(
-        stepInput.inputUrl,
-        stepInput.maskUrl,
-        stepContext,
-        `Extend only the narrow white outer ring from ${currentWidth}x${currentHeight} to ${stage.width}x${stage.height}. Continue the exact background color, texture, lighting, depth and perspective touching the locked black area. The locked area must remain unchanged. Generate seamless background only. No text, fake letters, logo, brand mark, subject, product, person, package, button, badge, award, icon, border, frame, drop shadow, poster shadow or foreground object.`
-      );
-      if (!resultUrl) {
-        lastIssues = ["接口没有返回图片"];
-        continue;
-      }
-      const sizedUrl = await ensureFinalAdaptSize(resultUrl, stage.width, stage.height);
-      const validation = await validateBubbleOutpaintRing(sizedUrl, stage.width, stage.height, stepInput.protectedBox, stepContext);
-      if (validation.passed) {
-        acceptedUrl = sizedUrl;
-        stageResults.push({ stageIndex, attempt, width: stage.width, height: stage.height, resultUrl: sizedUrl });
-        break;
-      }
-      lastIssues = validation.issues;
-      console.warn("[AdaptImage] bubble stepped outpaint rejected", JSON.stringify({ stageIndex, attempt, issues: lastIssues }));
-    }
-    if (!acceptedUrl) {
-      const err = new Error(`气泡全屏第 ${stageIndex + 1} 步背景扩展未通过检查：${lastIssues.join("；") || "未知错误"}`);
-      err.stage = "bubble-safe-core-stepped-outpaint";
-      throw err;
-    }
-    currentUrl = acceptedUrl;
-    currentWidth = stage.width;
-    currentHeight = stage.height;
-  }
-  context.bubbleSteppedOutpaint = stageResults;
-  return currentUrl;
-}
-async function composeBubbleForegroundOnExpandedBackground(coreUrl, expandedBackgroundUrl, protectedMaskUrl, safeCore = {}) {
-  const targetWidth = toPositiveInt(safeCore.targetWidth);
-  const targetHeight = toPositiveInt(safeCore.targetHeight);
-  const coreWidth = toPositiveInt(safeCore.width);
-  const coreHeight = toPositiveInt(safeCore.height);
-  const offsetX = Math.round(Number.isFinite(Number(safeCore.offsetX)) ? Number(safeCore.offsetX) : (targetWidth - coreWidth) / 2);
-  const offsetY = Math.round(Number.isFinite(Number(safeCore.offsetY)) ? Number(safeCore.offsetY) : (targetHeight - coreHeight) / 2);
-  const coreStaticUrl = await ensureStaticImageUrlForResize(coreUrl);
-  const backgroundStaticUrl = await ensureStaticImageUrlForResize(expandedBackgroundUrl);
-  if (!coreStaticUrl?.startsWith("/static/") || !backgroundStaticUrl?.startsWith("/static/") || !protectedMaskUrl?.startsWith("/static/")) {
-    throw new Error("气泡全屏前景与扩展背景合成参数不完整，已停止生成");
-  }
-
-  const maskBuffer = await sharp(staticUrlToLocalPath(protectedMaskUrl))
-    .rotate()
-    .resize({ width: coreWidth, height: coreHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
-    .greyscale()
-    .blur(1.2)
-    .png()
-    .toBuffer();
-  const foregroundBuffer = await sharp(staticUrlToLocalPath(coreStaticUrl))
-    .rotate()
-    .resize({ width: coreWidth, height: coreHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
-    .removeAlpha()
-    .joinChannel(maskBuffer)
-    .png()
-    .toBuffer();
-  const backgroundBuffer = await sharp(staticUrlToLocalPath(backgroundStaticUrl))
-    .rotate()
-    .resize({ width: targetWidth, height: targetHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
-    .jpeg({ quality: 94, mozjpeg: true })
-    .toBuffer();
-
-  await ensureDir(STORAGE_DIR);
-  const filename = `aigc_bubble_layered_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
-  await sharp(backgroundBuffer)
-    .composite([{ input: foregroundBuffer, left: offsetX, top: offsetY, blend: "over" }])
-    .jpeg({ quality: 94, mozjpeg: true })
-    .toFile(path.join(STORAGE_DIR, filename));
-  return `/static/${filename}`;
-}
-async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCore = {}) {
-  const targetWidth = toPositiveInt(safeCore.targetWidth);
-  const targetHeight = toPositiveInt(safeCore.targetHeight);
-  const coreWidth = toPositiveInt(safeCore.width);
-  const coreHeight = toPositiveInt(safeCore.height);
-  if (!coreUrl || !expandedUrl || !targetWidth || !targetHeight || !coreWidth || !coreHeight) {
-    throw new Error("气泡全屏安全核心合成参数不完整，已停止生成");
-  }
-
-  const coreStaticUrl = await ensureStaticImageUrlForResize(coreUrl);
-  const expandedStaticUrl = await ensureStaticImageUrlForResize(expandedUrl);
-  if (!coreStaticUrl?.startsWith("/static/") || !expandedStaticUrl?.startsWith("/static/")) {
-    throw new Error("气泡全屏安全核心合成需要可处理的本地图片，已停止生成");
-  }
-
-  const offsetX = Math.round(Number.isFinite(Number(safeCore.offsetX)) ? Number(safeCore.offsetX) : (targetWidth - coreWidth) / 2);
-  const offsetY = Math.round(Number.isFinite(Number(safeCore.offsetY)) ? Number(safeCore.offsetY) : (targetHeight - coreHeight) / 2);
-  const corePath = staticUrlToLocalPath(coreStaticUrl);
-  const expandedPath = staticUrlToLocalPath(expandedStaticUrl);
-  const backgroundBuffer = await sharp(expandedPath)
-    .rotate()
-    .resize({
-      width: targetWidth,
-      height: targetHeight,
-      fit: "cover",
-      position: "center",
-      kernel: sharp.kernel.lanczos3
-    })
-    .jpeg({ quality: 94, mozjpeg: true })
-    .toBuffer();
-  const coreBuffer = await sharp(corePath)
-    .rotate()
-    .resize({
-      width: coreWidth,
-      height: coreHeight,
-      fit: "cover",
-      position: "center",
-      kernel: sharp.kernel.lanczos3
-    })
-    .png()
-    .toBuffer();
-
-
-  await ensureDir(STORAGE_DIR);
-  const filename = `aigc_bubble_safe_core_locked_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
-  const outputPath = path.join(STORAGE_DIR, filename);
-  await sharp(backgroundBuffer)
-    .composite([{ input: coreBuffer, left: offsetX, top: offsetY }])
-    .jpeg({ quality: 94, mozjpeg: true })
-    .toFile(outputPath);
-
-  const lockedUrl = `/static/${filename}`;
-  console.log("[AdaptImage] bubble fullscreen safe-core locked", JSON.stringify({
-    coreUrl: coreStaticUrl,
-    expandedUrl: expandedStaticUrl,
-    lockedUrl,
-    coreWidth,
-    coreHeight,
-    targetWidth,
-    targetHeight,
-    offsetX,
-    offsetY
-  }));
-  return lockedUrl;
-}
-
 function evaluateSplashInfoSafeAreaForAdapt(analysis, sourceWidth, sourceHeight, targetWidth, targetHeight, context = {}) {
   if (!isStandardSplashTemplateForAdapt(context)) return null;
   if (context.splashSafeAreaAdjustment?.infoSafeArea?.applies) {
@@ -7050,152 +6823,84 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   if (bubbleSafeCore && !context.bubbleSafeCoreAdapt?.running) {
     plan.safeCoreAdapt = {
       ...bubbleSafeCore,
+      mode: "single_full_canvas_with_safe_zone",
       status: "running"
     };
-    context.bubbleSafeCoreAdapt = {
-      ...bubbleSafeCore,
-      running: true,
-      stage: "core_adapt"
+    const safeZone = {
+      x: bubbleSafeCore.offsetX,
+      y: bubbleSafeCore.offsetY,
+      width: bubbleSafeCore.width,
+      height: bubbleSafeCore.height
     };
-    console.log("[AdaptImage] bubble fullscreen safe-core test start", JSON.stringify(bubbleSafeCore));
-
-    const coreContext = {
-      ...context,
-      targetWidth: bubbleSafeCore.width,
-      targetHeight: bubbleSafeCore.height,
-      bubbleSafeCoreAdapt: {
-        ...bubbleSafeCore,
-        running: true,
-        stage: "core_adapt"
+    const fullCanvasPrompt = [
+      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
+      `Create one complete seamless ${targetWidth}x${targetHeight} advertising canvas in a single generation. The central ${bubbleSafeCore.width}x${bubbleSafeCore.height} rectangle at x=${bubbleSafeCore.offsetX}, y=${bubbleSafeCore.offsetY} is a content safe zone, not a separate poster, frame or pasted image.`,
+      "Keep the original subject, product, package, readable text, slogan, logo, brand marks, awards, icons and their relative layout inside that central safe zone. Preserve their original proportions and appearance.",
+      "Generate one coherent background across the entire canvas from edge to edge, continuing the original background color, texture, lighting, depth and perspective.",
+      "There must be no visible safe-zone boundary, rectangle, border, frame, device, phone, screen, card, drop shadow, poster shadow or pasted-image effect.",
+      "Do not add, duplicate, rewrite, translate or regenerate any text, logo, product, person, award, icon, button, badge, watermark or decorative foreground object.",
+      prompt || ""
+    ].filter(Boolean).join(" ");
+    let acceptedUrl = "";
+    let lastIssues = [];
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const attemptContext = {
+        ...context,
+        targetWidth,
+        targetHeight,
+        bubbleSafeCoreAdapt: { ...bubbleSafeCore, running: true, stage: "single_full_canvas", attempt }
+      };
+      const generatedUrl = await expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, attemptContext, fullCanvasPrompt);
+      if (!generatedUrl) {
+        lastIssues = ["接口没有返回图片"];
+        continue;
       }
-    };
-    const corePlan = {
-      ...plan,
-      strategy: "outpaint",
-      orientationChange: "same-direction",
-      layoutIntent: "bubble_fullscreen_safe_core",
-      infoSafeArea: null,
-      safeCoreAdapt: {
-        ...bubbleSafeCore,
-        stage: "core_adapt"
-      },
-      steps: ["detect", "safe_core_adapt", "background_extension", "final_safe_area_qa"],
-      reasons: [
-        ...(plan.reasons || []),
-        `气泡全屏测试：先把内容适配到 ${bubbleSafeCore.width}x${bubbleSafeCore.height} 核心安全画面，再扩展到 ${targetWidth}x${targetHeight}`
-      ]
-    };
-    const corePrompt = [
-      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-      `Bubble fullscreen safe-core test. First create a ${bubbleSafeCore.width}x${bubbleSafeCore.height} complete poster core. Keep the original subject, product, all readable text, slogan, logo, button copy and brand marks fully visible inside this core. Do not add, duplicate, translate, rewrite, redraw, blur, stretch, or cover any text, logo, product, person, button, icon, badge, sticker, watermark or decoration. Only extend missing background naturally.`
-    ].join(" ");
-    const coreUrl = await executeAdaptPlan(
-      imageUrl,
-      bubbleSafeCore.width,
-      bubbleSafeCore.height,
-      corePlan,
-      coreContext,
-      corePrompt,
-      analysis,
-      masks
-    );
-
-    context.bubbleSafeCoreAdapt = {
-      ...bubbleSafeCore,
-      applied: true,
-      running: false,
-      stage: "outer_expand",
-      coreUrl
-    };
-    plan.safeCoreAdapt = {
-      ...plan.safeCoreAdapt,
-      status: "core_done",
-      coreUrl
-    };
-
-    // 第二阶段拆分为纯背景与原像素前景：只扩展完整背景层，再按原位置合成前景层。
-    const backgroundContext = {
-      ...context,
-      sourceWidth: bubbleSafeCore.width,
-      sourceHeight: bubbleSafeCore.height,
-      targetWidth: bubbleSafeCore.width,
-      targetHeight: bubbleSafeCore.height,
-      bubbleSafeCoreAdapt: { ...context.bubbleSafeCoreAdapt, stage: "background_layer_extraction" }
-    };
-    const coreLayerAnalysis = await analyzeAdImageForAdapt(coreUrl, backgroundContext);
-    const coreLayerMasks = await buildProtectedMaskForAdapt(
-      coreLayerAnalysis,
-      bubbleSafeCore.width,
-      bubbleSafeCore.height
-    );
-    if (!coreLayerMasks.protectedMaskUrl) {
-      const err = new Error("气泡全屏未能提取主体、文案与 Logo 前景层，已停止生成");
-      err.stage = "bubble-safe-core-layer-mask";
+      const sizedUrl = await ensureFinalAdaptSize(generatedUrl, targetWidth, targetHeight);
+      const issues = [];
+      try {
+        const textResult = await detectTextForAdapt(sizedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
+        const outsideText = (textResult.boxes || []).filter(box => {
+          const safe = clampBoxToImage(box, targetWidth, targetHeight);
+          return safe && boxIntersectionCoverage(safe, safeZone) < 0.98;
+        });
+        if (outsideText.length) issues.push(`安全区外检测到 ${outsideText.length} 处文字或伪文字`);
+      } catch (err) {
+        console.warn("[AdaptImage] bubble full-canvas text validation unavailable:", err.message);
+      }
+      try {
+        const logoResult = await detectLogoForAdapt(sizedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
+        const outsideLogo = (logoResult.boxes || []).filter(box => {
+          const safe = clampBoxToImage(box, targetWidth, targetHeight);
+          return safe && boxIntersectionCoverage(safe, safeZone) < 0.98;
+        });
+        if (outsideLogo.length) issues.push(`安全区外检测到 ${outsideLogo.length} 处 Logo 或品牌图形`);
+      } catch (err) {
+        console.warn("[AdaptImage] bubble full-canvas logo validation unavailable:", err.message);
+      }
+      const criticalValidation = await validateCriticalContentForAdapt(
+        sizedUrl,
+        analysis,
+        targetWidth,
+        targetHeight,
+        attemptContext
+      );
+      if (!criticalValidation.ok) issues.push(...criticalValidation.issues);
+      if (!issues.length) {
+        acceptedUrl = sizedUrl;
+        context.bubbleSafeCoreAdapt = { ...bubbleSafeCore, applied: true, running: false, stage: "done", attempt, resultUrl: sizedUrl };
+        break;
+      }
+      lastIssues = issues;
+      console.warn("[AdaptImage] bubble single full-canvas rejected", JSON.stringify({ attempt, issues }));
+    }
+    if (!acceptedUrl) {
+      const err = new Error(`气泡全屏完整画布未通过安全区检查：${lastIssues.join("；") || "未知错误"}`);
+      err.stage = "bubble-single-full-canvas";
       throw err;
     }
-    const cleanBackgroundUrl = await inpaintImageForAdapt(
-      coreUrl,
-      coreLayerMasks.protectedMaskUrl,
-      backgroundContext,
-      "Remove all masked foreground content, including subject, product, package, text, logo, awards, icons, shadows and reflections. Reconstruct one continuous clean background using only surrounding color, texture, lighting and perspective. Do not add text, logo, object, border, frame or decoration."
-    );
-    if (!cleanBackgroundUrl) {
-      const err = new Error("气泡全屏纯背景层生成失败，已停止生成");
-      err.stage = "bubble-safe-core-clean-background";
-      throw err;
-    }
-
-    const expandedBackgroundPrompt = [
-      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-      `Expand this complete clean background from ${bubbleSafeCore.width}x${bubbleSafeCore.height} to ${targetWidth}x${targetHeight}. Preserve and continue the same background color, texture, lighting, depth and perspective across the whole canvas. This is a background-only layer: no text, fake letters, logo, brand mark, subject, product, person, package, award, icon, button, border, frame, poster shadow or foreground object.`
-    ].join(" ");
-    let expandedBackgroundUrl = await expandImageV4ForAdapt(
-      cleanBackgroundUrl,
-      targetWidth,
-      targetHeight,
-      { ...context, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height, bubbleSafeCoreAdapt: { stage: "background_layer_expand" } },
-      expandedBackgroundPrompt
-    );
-    if (!expandedBackgroundUrl) {
-      const err = new Error("气泡全屏完整背景层扩展失败，已停止生成");
-      err.stage = "bubble-safe-core-background-expand";
-      throw err;
-    }
-    const backgroundCleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(
-      expandedBackgroundUrl,
-      targetWidth,
-      targetHeight,
-      { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight },
-      { subject: null, logo: null, text: null },
-      3
-    );
-    expandedBackgroundUrl = backgroundCleanup.url || expandedBackgroundUrl;
-    const lockedUrl = await composeBubbleForegroundOnExpandedBackground(
-      coreUrl,
-      expandedBackgroundUrl,
-      coreLayerMasks.protectedMaskUrl,
-      bubbleSafeCore
-    );
-    const expandedUrl = expandedBackgroundUrl;    context.bubbleSafeCoreAdapt = {
-      ...context.bubbleSafeCoreAdapt,
-      stage: "done",
-      expandedUrl,
-      lockedUrl
-    };
-    plan.safeCoreAdapt = {
-      ...plan.safeCoreAdapt,
-      status: "done",
-      expandedUrl,
-      lockedUrl
-    };
-    console.log("[AdaptImage] bubble fullscreen safe-core test done", JSON.stringify({
-      coreUrl,
-      expandedUrl,
-      lockedUrl
-    }));
-    return ensureFinalAdaptSize(lockedUrl, targetWidth, targetHeight, context, analysis);
+    plan.safeCoreAdapt = { ...plan.safeCoreAdapt, status: "done", resultUrl: acceptedUrl };
+    return acceptedUrl;
   }
-
   if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
     try {
       const adjusted = await buildSplashSafeAreaCanvasForAdapt(workingUrl, targetWidth, targetHeight, context, analysis);
