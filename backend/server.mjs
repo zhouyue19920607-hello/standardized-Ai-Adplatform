@@ -3348,6 +3348,13 @@ async function mergeProtectedMasks(maskUrls = [], width, height) {
         if (raw.data[index] > 127) brightPixels += 1;
       }
       const brightRatio = brightPixels / Math.max(1, raw.data.length);
+      if (brightRatio <= 0.0005 || brightRatio >= 0.995) {
+        console.warn("[AdaptImage] discarded empty/full protection mask", JSON.stringify({
+          maskUrl,
+          brightRatio: Number(brightRatio.toFixed(4))
+        }));
+        continue;
+      }
       const shouldInvert = brightRatio > 0.72;
       if (shouldInvert) {
         console.warn("[AdaptImage] detected inverted protection mask", JSON.stringify({
@@ -3382,6 +3389,74 @@ async function mergeProtectedMasks(maskUrls = [], width, height) {
     protectedMaskUrl: `/static/${protectedFilename}`,
     editableMaskUrl: `/static/${editableFilename}`,
     sourceCount: used
+  };
+}
+
+async function maskCoverageForAdapt(maskUrl, width, height, threshold = 24) {
+  const raw = await maskUrlToGrayRaw(maskUrl, width, height);
+  if (!raw?.data?.length) return 0;
+  let active = 0;
+  for (let index = 0; index < raw.data.length; index += 1) {
+    if (raw.data[index] > threshold) active += 1;
+  }
+  return active / raw.data.length;
+}
+
+async function createProtectedMaskFromBoxesForAdapt(boxes = [], width, height, prefix = "box") {
+  const validBoxes = boxes
+    .map(box => clampBoxToImage(denormalizeBox(box, width, height), width, height))
+    .filter(Boolean);
+  if (!validBoxes.length || !width || !height) return null;
+  const mask = Buffer.alloc(width * height, 0);
+  const padding = Math.max(3, Math.round(Math.min(width, height) * 0.008));
+  for (const box of validBoxes) {
+    const padded = clampBoxToImage({
+      x: box.x - padding,
+      y: box.y - padding,
+      width: box.width + padding * 2,
+      height: box.height + padding * 2
+    }, width, height);
+    if (!padded) continue;
+    const x1 = Math.max(0, Math.floor(padded.x));
+    const y1 = Math.max(0, Math.floor(padded.y));
+    const x2 = Math.min(width, Math.ceil(padded.x + padded.width));
+    const y2 = Math.min(height, Math.ceil(padded.y + padded.height));
+    for (let y = y1; y < y2; y += 1) {
+      mask.fill(255, y * width + x1, y * width + x2);
+    }
+  }
+  let active = 0;
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] > 0) active += 1;
+  }
+  if (!active) return null;
+  const activeRatio = active / mask.length;
+  const softened = await sharp(mask, { raw: { width, height, channels: 1 } })
+    .blur(1.4)
+    .raw()
+    .toBuffer();
+  await ensureDir(STORAGE_DIR);
+  const protectedFilename = `protected_mask_${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  await sharp(softened, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(path.join(STORAGE_DIR, protectedFilename));
+  const editable = Buffer.alloc(softened.length);
+  for (let index = 0; index < softened.length; index += 1) editable[index] = 255 - softened[index];
+  const editableFilename = `editable_mask_${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  await sharp(editable, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(path.join(STORAGE_DIR, editableFilename));
+  console.warn("[AdaptImage] rebuilt protection mask from detection boxes", JSON.stringify({
+    prefix,
+    boxCount: validBoxes.length,
+    activeRatio: Number(activeRatio.toFixed(4))
+  }));
+  return {
+    protectedMaskUrl: `/static/${protectedFilename}`,
+    editableMaskUrl: `/static/${editableFilename}`,
+    sourceCount: validBoxes.length,
+    activeRatio,
+    rebuiltFromBoxes: true
   };
 }
 
@@ -4892,13 +4967,35 @@ async function buildProtectedMaskForAdapt(analysis, width, height) {
     analysis.logo?.maskUrl,
     analysis.text?.maskUrl
   ].filter(Boolean);
-  const mergedProtected = await mergeProtectedMasks(protectedMaskUrls, width, height);
-  const mergedRemovable = await mergeProtectedMasks(removableMaskUrls, width, height);
+  let mergedProtected = await mergeProtectedMasks(protectedMaskUrls, width, height);
+  let mergedRemovable = await mergeProtectedMasks(removableMaskUrls, width, height);
+  const protectedCoverage = mergedProtected?.protectedMaskUrl
+    ? await maskCoverageForAdapt(mergedProtected.protectedMaskUrl, width, height)
+    : 0;
+  const removableCoverage = mergedRemovable?.protectedMaskUrl
+    ? await maskCoverageForAdapt(mergedRemovable.protectedMaskUrl, width, height)
+    : 0;
+  if (protectedCoverage < 0.005 || protectedCoverage > 0.82) {
+    const fallbackBoxes = protectedBoxesForAdapt(analysis, width, height)
+      .filter(box => (box.width * box.height) / Math.max(1, width * height) <= 0.78);
+    mergedProtected = await createProtectedMaskFromBoxesForAdapt(fallbackBoxes, width, height, "protected_boxes");
+  }
+  if (removableCoverage < 0.001 || removableCoverage > 0.72) {
+    const removableBoxes = [
+      ...(analysis.logo?.boxes || []),
+      ...(analysis.text?.boxes || [])
+    ];
+    mergedRemovable = await createProtectedMaskFromBoxesForAdapt(removableBoxes, width, height, "removable_boxes");
+  }
   console.log("[AdaptImage] Step2 masks", JSON.stringify({
     protectedSources: protectedMaskUrls.length,
     removableSources: removableMaskUrls.length,
+    protectedCoverage: Number(protectedCoverage.toFixed(4)),
+    removableCoverage: Number(removableCoverage.toFixed(4)),
     protectedMaskUrl: mergedProtected?.protectedMaskUrl || "",
-    removableMaskUrl: mergedRemovable?.protectedMaskUrl || ""
+    removableMaskUrl: mergedRemovable?.protectedMaskUrl || "",
+    protectedRebuiltFromBoxes: Boolean(mergedProtected?.rebuiltFromBoxes),
+    removableRebuiltFromBoxes: Boolean(mergedRemovable?.rebuiltFromBoxes)
   }));
   return {
     protectedMaskUrl: mergedProtected?.protectedMaskUrl || "",
