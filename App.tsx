@@ -749,14 +749,7 @@ const App: React.FC = () => {
     const requiresCrossTemplateAi = imageFiles.length === 1 && activeTemplates.length > 1;
     const requiresAiAdaptation = mismatchReasons.length > 0 || requiresCrossTemplateAi;
     if (requiresAiAdaptation) {
-      const reasonText = [
-        requiresCrossTemplateAi ? '同一张图片需要适配多个广告模板。' : '',
-        ...mismatchReasons.slice(0, 6),
-        mismatchReasons.length > 6 ? `还有 ${mismatchReasons.length - 6} 个适配项未展示。` : ''
-      ].filter(Boolean).join('\n');
-      const confirmed = window.confirm(
-        `当前生成需要使用 AI 适配：\n\n${reasonText}\n\nAI 将用于扩图、裁切、构图调整、背景补全、主体位置调整、安全区避让和智能排版。是否继续？`
-      );
+      const confirmed = window.confirm('当前图片尺寸与模板不一致，AI 将自动适配至目标尺寸，并尽量保持主体与版式完整。');
       if (!confirmed) return;
     }
 

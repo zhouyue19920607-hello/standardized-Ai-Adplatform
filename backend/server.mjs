@@ -6970,16 +6970,52 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       coreUrl
     };
 
+    // 第二阶段先从安全核心中清除主体、商品、文案和 Logo，得到纯背景种子。
+    // 绝不能直接拿完整海报外扩，否则模型会在外围复制文字、Logo 和主体，形成画中画。
+    const backgroundContext = {
+      ...coreContext,
+      sourceWidth: bubbleSafeCore.width,
+      sourceHeight: bubbleSafeCore.height,
+      bubbleSafeCoreAdapt: {
+        ...context.bubbleSafeCoreAdapt,
+        stage: "background_cleanup"
+      }
+    };
+    const coreBackgroundAnalysis = await analyzeAdImageForAdapt(coreUrl, backgroundContext);
+    const coreBackgroundMasks = await buildProtectedMaskForAdapt(
+      coreBackgroundAnalysis,
+      bubbleSafeCore.width,
+      bubbleSafeCore.height
+    );
+    if (!coreBackgroundMasks.protectedMaskUrl) {
+      const err = new Error("气泡全屏未能识别主体、文案和 Logo，无法安全生成纯背景，已停止生成");
+      err.stage = "bubble-safe-core-background-mask";
+      throw err;
+    }
+    const cleanBackgroundSeedUrl = await inpaintImageForAdapt(
+      coreUrl,
+      coreBackgroundMasks.protectedMaskUrl,
+      backgroundContext,
+      "Remove every subject, product, person, package, readable text, logo, brand mark, button, badge, award, icon and foreground object inside the mask. Rebuild only a clean empty background matching the surrounding color, texture, lighting and perspective. Do not add any text, logo, product, person or decorative object."
+    );
+    if (!cleanBackgroundSeedUrl) {
+      const err = new Error("气泡全屏纯背景生成失败，已停止生成");
+      err.stage = "bubble-safe-core-background-cleanup";
+      throw err;
+    }
+
     const outerPrompt = [
       AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-      `Place the ${bubbleSafeCore.width}x${bubbleSafeCore.height} poster core visually centered inside the ${targetWidth}x${targetHeight} canvas. The poster core must remain unchanged. Do not move internal elements, rewrite, redraw, duplicate, blur, stretch, cover, or regenerate any original subject, product, person, text, logo, brand mark, button copy or packaging text. Only extend the outer surrounding background to fill the canvas. The added outer background must contain no text, no logos, no products, no people, no icons, no badges, no stickers and no new decorative objects. Prefer clean natural background continuation over adding content.`
+      `Extend this clean background-only image to ${targetWidth}x${targetHeight}. Generate background texture, color, lighting and perspective only. The output must contain no subject, no product, no person, no package, no readable text, no fake letters, no logo, no brand mark, no button, no badge, no award, no icon and no foreground object. Do not copy or reconstruct anything removed from the original poster.`
     ].join(" ");
-    const expandedUrl = await expandImageV4ForAdapt(
-      coreUrl,
+    let expandedUrl = await expandImageV4ForAdapt(
+      cleanBackgroundSeedUrl,
       targetWidth,
       targetHeight,
       {
         ...context,
+        sourceWidth: bubbleSafeCore.width,
+        sourceHeight: bubbleSafeCore.height,
         bubbleSafeCoreAdapt: {
           ...context.bubbleSafeCoreAdapt,
           stage: "outer_expand"
@@ -6992,6 +7028,17 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       err.stage = "bubble-safe-core-outer-expand";
       throw err;
     }
+
+    // 再检测并移除外围可能生成的伪文字或 Logo；此时没有受保护主体，外围全部视为纯背景。
+    const backgroundCleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(
+      expandedUrl,
+      targetWidth,
+      targetHeight,
+      { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight },
+      { subject: null, logo: null, text: null },
+      3
+    );
+    expandedUrl = backgroundCleanup.url || expandedUrl;
     const lockedUrl = await lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, bubbleSafeCore);
     context.bubbleSafeCoreAdapt = {
       ...context.bubbleSafeCoreAdapt,
