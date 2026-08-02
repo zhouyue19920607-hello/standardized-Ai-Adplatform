@@ -5733,6 +5733,54 @@ function getBubbleFullscreenSafeCoreForAdapt(context = {}, targetWidth = 0, targ
   };
 }
 
+async function buildBubbleFullscreenOutpaintInput(coreUrl, safeCore = {}) {
+  const targetWidth = toPositiveInt(safeCore.targetWidth);
+  const targetHeight = toPositiveInt(safeCore.targetHeight);
+  const coreWidth = toPositiveInt(safeCore.width);
+  const coreHeight = toPositiveInt(safeCore.height);
+  const offsetX = Math.round(Number.isFinite(Number(safeCore.offsetX)) ? Number(safeCore.offsetX) : (targetWidth - coreWidth) / 2);
+  const offsetY = Math.round(Number.isFinite(Number(safeCore.offsetY)) ? Number(safeCore.offsetY) : (targetHeight - coreHeight) / 2);
+  const coreStaticUrl = await ensureStaticImageUrlForResize(coreUrl);
+  if (!coreStaticUrl?.startsWith("/static/") || !targetWidth || !targetHeight || !coreWidth || !coreHeight) {
+    throw new Error("气泡全屏外围蒙版输入参数不完整，已停止生成");
+  }
+
+  const corePath = staticUrlToLocalPath(coreStaticUrl);
+  const coreBuffer = await sharp(corePath)
+    .rotate()
+    .resize({ width: coreWidth, height: coreHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
+    .png()
+    .toBuffer();
+  // 外围先用核心图的色彩与光影构造低频参考底图；该区域随后会被蒙版完全重绘。
+  const edgeReference = await sharp(coreBuffer)
+    .resize({ width: targetWidth, height: targetHeight, fit: "cover", position: "center", kernel: sharp.kernel.lanczos3 })
+    .blur(Math.max(24, Math.round(Math.min(targetWidth, targetHeight) * 0.025)))
+    .png()
+    .toBuffer();
+  const inputBuffer = await sharp(edgeReference)
+    .composite([{ input: coreBuffer, left: offsetX, top: offsetY }])
+    .png()
+    .toBuffer();
+  // 白色为允许 AI 修改的外围；黑色核心区必须保持原像素不变。
+  const maskSvg = Buffer.from(`<svg width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${targetWidth} ${targetHeight}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="white"/><rect x="${offsetX}" y="${offsetY}" width="${coreWidth}" height="${coreHeight}" fill="black"/></svg>`);
+
+  await ensureDir(STORAGE_DIR);
+  const token = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const inputFilename = `aigc_bubble_outpaint_input_${token}_${targetWidth}x${targetHeight}.png`;
+  const maskFilename = `aigc_bubble_outpaint_mask_${token}_${targetWidth}x${targetHeight}.png`;
+  await sharp(inputBuffer).png().toFile(path.join(STORAGE_DIR, inputFilename));
+  await sharp(maskSvg).png().toFile(path.join(STORAGE_DIR, maskFilename));
+  return {
+    inputUrl: `/static/${inputFilename}`,
+    maskUrl: `/static/${maskFilename}`,
+    offsetX,
+    offsetY,
+    coreWidth,
+    coreHeight,
+    targetWidth,
+    targetHeight
+  };
+}
 async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCore = {}) {
   const targetWidth = toPositiveInt(safeCore.targetWidth);
   const targetHeight = toPositiveInt(safeCore.targetHeight);
@@ -5777,7 +5825,7 @@ async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCo
 
   // 锁定安全核心内部的主体与文案，边缘背景使用羽化与 AI 外扩结果自然融合。
   // 避免把整个 1080x1540 核心作为不透明矩形硬贴到 1440x2340 画布上。
-  const featherPx = Math.max(36, Math.min(72, Math.round(Math.min(coreWidth, coreHeight) * 0.05)));
+  const featherPx = 24;
   const featherMask = Buffer.from(`
     <svg width="${coreWidth}" height="${coreHeight}" viewBox="0 0 ${coreWidth} ${coreHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -6970,72 +7018,38 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       coreUrl
     };
 
-    // 第二阶段先从安全核心中清除主体、商品、文案和 Logo，得到纯背景种子。
-    // 绝不能直接拿完整海报外扩，否则模型会在外围复制文字、Logo 和主体，形成画中画。
-    const backgroundContext = {
-      ...coreContext,
-      sourceWidth: bubbleSafeCore.width,
-      sourceHeight: bubbleSafeCore.height,
-      bubbleSafeCoreAdapt: {
-        ...context.bubbleSafeCoreAdapt,
-        stage: "background_cleanup"
-      }
-    };
-    const coreBackgroundAnalysis = await analyzeAdImageForAdapt(coreUrl, backgroundContext);
-    const coreBackgroundMasks = await buildProtectedMaskForAdapt(
-      coreBackgroundAnalysis,
-      bubbleSafeCore.width,
-      bubbleSafeCore.height
-    );
-    if (!coreBackgroundMasks.protectedMaskUrl) {
-      const err = new Error("气泡全屏未能识别主体、文案和 Logo，无法安全生成纯背景，已停止生成");
-      err.stage = "bubble-safe-core-background-mask";
-      throw err;
-    }
-    const cleanBackgroundSeedUrl = await inpaintImageForAdapt(
-      coreUrl,
-      coreBackgroundMasks.protectedMaskUrl,
-      backgroundContext,
-      "Remove every subject, product, person, package, readable text, logo, brand mark, button, badge, award, icon and foreground object inside the mask. Rebuild only a clean empty background matching the surrounding color, texture, lighting and perspective. Do not add any text, logo, product, person or decorative object."
-    );
-    if (!cleanBackgroundSeedUrl) {
-      const err = new Error("气泡全屏纯背景生成失败，已停止生成");
-      err.stage = "bubble-safe-core-background-cleanup";
-      throw err;
-    }
-
-    const outerPrompt = [
-      AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-      `Extend this clean background-only image to ${targetWidth}x${targetHeight}. Generate background texture, color, lighting and perspective only. The output must contain no subject, no product, no person, no package, no readable text, no fake letters, no logo, no brand mark, no button, no badge, no award, no icon and no foreground object. Do not copy or reconstruct anything removed from the original poster.`
-    ].join(" ");
-    let expandedUrl = await expandImageV4ForAdapt(
-      cleanBackgroundSeedUrl,
+    // 第二阶段使用目标画布与外围蒙版：核心区域黑色锁定，仅允许 AI 重绘外围白色区域。
+    const outpaintInput = await buildBubbleFullscreenOutpaintInput(coreUrl, bubbleSafeCore);
+    const outpaintContext = {
+      ...context,
+      sourceWidth: targetWidth,
+      sourceHeight: targetHeight,
       targetWidth,
       targetHeight,
-      {
-        ...context,
-        sourceWidth: bubbleSafeCore.width,
-        sourceHeight: bubbleSafeCore.height,
-        bubbleSafeCoreAdapt: {
-          ...context.bubbleSafeCoreAdapt,
-          stage: "outer_expand"
-        }
-      },
-      outerPrompt
+      bubbleSafeCoreAdapt: {
+        ...context.bubbleSafeCoreAdapt,
+        stage: "masked_outer_inpaint"
+      }
+    };
+    let expandedUrl = await inpaintImageForAdapt(
+      outpaintInput.inputUrl,
+      outpaintInput.maskUrl,
+      outpaintContext,
+      `Outpaint only the white masked outer area to complete a seamless ${targetWidth}x${targetHeight} background. Continue the exact color, texture, lighting, depth and perspective visible along all four edges of the locked center poster. The black center area is protected and must remain pixel-identical. Generate background only: no text, no fake letters, no logo, no brand mark, no subject, no product, no person, no package, no button, no badge, no award, no icon and no decorative foreground object.`
     );
     if (!expandedUrl) {
-      const err = new Error("气泡全屏安全核心外扩没有返回结果，已停止生成");
-      err.stage = "bubble-safe-core-outer-expand";
+      const err = new Error("气泡全屏外围蒙版扩展没有返回结果，已停止生成");
+      err.stage = "bubble-safe-core-masked-outpaint";
       throw err;
     }
 
-    // 再检测并移除外围可能生成的伪文字或 Logo；此时没有受保护主体，外围全部视为纯背景。
+    // 只清理核心区域之外可能生成的伪文字或 Logo，核心内原始内容受保护。
     const backgroundCleanup = await cleanupGeneratedTextLogoBackgroundForAdapt(
       expandedUrl,
       targetWidth,
       targetHeight,
-      { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight },
-      { subject: null, logo: null, text: null },
+      outpaintContext,
+      { subject: { box: { x: outpaintInput.offsetX, y: outpaintInput.offsetY, width: outpaintInput.coreWidth, height: outpaintInput.coreHeight } }, logo: null, text: null },
       3
     );
     expandedUrl = backgroundCleanup.url || expandedUrl;
