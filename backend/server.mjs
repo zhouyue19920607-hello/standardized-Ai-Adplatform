@@ -6775,6 +6775,99 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
   };
 }
 
+async function extractProtectedForegroundForBubble(imageUrl, protectedMaskUrl, sourceWidth, sourceHeight) {
+  const imageStatic = await ensureStaticImageUrlForResize(imageUrl);
+  if (!imageStatic?.startsWith("/static/") || !protectedMaskUrl?.startsWith("/static/")) {
+    throw new Error("气泡全屏原始前景提取需要本地图片和保护蒙版");
+  }
+  const maskBuffer = await sharp(staticUrlToLocalPath(protectedMaskUrl))
+    .rotate()
+    .resize({ width: sourceWidth, height: sourceHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .greyscale()
+    .blur(1.1)
+    .png()
+    .toBuffer();
+  await ensureDir(STORAGE_DIR);
+  const filename = `bubble_foreground_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.png`;
+  const outputPath = path.join(STORAGE_DIR, filename);
+  await sharp(staticUrlToLocalPath(imageStatic))
+    .rotate()
+    .resize({ width: sourceWidth, height: sourceHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .removeAlpha()
+    .joinChannel(maskBuffer)
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 8 })
+    .png()
+    .toFile(outputPath);
+  return { url: `/static/${filename}`, meta: await sharp(outputPath).metadata() };
+}
+
+async function composeBubbleForegroundIntoSafeZone(backgroundUrl, imageUrl, analysis, masks, safeCore, context) {
+  const sourceWidth = context.sourceWidth;
+  const sourceHeight = context.sourceHeight;
+  const sourceAspect = sourceWidth / Math.max(1, sourceHeight);
+  const safeAspect = safeCore.width / Math.max(1, safeCore.height);
+  const ratioGap = Math.abs(Math.log(sourceAspect / safeAspect));
+  const layerItems = [];
+
+  if (ratioGap <= 0.22) {
+    const foreground = await extractProtectedForegroundForBubble(imageUrl, masks.protectedMaskUrl, sourceWidth, sourceHeight);
+    const maxWidth = safeCore.width * 0.92;
+    const maxHeight = safeCore.height * 0.92;
+    const scale = Math.min(maxWidth / Math.max(1, foreground.meta.width), maxHeight / Math.max(1, foreground.meta.height));
+    const width = Math.max(1, Math.round(foreground.meta.width * scale));
+    const height = Math.max(1, Math.round(foreground.meta.height * scale));
+    layerItems.push({
+      url: foreground.url,
+      layout: {
+        x: safeCore.offsetX + Math.round((safeCore.width - width) / 2),
+        y: safeCore.offsetY + Math.round((safeCore.height - height) / 2),
+        width,
+        height
+      }
+    });
+  } else {
+    let designAnalysis = { layers: [], warnings: [] };
+    try {
+      designAnalysis = await analyzePosterDesignForAdapt(imageUrl, context);
+    } catch (err) {
+      console.warn("[AdaptImage] bubble design analysis unavailable:", err.message);
+    }
+    const zones = buildRelayoutZonesForAdapt(analysis, designAnalysis, sourceWidth, sourceHeight);
+    const typeIndexes = {};
+    for (const zone of zones) {
+      try {
+        const layerBox = buildZoneLayerSplitBoxForAdapt(zone, sourceWidth, sourceHeight) || zone.box;
+        const split = await splitPosterLayersForAdapt(imageUrl, layerBox, context);
+        const trimmed = await trimForegroundLayerForAdapt(split.foreground.url);
+        const meta = trimmed.meta || await sharp(staticUrlToLocalPath(trimmed.url)).metadata();
+        typeIndexes[zone.type] = typeIndexes[zone.type] || 0;
+        const localLayout = planZonePlacementForAdapt(
+          zone,
+          meta,
+          safeCore.width,
+          safeCore.height,
+          typeIndexes[zone.type],
+          sourceWidth,
+          sourceHeight,
+          { ...context, bubbleSafeZoneLayout: true }
+        );
+        typeIndexes[zone.type] += 1;
+        layerItems.push({
+          url: trimmed.url,
+          layout: {
+            ...localLayout,
+            x: safeCore.offsetX + localLayout.x,
+            y: safeCore.offsetY + localLayout.y
+          }
+        });
+      } catch (err) {
+        console.warn("[AdaptImage] bubble foreground zone skipped", JSON.stringify({ id: zone.id, type: zone.type, error: err.message }));
+      }
+    }
+  }
+  if (!layerItems.length) throw new Error("气泡全屏没有可合成的原始前景图层");
+  return composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, safeCore.targetWidth, safeCore.targetHeight);
+}
 async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, context, prompt, analysis, masks) {
   console.log("[AdaptImage] plan", JSON.stringify({
     strategy: plan.strategy,
@@ -6856,9 +6949,43 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         continue;
       }
       const sizedUrl = await ensureFinalAdaptSize(generatedUrl, targetWidth, targetHeight);
+      const targetContext = { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight };
+      const generatedAnalysis = await analyzeAdImageForAdapt(sizedUrl, targetContext);
+      const generatedMasks = await buildProtectedMaskForAdapt(generatedAnalysis, targetWidth, targetHeight);
+      if (!generatedMasks.protectedMaskUrl) {
+        lastIssues = ["未能从完整画布中分离前景，无法生成纯背景"];
+        continue;
+      }
+      let cleanBackgroundUrl = await inpaintImageForAdapt(
+        sizedUrl,
+        generatedMasks.protectedMaskUrl,
+        targetContext,
+        "Remove all masked subject, product, package, person, text, logo, awards, icons, shadows and foreground content. Reconstruct only one coherent clean background across the full canvas. No text, logo, object, frame, device, poster or decoration."
+      );
+      if (!cleanBackgroundUrl) {
+        lastIssues = ["完整画布纯背景生成失败"];
+        continue;
+      }
+      const cleanBackgroundResult = await cleanupGeneratedTextLogoBackgroundForAdapt(
+        cleanBackgroundUrl,
+        targetWidth,
+        targetHeight,
+        targetContext,
+        { subject: null, logo: null, text: null },
+        3
+      );
+      cleanBackgroundUrl = cleanBackgroundResult.url || cleanBackgroundUrl;
+      const composedUrl = await composeBubbleForegroundIntoSafeZone(
+        cleanBackgroundUrl,
+        imageUrl,
+        analysis,
+        masks,
+        bubbleSafeCore,
+        context
+      );
       const issues = [];
       try {
-        const textResult = await detectTextForAdapt(sizedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
+        const textResult = await detectTextForAdapt(composedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
         const outsideText = (textResult.boxes || []).filter(box => {
           const safe = clampBoxToImage(box, targetWidth, targetHeight);
           return safe && boxIntersectionCoverage(safe, safeZone) < 0.98;
@@ -6868,7 +6995,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         console.warn("[AdaptImage] bubble full-canvas text validation unavailable:", err.message);
       }
       try {
-        const logoResult = await detectLogoForAdapt(sizedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
+        const logoResult = await detectLogoForAdapt(composedUrl, { ...attemptContext, sourceWidth: targetWidth, sourceHeight: targetHeight });
         const outsideLogo = (logoResult.boxes || []).filter(box => {
           const safe = clampBoxToImage(box, targetWidth, targetHeight);
           return safe && boxIntersectionCoverage(safe, safeZone) < 0.98;
@@ -6878,7 +7005,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         console.warn("[AdaptImage] bubble full-canvas logo validation unavailable:", err.message);
       }
       const criticalValidation = await validateCriticalContentForAdapt(
-        sizedUrl,
+        composedUrl,
         analysis,
         targetWidth,
         targetHeight,
@@ -6886,8 +7013,8 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       );
       if (!criticalValidation.ok) issues.push(...criticalValidation.issues);
       if (!issues.length) {
-        acceptedUrl = sizedUrl;
-        context.bubbleSafeCoreAdapt = { ...bubbleSafeCore, applied: true, running: false, stage: "done", attempt, resultUrl: sizedUrl };
+        acceptedUrl = composedUrl;
+        context.bubbleSafeCoreAdapt = { ...bubbleSafeCore, applied: true, running: false, stage: "done", attempt, resultUrl: composedUrl };
         break;
       }
       lastIssues = issues;
