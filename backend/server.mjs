@@ -3343,8 +3343,21 @@ async function mergeProtectedMasks(maskUrls = [], width, height) {
     try {
       const raw = await maskUrlToGrayRaw(maskUrl, width, height);
       if (!raw) continue;
+      let brightPixels = 0;
+      for (let index = 0; index < raw.data.length; index += 1) {
+        if (raw.data[index] > 127) brightPixels += 1;
+      }
+      const brightRatio = brightPixels / Math.max(1, raw.data.length);
+      const shouldInvert = brightRatio > 0.72;
+      if (shouldInvert) {
+        console.warn("[AdaptImage] detected inverted protection mask", JSON.stringify({
+          maskUrl,
+          brightRatio: Number(brightRatio.toFixed(4))
+        }));
+      }
       for (let index = 0; index < merged.length; index += 1) {
-        if (raw.data[index] > merged[index]) merged[index] = raw.data[index];
+        const value = shouldInvert ? 255 - raw.data[index] : raw.data[index];
+        if (value > merged[index]) merged[index] = value;
       }
       used += 1;
     } catch (err) {
