@@ -7176,40 +7176,27 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     if (analysis.text?.hasText && !coreAnalysis.text?.hasText) throw new Error("气泡全屏核心适配后未识别到原文案，已停止生成");
     if (analysis.logo?.hasTarget && !coreAnalysis.logo?.hasTarget) throw new Error("气泡全屏核心适配后未识别到原 Logo，已停止生成");
     if (analysis.subject?.exists && !coreAnalysis.subject?.exists) throw new Error("气泡全屏核心适配后未识别到原主体，已停止生成");
-    const coreMasks = await buildProtectedMaskForAdapt(coreAnalysis, bubbleSafeCore.width, bubbleSafeCore.height);
-    if (!coreMasks.protectedMaskUrl) throw new Error("气泡全屏核心前景保护蒙版生成失败，已停止生成");
-
-    const cleanCoreBackgroundUrl = await inpaintImageForAdapt(
-      coreUrl,
-      coreMasks.protectedMaskUrl,
-      coreAnalysisContext,
-      "Remove all masked foreground content while preserving the complete original background. Reconstruct only the same background color, texture, lighting, depth and perspective. No text, logo, subject, product, package, award, icon, frame or decoration."
-    );
-    if (!cleanCoreBackgroundUrl) throw new Error("气泡全屏1080x1540纯背景生成失败，已停止生成");
-
     const exactBackgroundExpandPixels = {
       left: bubbleSafeCore.offsetX,
       right: targetWidth - bubbleSafeCore.width - bubbleSafeCore.offsetX,
       top: bubbleSafeCore.offsetY,
       bottom: targetHeight - bubbleSafeCore.height - bubbleSafeCore.offsetY
     };
-    const expandedBackgroundUrl = await expandImageByExactPixelsForAdapt(
-      cleanCoreBackgroundUrl,
-      exactBackgroundExpandPixels,
-      { ...context, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height, bubbleSafeCoreAdapt: { stage: "background_expand_only" } },
-      `Expand only this clean ${bubbleSafeCore.width}x${bubbleSafeCore.height} background to ${targetWidth}x${targetHeight}. Continue the exact same color, texture, lighting, depth and perspective. Generate background only. No text, fake letters, logo, subject, product, person, package, award, icon, border, frame, shadow or decoration.`
-    );
-    if (!expandedBackgroundUrl) throw new Error("气泡全屏纯背景扩展到1440x2340失败，已停止生成");
-
-    const composed = await composeBubbleCoreDifferenceOnBackground(
-      expandedBackgroundUrl,
+    const expandedCanvasUrl = await expandImageByExactPixelsForAdapt(
       coreUrl,
-      cleanCoreBackgroundUrl,
-      coreMasks.protectedMaskUrl,
-      bubbleSafeCore
+      exactBackgroundExpandPixels,
+      {
+        ...context,
+        sourceWidth: bubbleSafeCore.width,
+        sourceHeight: bubbleSafeCore.height,
+        bubbleSafeCoreAdapt: { stage: "exact_outer_expand" }
+      },
+      `Preserve every pixel inside the original ${bubbleSafeCore.width}x${bubbleSafeCore.height} input unchanged. Generate only the newly added outer pixels to reach ${targetWidth}x${targetHeight}. Continue the same background color, texture, lighting, depth and perspective. Do not move, resize, redraw, duplicate or alter any text, logo, subject, product, package, award or icon inside the input core. Add no new content.`
     );
+    if (!expandedCanvasUrl) throw new Error("气泡全屏精确扩图未返回结果图片");
+
     const criticalValidation = await validateCriticalContentForAdapt(
-      composed.url,
+      expandedCanvasUrl,
       coreAnalysis,
       targetWidth,
       targetHeight,
@@ -7224,13 +7211,12 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       running: false,
       stage: "done",
       coreUrl,
-      cleanCoreBackgroundUrl,
-      expandedBackgroundUrl,
-      foregroundRatio: composed.foregroundRatio,
-      resultUrl: composed.url
+      expandedCanvasUrl,
+      exactBackgroundExpandPixels,
+      resultUrl: expandedCanvasUrl
     };
-    plan.safeCoreAdapt = { ...plan.safeCoreAdapt, status: "done", resultUrl: composed.url };
-    return composed.url;
+    plan.safeCoreAdapt = { ...plan.safeCoreAdapt, status: "done", resultUrl: expandedCanvasUrl };
+    return expandedCanvasUrl;
   }
   if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
     try {
