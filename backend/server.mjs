@@ -5775,11 +5775,30 @@ async function lockBubbleFullscreenSafeCoreForAdapt(coreUrl, expandedUrl, safeCo
     .png()
     .toBuffer();
 
+  // 锁定安全核心内部的主体与文案，边缘背景使用羽化与 AI 外扩结果自然融合。
+  // 避免把整个 1080x1540 核心作为不透明矩形硬贴到 1440x2340 画布上。
+  const featherPx = Math.max(36, Math.min(72, Math.round(Math.min(coreWidth, coreHeight) * 0.05)));
+  const featherMask = Buffer.from(`
+    <svg width="${coreWidth}" height="${coreHeight}" viewBox="0 0 ${coreWidth} ${coreHeight}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="feather" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="${Math.max(12, Math.round(featherPx / 2.5))}" />
+        </filter>
+      </defs>
+      <rect width="100%" height="100%" fill="black" />
+      <rect x="${featherPx}" y="${featherPx}" width="${coreWidth - featherPx * 2}" height="${coreHeight - featherPx * 2}" fill="white" filter="url(#feather)" />
+    </svg>
+  `);
+  const blendedCoreBuffer = await sharp(coreBuffer)
+    .composite([{ input: featherMask, blend: "dest-in" }])
+    .png()
+    .toBuffer();
+
   await ensureDir(STORAGE_DIR);
   const filename = `aigc_bubble_safe_core_locked_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
   const outputPath = path.join(STORAGE_DIR, filename);
   await sharp(backgroundBuffer)
-    .composite([{ input: coreBuffer, left: offsetX, top: offsetY }])
+    .composite([{ input: blendedCoreBuffer, left: offsetX, top: offsetY }])
     .jpeg({ quality: 94, mozjpeg: true })
     .toFile(outputPath);
 

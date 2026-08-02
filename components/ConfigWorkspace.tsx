@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ASSETS_URL,
+    adaptImageWithAigc,
     cutoutImageWithAigc,
     cutoutVideoWithAigc,
     CreativeTemplateItem,
@@ -62,7 +63,9 @@ type CreativeUploadTarget =
     | 'asset'
     | 'splash'
     | 'magazine'
+    | 'magazine-ai-source'
     | 'spotlight-small'
+    | `spotlight-small-${0 | 1 | 2}`
     | 'spotlight-large'
     | 'spotlight-splash'
     | 'spotlight-ai-reference'
@@ -977,6 +980,7 @@ const ConfigWorkspace: React.FC = () => {
     const pendantReferenceInputRef = useRef<HTMLInputElement>(null);
     const splashInputRef = useRef<HTMLInputElement>(null);
     const magazineInputRef = useRef<HTMLInputElement>(null);
+    const magazineAiSourceInputRef = useRef<HTMLInputElement>(null);
     const spotlightSmallInputRef = useRef<HTMLInputElement>(null);
     const spotlightSmallUploadIndexRef = useRef(0);
     const spotlightLargeInputRef = useRef<HTMLInputElement>(null);
@@ -1007,6 +1011,8 @@ const ConfigWorkspace: React.FC = () => {
     const [pendantReference, setPendantReference] = useState<UploadState>(emptyUpload);
     const [splash, setSplash] = useState<UploadState>(emptyUpload);
     const [magazineAssets, setMagazineAssets] = useState<MagazineAsset[]>([]);
+    const [magazineAiSource, setMagazineAiSource] = useState<UploadState>(emptyUpload);
+    const [magazineAiPrompt, setMagazineAiPrompt] = useState('');
     const [magazineActiveIndex, setMagazineActiveIndex] = useState(0);
     const [magazineDragOffset, setMagazineDragOffset] = useState(0);
     const [isMagazineDragging, setIsMagazineDragging] = useState(false);
@@ -1974,6 +1980,91 @@ const ConfigWorkspace: React.FC = () => {
         resetOutput();
     };
 
+    const updateMagazineAiSource = async (file: File) => {
+        setError('');
+        if (!file.type.startsWith('image/')) {
+            setMagazineAiSource({ file: null, url: null, status: 'invalid', message: 'AI 适配仅支持图片' });
+            return;
+        }
+
+        const url = URL.createObjectURL(file);
+        try {
+            const size = await getImageSize(file);
+            setMagazineAiSource((current) => {
+                if (current.url) URL.revokeObjectURL(current.url);
+                return {
+                    file,
+                    url,
+                    status: 'valid',
+                    message: `原图 ${size.width} x ${size.height}`,
+                };
+            });
+        } catch (err) {
+            URL.revokeObjectURL(url);
+            setMagazineAiSource({ file: null, url: null, status: 'invalid', message: err instanceof Error ? err.message : '图片读取失败' });
+        }
+    };
+
+    const generateMagazineAiAdaptation = async () => {
+        if (!magazineAiSource.file) {
+            setError('请先上传需要适配的图片');
+            return;
+        }
+        if (magazineAssets.length >= MAGAZINE_MAX_ASSETS) {
+            setError(`翻页素材最多 ${MAGAZINE_MAX_ASSETS} 个，请先删除一个素材`);
+            return;
+        }
+
+        const generationKey = 'magazine-ai-adapt';
+        setError('');
+        resetOutput();
+        setAiGeneratingKey(generationKey);
+
+        try {
+            const uploaded = await uploadRawAsset(magazineAiSource.file);
+            const promptText = [
+                '将上传图片智能适配为 App 开屏广告，输出尺寸严格为 1440 x 2340px。',
+                '完整保留原图中的主体、商品、人物、品牌 Logo、文字与关键信息，不新增虚假文字、Logo、人物或商品。',
+                '优先通过延展原背景、调整留白与安全重排完成竖版适配，避免拉伸变形，文字和 Logo 保持清晰并位于安全区域。',
+                magazineAiPrompt.trim(),
+            ].filter(Boolean).join(' ');
+            const result = await adaptImageWithAigc({
+                imageUrl: uploaded.url,
+                targetWidth: CANVAS_W,
+                targetHeight: CANVAS_H,
+                templateId: 'magazine-flip',
+                templateName: '杂志翻页',
+                app: '创新看板',
+                prompt: promptText,
+                allowRelayout: true,
+            });
+            const fitted = await imageFileFromUrlAtSize(
+                result.resultUrl,
+                `magazine-ai-${Date.now()}-${CANVAS_W}x${CANVAS_H}.png`,
+                CANVAS_W,
+                CANVAS_H,
+            );
+            const strategyLabel = result.strategy === 'outpaint'
+                ? '智能扩图'
+                : result.strategy === 'relayout'
+                    ? '智能重排'
+                    : result.strategy === 'crop'
+                        ? '智能裁切'
+                        : '智能适配';
+            setMagazineAssets((current) => [...current, {
+                id: `magazine-ai-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                file: fitted.file,
+                url: fitted.url,
+                type: 'image',
+                message: `美图 AI ${strategyLabel} 1440 x 2340`,
+            }].slice(0, MAGAZINE_MAX_ASSETS));
+            clearUploadState(magazineAiSource, setMagazineAiSource);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '美图 AI 开屏适配失败');
+        } finally {
+            setAiGeneratingKey((current) => current === generationKey ? null : current);
+        }
+    };
     const addSpotlightSmallCards = async (files: FileList | File[]) => {
         setError('');
         resetOutput();
@@ -3377,7 +3468,13 @@ const ConfigWorkspace: React.FC = () => {
         if (target === 'asset') await updateAsset(files[0]);
         else if (target === 'splash') await updateSplash(files[0]);
         else if (target === 'magazine') await addMagazineFiles(files);
+        else if (target === 'magazine-ai-source') await updateMagazineAiSource(files[0]);
         else if (target === 'spotlight-small') await addSpotlightSmallCards(files);
+        else if (target.startsWith('spotlight-small-')) {
+            const index = Number(target.replace('spotlight-small-', ''));
+            await updateSpotlightSmallCardAt(index, files[0]);
+            setSpotlightAiTarget(`small-${index}` as SpotlightAiTarget);
+        }
         else if (target === 'spotlight-large') await updateSpotlightLargeCard(files[0]);
         else if (target === 'spotlight-splash') await updateSpotlightSplash(files[0]);
         else if (target === 'spotlight-ai-reference') await updateSpotlightAiReference(files[0]);
@@ -5120,6 +5217,78 @@ const ConfigWorkspace: React.FC = () => {
                                             </div>
                                         </button>
 
+                                        <details className="group/ai rounded-[18px] border border-primary/15 bg-primary/[0.04] overflow-hidden">
+                                            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-white">开启 AI 功能</p>
+                                                        <p className="mt-0.5 text-[9px] font-bold text-zinc-600">使用美图 AI 智能适配开屏尺寸</p>
+                                                    </div>
+                                                </div>
+                                                <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                            </summary>
+                                            <div className="border-t border-white/5 p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                        <h3 className="text-[11px] font-black text-white">美图 AI 开屏适配</h3>
+                                                    </div>
+                                                    <p className="mt-1 text-[9px] font-bold text-zinc-600">智能扩图 / 裁切 / 重排为 1440 x 2340px</p>
+                                                </div>
+                                                <span className={`rounded-full border px-3 py-1 text-[9px] font-black ${statusClass(magazineAiSource.status)}`}>
+                                                    {magazineAiSource.message}
+                                                </span>
+                                            </div>
+                                            <input
+                                                ref={magazineAiSourceInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={async (event) => {
+                                                    const input = event.currentTarget;
+                                                    if (input.files?.[0]) await updateMagazineAiSource(input.files[0]);
+                                                    input.value = '';
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => magazineAiSourceInputRef.current?.click()}
+                                                onDragOver={(event) => handleUploadDragOver(event, 'magazine-ai-source')}
+                                                onDragLeave={(event) => handleUploadDragLeave(event, 'magazine-ai-source')}
+                                                onDrop={(event) => handleUploadDrop(event, 'magazine-ai-source')}
+                                                className={`w-full h-28 rounded-[14px] border border-dashed overflow-hidden transition-all ${dragTarget === 'magazine-ai-source' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/10 bg-black/30 hover:bg-black/40'}`}
+                                            >
+                                                {magazineAiSource.url ? (
+                                                    <img src={magazineAiSource.url} alt="AI 适配原图" className="h-full w-full object-contain bg-zinc-950" />
+                                                ) : (
+                                                    <div className="h-full flex flex-col items-center justify-center">
+                                                        <span className="material-symbols-outlined text-[22px] text-zinc-600">add_photo_alternate</span>
+                                                        <p className="mt-1 text-[9px] font-black text-zinc-500">{dragTarget === 'magazine-ai-source' ? '松开上传原图' : '点击或拖入待适配图片'}</p>
+                                                    </div>
+                                                )}
+                                            </button>
+                                            <textarea
+                                                value={magazineAiPrompt}
+                                                onChange={(event) => setMagazineAiPrompt(event.target.value)}
+                                                placeholder="可选：补充主体位置、背景延展方向、安全区等要求"
+                                                className="w-full min-h-[72px] resize-none rounded-[14px] border border-white/10 bg-black/30 px-4 py-3 text-[10px] font-bold text-white placeholder:text-zinc-700 focus:border-primary/60 focus:outline-none"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => void generateMagazineAiAdaptation()}
+                                                disabled={!magazineAiSource.file || magazineAssets.length >= MAGAZINE_MAX_ASSETS || aiGeneratingKey === 'magazine-ai-adapt'}
+                                                className="w-full h-10 rounded-[12px] bg-white text-zinc-950 text-[10px] font-black flex items-center justify-center gap-2 transition-all hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                                <span className={`material-symbols-outlined text-[16px] ${aiGeneratingKey === 'magazine-ai-adapt' ? 'animate-spin' : ''}`}>
+                                                    {aiGeneratingKey === 'magazine-ai-adapt' ? 'progress_activity' : 'auto_awesome'}
+                                                </span>
+                                                {aiGeneratingKey === 'magazine-ai-adapt' ? '美图 AI 适配中...' : '适配并加入翻页素材'}
+                                            </button>
+                                        </div>
+                                        </details>
+
                                         <div className="grid grid-cols-2 gap-3">
                                             {magazineAssets.map((item, index) => (
                                                 <div key={item.id} className="relative rounded-[16px] border border-white/5 bg-black/30 p-2">
@@ -5186,6 +5355,7 @@ const ConfigWorkspace: React.FC = () => {
                                                 {Array.from({ length: 3 }).map((_, index) => {
                                                     const item = spotlightSmallCards[index];
                                                     const target = `small-${index}` as SpotlightAiTarget;
+                                                    const uploadTarget = `spotlight-small-${index}` as CreativeUploadTarget;
                                                     const selectSmallTarget = () => {
                                                         setSpotlightAiTarget(target);
                                                         setError('');
@@ -5196,13 +5366,16 @@ const ConfigWorkspace: React.FC = () => {
                                                             role="button"
                                                             tabIndex={0}
                                                             onClick={selectSmallTarget}
+                                                            onDragOver={(event) => handleUploadDragOver(event, uploadTarget)}
+                                                            onDragLeave={(event) => handleUploadDragLeave(event, uploadTarget)}
+                                                            onDrop={(event) => handleUploadDrop(event, uploadTarget)}
                                                             onKeyDown={(event) => {
                                                                 if (event.key === 'Enter' || event.key === ' ') {
                                                                     event.preventDefault();
                                                                     selectSmallTarget();
                                                                 }
                                                             }}
-                                                            className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${spotlightAiTarget === target ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
+                                                            className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${dragTarget === uploadTarget ? 'border-primary bg-primary/20 ring-2 ring-primary/40' : spotlightAiTarget === target ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
                                                         >
                                                             {spotlightAiTarget === target && <span className="absolute left-1 top-1 z-10 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-black text-white">AI 目标</span>}
                                                             {item && (
@@ -5223,8 +5396,9 @@ const ConfigWorkspace: React.FC = () => {
                                                             {item ? (
                                                                 <img src={item.url} alt={`小卡 ${index + 1}`} className="h-16 w-full object-contain rounded-[10px] bg-zinc-950" />
                                                             ) : (
-                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex flex-col items-center justify-center">
                                                                     <span className="material-symbols-outlined text-[18px] text-zinc-600">add_photo_alternate</span>
+                                                                    <span className="mt-1 text-[8px] font-bold text-zinc-600">{dragTarget === uploadTarget ? '松开上传' : '点击或拖入'}</span>
                                                                 </div>
                                                             )}
                                                             <div className="mt-1 flex items-center justify-between gap-1">
@@ -5254,6 +5428,9 @@ const ConfigWorkspace: React.FC = () => {
                                                     setSpotlightAiTarget('large');
                                                     setError('');
                                                 }}
+                                                onDragOver={(event) => handleUploadDragOver(event, 'spotlight-large')}
+                                                onDragLeave={(event) => handleUploadDragLeave(event, 'spotlight-large')}
+                                                onDrop={(event) => handleUploadDrop(event, 'spotlight-large')}
                                                 onKeyDown={(event) => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
@@ -5261,7 +5438,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         setError('');
                                                     }
                                                 }}
-                                                className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${spotlightAiTarget === 'large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
+                                                className={`relative rounded-[14px] border p-2 text-left transition-all cursor-pointer ${dragTarget === 'spotlight-large' ? 'border-primary bg-primary/20 ring-2 ring-primary/40' : spotlightAiTarget === 'large' ? 'border-primary bg-primary/15 ring-2 ring-primary/30' : 'border-white/5 bg-black/30 hover:bg-black/40'}`}
                                             >
                                                 {spotlightAiTarget === 'large' && <span className="absolute left-2 top-2 z-10 rounded-full bg-primary px-2 py-1 text-[8px] font-black text-white">AI 目标</span>}
                                                 {spotlightLargeCard.url && (
@@ -5296,8 +5473,9 @@ const ConfigWorkspace: React.FC = () => {
                                                 {spotlightLargeCard.url ? (
                                                     <img src={spotlightLargeCard.url} alt="大卡素材预览" className="h-20 w-full object-contain rounded-[10px] bg-zinc-950" />
                                                 ) : (
-                                                    <div className="h-20 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                    <div className="h-20 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex flex-col items-center justify-center">
                                                         <span className="material-symbols-outlined text-[20px] text-zinc-600">featured_play_list</span>
+                                                        <span className="mt-1 text-[8px] font-bold text-zinc-600">{dragTarget === 'spotlight-large' ? '松开上传' : '点击或拖入'}</span>
                                                     </div>
                                                 )}
                                                 <div className="mt-2 flex items-center justify-between gap-2">
@@ -5319,7 +5497,15 @@ const ConfigWorkspace: React.FC = () => {
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
+                                                                                        <details className="group/ai">
+                                                <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                        <div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可上传参考图并使用 AI 生成</p></div>
+                                                    </div>
+                                                    <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                                </summary>
+<div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
@@ -5385,6 +5571,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     {renderAiButtonContent(spotlightAiTarget ? `spotlight-${spotlightAiTarget}` : 'spotlight-none', spotlightAiTarget ? `生成${getSpotlightAiTargetLabel(spotlightAiTarget)}` : '先选择素材再生成')}
                                                 </button>
                                             </div>
+                                            </details>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -5612,8 +5799,9 @@ const ConfigWorkspace: React.FC = () => {
                                                             {item ? (
                                                                 <img src={item.url} alt={`翻卡图片 ${index + 1}`} className="h-16 w-full object-cover rounded-[10px] bg-zinc-950" />
                                                             ) : (
-                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex items-center justify-center">
+                                                                <div className="h-16 w-full rounded-[10px] border border-dashed border-white/10 bg-zinc-950 flex flex-col items-center justify-center">
                                                                     <span className="material-symbols-outlined text-[18px] text-zinc-600">add_photo_alternate</span>
+                                                                    <span className="mt-1 text-[8px] font-bold text-zinc-600">{dragTarget === uploadTarget ? '松开上传' : '点击或拖入'}</span>
                                                                 </div>
                                                             )}
                                                             <p className="mt-1 text-[9px] font-bold text-zinc-500">翻卡 {index + 1}</p>
@@ -5621,7 +5809,15 @@ const ConfigWorkspace: React.FC = () => {
                                                     );
                                                 })}
                                             </div>
-                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
+                                                                                        <details className="group/ai">
+                                                <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                        <div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可上传参考图并使用 AI 生成</p></div>
+                                                    </div>
+                                                    <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                                </summary>
+<div className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
@@ -5688,6 +5884,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     </button>
                                                 </div>
                                             </div>
+                                            </details>
                                         </div>
 
                                         <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">
@@ -5860,7 +6057,15 @@ const ConfigWorkspace: React.FC = () => {
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                                                        <details className="group/ai">
+                                                <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                        <div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可上传参考图并使用 AI 生成</p></div>
+                                                    </div>
+                                                    <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                                </summary>
+<div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
@@ -5933,6 +6138,7 @@ const ConfigWorkspace: React.FC = () => {
                                                     </button>
                                                 </div>
                                             </div>
+                                            </details>
                                             {refreshIconSheet.url && refreshIconSheet.status === 'valid' && (
                                                 <div className="space-y-2">
                                                     <div className="grid grid-cols-2 gap-2">
@@ -6056,7 +6262,15 @@ const ConfigWorkspace: React.FC = () => {
                                                         filename: `bottom-nav-${REFRESH_BOTTOM_NAV_W}x${REFRESH_BOTTOM_NAV_H}.png`,
                                                     })}
                                                 </div>
-                                                <div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
+                                                                                                <details className="group/ai">
+                                                    <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                            <div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可上传参考图并使用 AI 生成</p></div>
+                                                        </div>
+                                                        <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                                    </summary>
+<div className="rounded-[18px] border border-white/5 bg-black/20 p-3 space-y-3">
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div className="flex items-center gap-2">
                                                             <span className="material-symbols-outlined text-[18px] text-zinc-500">auto_awesome</span>
@@ -6129,6 +6343,7 @@ const ConfigWorkspace: React.FC = () => {
                                                         </button>
                                                     </div>
                                                 </div>
+                                                </details>
                                             </div>
                                         )}
                                     </>
@@ -6466,7 +6681,15 @@ const ConfigWorkspace: React.FC = () => {
                                                         placeholder: '填写第二次破框的主体、动作和视觉效果...'
                                                     }
                                                 ]).map((item) => (
-                                                    <div key={item.title} className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
+                                                                                                        <details key={item.title} className="group/ai">
+                                                        <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span>
+                                                                <div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可上传参考图并使用 AI 生成</p></div>
+                                                            </div>
+                                                            <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                                        </summary>
+<div key={item.title} className="rounded-[18px] border border-white/5 bg-black/20 p-4 space-y-3">
                                                         <div className="flex items-center justify-between gap-3">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="material-symbols-outlined text-[18px] text-zinc-500">movie_edit</span>
@@ -6596,6 +6819,7 @@ const ConfigWorkspace: React.FC = () => {
                                                             </button>
                                                         </div>
                                                     </div>
+                                                    </details>
                                                 ))}
                                             </div>
                                         </div>
@@ -6657,7 +6881,12 @@ const ConfigWorkspace: React.FC = () => {
                                         })}
                                     </div>
 
-                                    <div className="grid grid-cols-[1fr_96px] gap-3">
+                                                                        <details className="group/ai">
+                                        <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-3 rounded-[16px] border border-primary/15 bg-primary/[0.05] px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                            <div className="flex items-center gap-2"><span className="material-symbols-outlined text-[18px] text-primary">auto_awesome</span><div><p className="text-[10px] font-black text-white">开启 AI 功能</p><p className="text-[9px] font-bold text-zinc-600">展开后可用文生图或参考图生成挂件</p></div></div>
+                                            <span className="material-symbols-outlined text-[18px] text-zinc-500 transition-transform group-open/ai:rotate-90">chevron_right</span>
+                                        </summary>
+<div className="grid grid-cols-[1fr_96px] gap-3">
                                         <div className="relative">
                                             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-zinc-600">magic_button</span>
                                             <input
@@ -6719,6 +6948,7 @@ const ConfigWorkspace: React.FC = () => {
                                             {renderAiButtonContent('pendant-text', '生成图片')}
                                         </button>
                                     </div>
+                                    </details>
                                 </div>
 
                                 <div className="bg-white/[0.04] border border-white/5 rounded-[20px] p-6 space-y-4">

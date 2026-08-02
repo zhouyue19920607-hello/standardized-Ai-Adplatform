@@ -3,6 +3,45 @@ import { ASSETS_URL, compositeVideo } from '../services/api';
 import { getDerivedGradientColor, hexToRgb } from './colorUtils';
 import { exportVideoElements } from './videoCompositor';
 
+export const resolveAssetMediaUrl = (url: string): string => {
+    if (/^(https?:|blob:|data:)/i.test(url)) return url;
+    return `${ASSETS_URL.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
+};
+
+const startsWithBytes = (bytes: Uint8Array, signature: number[], offset = 0) =>
+    signature.every((value, index) => bytes[offset + index] === value);
+
+export async function fetchValidatedMediaBlob(url: string, expected: 'image' | 'video'): Promise<Blob> {
+    const response = await fetch(resolveAssetMediaUrl(url));
+    if (!response.ok) throw new Error(`${expected === 'image' ? '图片' : '视频'}下载失败：HTTP ${response.status}`);
+
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('服务器返回了空文件');
+    const declaredType = (blob.type || response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    if (/^(application\/json|text\/|text$)/.test(declaredType)) {
+        throw new Error(`服务器返回的不是媒体文件（${declaredType || '未知类型'}）`);
+    }
+
+    const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+    const ascii = String.fromCharCode(...bytes);
+    const isImageSignature =
+        startsWithBytes(bytes, [0xff, 0xd8, 0xff]) ||
+        startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) ||
+        ascii.startsWith('GIF87a') || ascii.startsWith('GIF89a') ||
+        (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP') ||
+        (ascii.slice(4, 8) === 'ftyp' && /avif|avis|heic|heix|mif1/.test(ascii.slice(8, 16)));
+    const isVideoSignature = startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3]) || ascii.slice(4, 8) === 'ftyp';
+    const declaredMatches = declaredType.startsWith(`${expected}/`);
+
+    if (!(expected === 'image' ? isImageSignature : isVideoSignature) && !declaredMatches) {
+        throw new Error(`服务器返回的不是有效${expected === 'image' ? '图片' : '视频'}（${declaredType || '未知类型'}）`);
+    }
+    if (declaredType.startsWith(expected === 'image' ? 'video/' : 'image/')) {
+        throw new Error(`服务器返回的文件类型不匹配（${declaredType}）`);
+    }
+    return blob;
+}
+
 /**
  * Helper to load image with cache-busting
  */
@@ -130,8 +169,7 @@ const hasVideoOverlay = (asset: AdAsset, config: AdConfig): boolean => {
  */
 export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<Blob> {
     if (asset.type.startsWith('video')) {
-        const resp = await fetch(asset.url);
-        const videoBlob = await resp.blob();
+        const videoBlob = await fetchValidatedMediaBlob(asset.url, 'video');
         const maxSizeMB = getVideoLimitMB(asset);
         const maxSizeBytes = maxSizeMB ? maxSizeMB * 1024 * 1024 : undefined;
         const needsVideoComposite = hasVideoOverlay(asset, config);
@@ -153,11 +191,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
             throw new Error(result.error || 'Video composition failed');
         }
 
-        const outputResp = await fetch(`${ASSETS_URL}${result.url}`);
-        if (!outputResp.ok) {
-            throw new Error(`视频结果下载失败：${outputResp.status}`);
-        }
-        const outputBlob = await outputResp.blob();
+        const outputBlob = await fetchValidatedMediaBlob(result.url, 'video');
         if (maxSizeBytes && outputBlob.size > maxSizeBytes) {
             throw new Error(`视频导出后仍超过 ${maxSizeMB}MB，请使用更短的视频素材`);
         }
@@ -199,12 +233,10 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
     // NOTE: mt-ib-1 always goes through compositor to guarantee 720×960 canvas output
     if (!needsComposite && !isMts1 && !isHotRecommend && !shouldForceSizeLimit) {
         console.log('[Compositor] EARLY RETURN - fetching asset.url directly');
-        const resp = await fetch(asset.url);
-        return await resp.blob();
+        return await fetchValidatedMediaBlob(asset.url, 'image');
     }
     if (!needsComposite && !isMts1 && !isHotRecommend && shouldForceSizeLimit) {
-        const resp = await fetch(asset.url);
-        const blob = await resp.blob();
+        const blob = await fetchValidatedMediaBlob(asset.url, 'image');
         const targetSizeBytes = getImageTargetSizeBytes(asset);
         if (blob.size <= targetSizeBytes) {
             console.log(`[Compositor] EARLY RETURN - original ${asset.category} image under ${(targetSizeBytes / 1024).toFixed(0)}KB`);
@@ -440,8 +472,7 @@ export async function compositeAsset(asset: AdAsset, config: AdConfig): Promise<
         // NOTE: 若主图加载失败，直接返回后端原图（保证能下载）
         if (!mainImg) {
             console.warn('[Compositor] mainImg failed to load, falling back to original asset URL');
-            const resp = await fetch(asset.url);
-            return await resp.blob();
+            return await fetchValidatedMediaBlob(asset.url, 'image');
         }
 
         const targetW = 1126;

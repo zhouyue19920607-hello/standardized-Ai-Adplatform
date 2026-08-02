@@ -4,7 +4,7 @@ import { AdAsset, AdConfig } from '../types';
 import { ASSETS_URL, reportUsageEvent } from '../services/api';
 import { getDerivedGradientColor, hexToRgb } from '../utils/colorUtils';
 import { useLanguage } from '../contexts/LanguageContext';
-import { compositeAsset } from '../utils/assetCompositor';
+import { compositeAsset, fetchValidatedMediaBlob } from '../utils/assetCompositor';
 
 interface PreviewGridProps {
   assets: AdAsset[];
@@ -107,27 +107,19 @@ const AdCard: React.FC<{
       }, 'image/jpeg', 0.9);
     };
 
-    const downloadAsBlob = async (url: string, filename: string) => {
-      try {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.setAttribute('download', filename);
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-          document.body.removeChild(link);
-          URL.revokeObjectURL(blobUrl);
-        }, 100);
-      } catch (e) {
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', filename);
-        link.click();
-      }
+    const downloadAsBlob = async (url: string, filename: string, expected: 'image' | 'video') => {
+      const blob = await fetchValidatedMediaBlob(url, expected);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', filename);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 100);
     };
 
     setIsDownloading(true);
@@ -141,8 +133,7 @@ const AdCard: React.FC<{
         const match = asset.dimensions?.match(/(\d+)\s*x\s*(\d+)/i);
         if (match) { vDim.w = parseInt(match[1]); vDim.h = parseInt(match[2]); }
 
-        const videoResp = await fetch(asset.url);
-        const videoBlob = await videoResp.blob();
+        const videoBlob = await fetchValidatedMediaBlob(asset.url, 'video');
         const videoLimitMB =
           asset.category === '开屏' ? 4 :
           asset.category === '焦点视窗' ? 10 :
@@ -156,7 +147,7 @@ const AdCard: React.FC<{
           Boolean(asset.id.includes('mt-p-1') && asset.splashText);
 
         if (videoLimitMB && !hasVideoOverlay && videoBlob.size <= videoLimitMB * 1024 * 1024) {
-          await downloadAsBlob(asset.url, `${safeName}.mp4`);
+          await downloadAsBlob(asset.url, `${safeName}.mp4`, 'video');
           void reportUsageEvent({
             eventType: '下载结果',
             pagePath: window.location.pathname,
@@ -201,7 +192,7 @@ const AdCard: React.FC<{
           if (videoLimitMB && Number(result.sizeMB) > videoLimitMB) {
             throw new Error(`视频导出后仍超过 ${videoLimitMB}MB，请使用更短的视频素材`);
           }
-          await downloadAsBlob(`${ASSETS_URL}${result.url}`, `${safeName}.mp4`);
+          await downloadAsBlob(result.url, `${safeName}.mp4`, 'video');
           void reportUsageEvent({
             eventType: '下载结果',
             pagePath: window.location.pathname,
@@ -264,14 +255,9 @@ const AdCard: React.FC<{
       console.error("Individual download failed", err);
       if (asset.type.startsWith('video')) {
         alert(`视频导出失败：${err instanceof Error ? err.message : '请稍后重试'}。为保证叠层效果和文件大小正确，已停止下载原视频。`);
-        return;
+      } else {
+        alert(`图片导出失败：${err instanceof Error ? err.message : '请稍后重试'}。未下载无效文件。`);
       }
-      // Fallback: direct download link
-      const link = document.createElement('a');
-      link.href = asset.url;
-      const fallbackExt = asset.type.startsWith('video') ? 'mp4' : 'jpg';
-      link.setAttribute('download', `${safeName}.${fallbackExt}`);
-      link.click();
     } finally {
       setIsDownloading(false);
     }
