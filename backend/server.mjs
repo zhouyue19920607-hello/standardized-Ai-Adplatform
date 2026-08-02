@@ -3906,9 +3906,7 @@ async function submitOpenapiV3Async(apiName, payload, options = {}) {
     const pollId = directTaskId || directMsgId;
     if (!pollId) throw createProviderError("openapi-submit", apiName, { ...raw, message: "No task_id or msg_id in response" });
     if (apiName === "mtimage_expand_v4_async" && directMsgId) {
-      console.log("[EXPAND] submit success, msg_id:", directMsgId);
-      await debugPollEndpoints(new URL(url).origin, directMsgId, config.ak, config.sk);
-      await debugPollEndpointsV2(new URL(url).origin, directMsgId, config.ak, config.sk);
+      console.log("[EXPAND] submit success, use dedicated result polling, msg_id:", directMsgId);
     }
     return {
       taskId: pollId,
@@ -4032,7 +4030,19 @@ async function pollOpenapiV3Async(msgId, options = {}) {
           .map(host => String(host).replace(/\/+$/, ""))
       )
     ];
+    const exactPixelExpandPollers = options.apiName === "mtimage_expand_v4_async"
+      ? pollHosts.map(host => ({
+          key: `v1/mtimage_expand_v4/result(msg_id)@${new URL(host).host}`,
+          run: async () => {
+            const baseUrl = withAigcQueryAuth(`${host}/v1/mtimage_expand_v4/result`, config);
+            const pollUrl = `${baseUrl}&${new URLSearchParams({ msg_id: callbackMsgId }).toString()}`;
+            logOpenapiPollDebug("EXPAND-PIXEL-POLL", pollUrl, callbackMsgId, "GET");
+            return aigcJsonRequest(pollUrl, "GET", null, queryAuth);
+          }
+        }))
+      : [];
     const candidatePollers = [
+      ...exactPixelExpandPollers,
       ...pollHosts.map(host => ({
         key: `v1/query(msg_id)@${new URL(host).host}`,
         run: async () => {
@@ -4183,7 +4193,8 @@ async function callOpenapiV3Async(apiName, payload, options = {}) {
     ...options,
     pollMode: submitted.pollMode,
     pollHost: submitted.pollHost,
-    pollParamName: submitted.pollParamName
+    pollParamName: submitted.pollParamName,
+    apiName
   });
 }
 
@@ -4214,6 +4225,7 @@ async function submitDirectOpenapiMediaTask({
     pollMode: submitted.pollMode,
     pollHost: submitted.pollHost,
     pollParamName: submitted.pollParamName,
+    apiName: normalizedTask,
     initialDelayMs,
     pollIntervalMs,
     maxPolls
@@ -4576,7 +4588,8 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
   const endpoint = ADAPT_ENDPOINTS[apiStyle]?.[endpointName];
   if (!endpoint) throw new Error(`未知算法 endpoint: ${apiStyle}/${endpointName}`);
   const isAsync = apiStyle === ADAPT_API_STYLES.aiPlatform ? true : endpoint.endsWith("_async");
-  const useTaskGateway = apiStyle === ADAPT_API_STYLES.openapi && isAsync;
+  const useDirectOpenapiAsync = apiStyle === ADAPT_API_STYLES.openapi && endpointName === "pixelExpand";
+  const useTaskGateway = apiStyle === ADAPT_API_STYLES.openapi && isAsync && !useDirectOpenapiAsync;
   const maxAttempts = Math.max(1, Number(options.providerAttempts || 3));
   console.log("[AdaptImage] request", JSON.stringify({
     endpointName,
@@ -4584,6 +4597,7 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
     endpoint,
     isAsync,
     useTaskGateway,
+    useDirectOpenapiAsync,
     maxAttempts,
     payload: summarizeAdaptPayload(payload)
   }));
@@ -4595,7 +4609,11 @@ async function runAdaptProvider(endpointName, payload, options = {}) {
         : useTaskGateway
           ? await callOpenapiTaskGateway(endpoint, payload, { ...options, config })
           : isAsync
-          ? await callOpenapiV3Async(endpoint, payload, { ...options, config })
+          ? await callOpenapiV3Async(endpoint, payload, {
+              ...options,
+              config,
+              preserveBody: useDirectOpenapiAsync || options.preserveBody
+            })
           : await callOpenapiV3Sync(endpoint, payload, { ...options, config });
       console.log("[AdaptImage] response", JSON.stringify({
         endpointName,
