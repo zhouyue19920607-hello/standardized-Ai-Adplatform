@@ -3385,6 +3385,7 @@ const ADAPT_ENDPOINTS = {
     posterLayer: "poster_edit_layer_async",
     posterDesign: "poster_trans_design_async",
     expand: "image_extension_async",
+    pixelExpand: "mtimage_expand_v4_async",
     inpaint: "image_manipulation_fl_async",
     crop: "image_cropping_async"
   },
@@ -6707,7 +6708,7 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
         }
       };
   const raw = await runAdaptProvider("expand", payload, context);
-  let resultUrl = await persistFirstProviderImage(raw, "adapt_expand");
+  let resultUrl = raw?.resultUrl || await persistFirstProviderImage(raw, "adapt_expand");
   if (!resultUrl && getAdaptApiStyle(config) === ADAPT_API_STYLES.openapi) {
     try {
       const fallback = await submitAigcExpandTask({
@@ -6727,6 +6728,58 @@ async function expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, contex
     }
   }
   return resultUrl;
+}
+
+async function expandImageByExactPixelsForAdapt(imageUrl, expandPixels, context, prompt = "") {
+  const pixels = normalizeExpandPixels(expandPixels);
+  if (!pixels || !Object.values(pixels).some(value => value > 0)) {
+    throw new Error("精确扩图缺少有效的四边扩展像素");
+  }
+  const sourceMeta = await getImageMetadataForUrl(imageUrl);
+  const sourceWidth = toPositiveInt(sourceMeta.width);
+  const sourceHeight = toPositiveInt(sourceMeta.height);
+  if (!sourceWidth || !sourceHeight) throw new Error("精确扩图无法读取输入背景尺寸");
+  const targetWidth = sourceWidth + pixels.left + pixels.right;
+  const targetHeight = sourceHeight + pixels.top + pixels.bottom;
+  const config = context.config || getAigcConfig();
+
+  if (getAdaptApiStyle(config) !== ADAPT_API_STYLES.openapi) {
+    return expandImageV4ForAdapt(imageUrl, targetWidth, targetHeight, context, prompt);
+  }
+
+  const openapiImageUrl = await resolveOpenapiAdaptImageUrl(imageUrl, context);
+  const mediaInfo = /^https?:\/\//i.test(openapiImageUrl || "")
+    ? mediaInfoFromUrl(openapiImageUrl)
+    : await mediaInfoForOpenapiAdaptImage(imageUrl, context);
+  if (!mediaInfo) throw new Error("精确扩图无法生成可用的输入图片信息");
+
+  console.log("[AdaptImage] exact pixel expand start", JSON.stringify({
+    sourceWidth,
+    sourceHeight,
+    targetWidth,
+    targetHeight,
+    freeExpandPixel: pixels
+  }));
+  const raw = await runAdaptProvider("pixelExpand", {
+    media_info_list: [mediaInfo],
+    parameter: {
+      rsp_media_type: "url",
+      free_expand_pixel: pixels,
+      high_quality_encode: true,
+      seed: -1,
+      extra_prompt: prompt || AIGC_BACKGROUND_ONLY_EXPAND_PROMPT
+    }
+  }, context);
+  const resultUrl = raw?.resultUrl || await persistFirstProviderImage(raw, "adapt_exact_pixel_expand");
+  if (!resultUrl) throw new Error("精确扩图任务已完成，但没有返回结果图片");
+  const finalUrl = await ensureFinalAdaptSize(resultUrl, targetWidth, targetHeight, context, null);
+  console.log("[AdaptImage] exact pixel expand done", JSON.stringify({
+    resultUrl: finalUrl,
+    targetWidth,
+    targetHeight,
+    freeExpandPixel: pixels
+  }));
+  return finalUrl;
 }
 
 async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, context) {
@@ -7006,10 +7059,15 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     );
     if (!cleanCoreBackgroundUrl) throw new Error("气泡全屏1080x1540纯背景生成失败，已停止生成");
 
-    const expandedBackgroundUrl = await expandImageV4ForAdapt(
+    const exactBackgroundExpandPixels = {
+      left: bubbleSafeCore.offsetX,
+      right: targetWidth - bubbleSafeCore.width - bubbleSafeCore.offsetX,
+      top: bubbleSafeCore.offsetY,
+      bottom: targetHeight - bubbleSafeCore.height - bubbleSafeCore.offsetY
+    };
+    const expandedBackgroundUrl = await expandImageByExactPixelsForAdapt(
       cleanCoreBackgroundUrl,
-      targetWidth,
-      targetHeight,
+      exactBackgroundExpandPixels,
       { ...context, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height, bubbleSafeCoreAdapt: { stage: "background_expand_only" } },
       `Expand only this clean ${bubbleSafeCore.width}x${bubbleSafeCore.height} background to ${targetWidth}x${targetHeight}. Continue the exact same color, texture, lighting, depth and perspective. Generate background only. No text, fake letters, logo, subject, product, person, package, award, icon, border, frame, shadow or decoration.`
     );
@@ -8009,6 +8067,11 @@ app.post("/api/aigc/adapt-image-async/start", (req, res) => {
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
+      if (!response.data?.resultUrl) {
+        const missingResultError = new Error("AI 任务已结束，但没有返回结果图片");
+        missingResultError.stage = "result_missing";
+        throw missingResultError;
+      }
       const latest = adaptImagePipelineJobs.get(jobId) || current;
       adaptImagePipelineJobs.set(jobId, {
         ...latest,
@@ -8025,7 +8088,7 @@ app.post("/api/aigc/adapt-image-async/start", (req, res) => {
       adaptImagePipelineJobs.set(jobId, {
         ...latest,
         status: "failed",
-        stage: providerData?.stage || "failed",
+        stage: providerData?.stage || err.stage || "failed",
         updatedAt: Date.now(),
         error: providerData?.error || "AI 广告图适配管线失败",
         details,
