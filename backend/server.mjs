@@ -4473,7 +4473,7 @@ function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
 
 const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 346;
 const BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH = 1080;
-const BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT = 1540;
+const BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT = 1650;
 
 function isBoxInsidePixelSafeArea(box, width, height, marginPx = STANDARD_SPLASH_INFO_SAFE_MARGIN_PX) {
   if (!box || !width || !height) return true;
@@ -7219,7 +7219,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       ...plan,
       strategy: "outpaint",
       orientationChange: "same-direction",
-      layoutIntent: "bubble_core_1080x1540",
+      layoutIntent: "bubble_core_1080x1650",
       infoSafeArea: null
     };
     const corePrompt = [
@@ -7260,7 +7260,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     );
     if (!expandedCanvasUrl) throw new Error("气泡全屏精确扩图未返回结果图片");
     const blendedCanvas = await composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl, bubbleSafeCore, {
-      featherPx: 72
+      featherPx: 96
     });
     const finalCanvasUrl = blendedCanvas?.url || expandedCanvasUrl;
     console.log("[AdaptImage] bubble edge blend done", JSON.stringify({
