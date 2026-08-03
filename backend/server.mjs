@@ -7273,6 +7273,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
 
   if (bubbleSafeCore && !context.bubbleSafeCoreAdapt?.running) {
     const safeCoreLabel = bubbleSafeCore.label || "开屏模板";
+    const useFocalLeftRightCore = bubbleSafeCore.mode === "focal_window_safe_core";
     plan.safeCoreAdapt = { ...bubbleSafeCore, mode: "core_layers_then_background_expand", status: "running" };
     const coreContext = {
       ...context,
@@ -7287,9 +7288,18 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       layoutIntent: `${bubbleSafeCore.mode}_${bubbleSafeCore.width}x${bubbleSafeCore.height}`,
       infoSafeArea: null
     };
+    const focalLeftRightCorePrompt = [
+      `请先在 ${bubbleSafeCore.width}x${bubbleSafeCore.height}px 的焦点视窗核心画面内完成左右排版。`,
+      "排版方式：左侧放原图已有文案、slogan、Logo、品牌标识和按钮文案，整体在左侧信息区水平居中、垂直居中，不能裁切、遮挡、压扁或变形。",
+      "右侧放原图已有主体物、产品或人物，保持原比例、质感、包装文字和品牌标识完整清晰，不能拉伸、变形、重绘或复制。",
+      "只允许移动、缩放和排列原图已有元素；禁止新增任何文字、Logo、商品、人物、图标、按钮、贴纸、装饰元素、水印或无关内容。",
+      "背景只根据原图已有背景自然补齐，保持光影、材质、颜色、纹理、景深和透视一致，不要出现分层、拼接、模糊框或重复纹理。",
+      "核心画面生成后，后续会锁定该 1030x400 内容不再改变，只向外扩展背景。"
+    ].join(" ");
+    const defaultSafeCorePrompt = `Adapt all original content into one complete ${bubbleSafeCore.width}x${bubbleSafeCore.height} composition. Preserve every subject, product, package, readable text, slogan, logo, brand mark, award and icon. Keep their hierarchy and relative layout. Do not add, duplicate, rewrite or remove content.`;
     const corePrompt = [
       AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
-      `Adapt all original content into one complete ${bubbleSafeCore.width}x${bubbleSafeCore.height} composition. Preserve every subject, product, package, readable text, slogan, logo, brand mark, award and icon. Keep their hierarchy and relative layout. Do not add, duplicate, rewrite or remove content.`
+      useFocalLeftRightCore ? focalLeftRightCorePrompt : defaultSafeCorePrompt
     ].join(" ");
     const coreUrl = await executeAdaptPlan(
       imageUrl,
@@ -8533,9 +8543,9 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         plan.reasons.push("沉浸式焦点视窗按竖版开屏逻辑处理：保留原图核心内容居中，只做背景延展，避免误走普通焦点视窗左右排版拆层");
       } else if (isStandardFocalWindowTemplateForAdapt(meituContext) && getFullscreenSafeCoreTemplateMetaForAdapt(meituContext, width, height) && plan.strategy !== "direct") {
         plan.strategy = "outpaint";
-        plan.steps = ["detect", "safe_core_adapt", "background_extension", "protected_crop", "qa"];
-        plan.layoutIntent = "focal_window_safe_core_1030x400";
-        plan.reasons.push("标准焦点视窗模板使用安全核心适配：先生成 1030 x 400 核心画面，再只向外延展背景");
+        plan.steps = ["detect", "safe_core_left_right_relayout", "background_extension", "protected_crop", "qa"];
+        plan.layoutIntent = "focal_window_left_right_core_1030x400";
+        plan.reasons.push("标准焦点视窗模板使用安全核心适配：先在 1030 x 400 核心画面内做左文案/Logo、右主体物排版，再锁定核心只向外延展背景");
       } else if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
         plan.strategy = "relayout";
         plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
