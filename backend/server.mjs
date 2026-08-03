@@ -4474,6 +4474,10 @@ function isBoxInsideSafeArea(box, width, height, marginRatio = 0.1) {
 const STANDARD_SPLASH_INFO_SAFE_MARGIN_PX = 346;
 const BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH = 1080;
 const BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT = 1650;
+const BUBBLE_NONFULL_SAFE_CORE_WIDTH = 900;
+const BUBBLE_NONFULL_SAFE_CORE_HEIGHT = 1600;
+const FOCAL_WINDOW_SAFE_CORE_WIDTH = 1030;
+const FOCAL_WINDOW_SAFE_CORE_HEIGHT = 400;
 
 function isBoxInsidePixelSafeArea(box, width, height, marginPx = STANDARD_SPLASH_INFO_SAFE_MARGIN_PX) {
   if (!box || !width || !height) return true;
@@ -5832,33 +5836,93 @@ function isStandardSplashTemplateForAdapt(context = {}) {
   return /(开屏|splash)/i.test(text) && !/(炫动|杂志|聚光|创新|dynamic|magazine|gallery)/i.test(text);
 }
 
-function isBubbleFullscreenTemplateForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
+function getFullscreenSafeCoreTemplateMetaForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
   const width = toPositiveInt(targetWidth || context.targetWidth || context.width);
   const height = toPositiveInt(targetHeight || context.targetHeight || context.height);
-  if (width !== 1440 || height !== 2340) return false;
+  const isFocalWindowTarget = (
+    isStandardFocalWindowTemplateForAdapt(context) &&
+    width >= FOCAL_WINDOW_SAFE_CORE_WIDTH &&
+    height >= FOCAL_WINDOW_SAFE_CORE_HEIGHT
+  );
+  if (isFocalWindowTarget) {
+    return {
+      label: "焦点视窗",
+      mode: "focal_window_safe_core",
+      coreWidth: FOCAL_WINDOW_SAFE_CORE_WIDTH,
+      coreHeight: FOCAL_WINDOW_SAFE_CORE_HEIGHT
+    };
+  }
+  const isFullscreenTarget = width === 1440 && height === 2340;
+  const isNonfullTarget = width === 1440 && height === 1938;
+  if (!isFullscreenTarget && !isNonfullTarget) return null;
   const templateId = String(context.templateId || "").toLowerCase();
   const templateName = String(context.templateName || "");
   const appName = String(context.appName || "");
   const text = `${appName}${templateName}${templateId}`.toLowerCase();
-  return (
-    /气泡全屏/.test(text) ||
-    /bubble.*full|full.*bubble/.test(text) ||
-    /^(mt|my|wk)-s-1$/.test(templateId)
-  );
+  const idMatch = isFullscreenTarget
+    ? templateId.match(/^(mt|my|wk)-s-(1|2|3|8)$/)
+    : templateId.match(/^(mt|my|wk)-s-(5|6|7)$/);
+  if (idMatch) {
+    const fullscreenLabelByIndex = {
+      "1": "气泡全屏",
+      "2": "胶囊上滑全屏",
+      "3": "扭动全屏",
+      "8": "三合一全屏"
+    };
+    const nonfullLabelByIndex = {
+      "5": "气泡非全屏",
+      "6": "胶囊上滑非全屏",
+      "7": "扭动非全屏"
+    };
+    const coreWidth = isFullscreenTarget ? BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH : BUBBLE_NONFULL_SAFE_CORE_WIDTH;
+    const coreHeight = isFullscreenTarget ? BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT : BUBBLE_NONFULL_SAFE_CORE_HEIGHT;
+    return {
+      label: isFullscreenTarget ? fullscreenLabelByIndex[idMatch[2]] : nonfullLabelByIndex[idMatch[2]],
+      mode: `${isFullscreenTarget ? "fullscreen" : "nonfull"}_safe_core_${idMatch[2]}`,
+      coreWidth,
+      coreHeight
+    };
+  }
+  const nameCandidates = isFullscreenTarget
+    ? [
+        { label: "气泡全屏", mode: "fullscreen_safe_core_bubble", pattern: /气泡全屏|bubble.*full|full.*bubble/ },
+        { label: "胶囊上滑全屏", mode: "fullscreen_safe_core_capsule_slide", pattern: /胶囊上滑全屏|上下滑动全屏|capsule.*full|slide.*full/ },
+        { label: "扭动全屏", mode: "fullscreen_safe_core_twist", pattern: /扭动全屏|twist.*full|full.*twist/ },
+        { label: "三合一全屏", mode: "fullscreen_safe_core_triple", pattern: /三合一全屏|triple.*full|full.*triple/ }
+      ]
+    : [
+        { label: "气泡非全屏", mode: "nonfull_safe_core_bubble", pattern: /气泡非全屏|bubble.*non|non.*bubble/ },
+        { label: "胶囊上滑非全屏", mode: "nonfull_safe_core_capsule_slide", pattern: /胶囊上滑非全屏|上下滑动非全屏|capsule.*non|slide.*non/ },
+        { label: "扭动非全屏", mode: "nonfull_safe_core_twist", pattern: /扭动非全屏|twist.*non|non.*twist/ }
+      ];
+  const coreWidth = isFullscreenTarget ? BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH : BUBBLE_NONFULL_SAFE_CORE_WIDTH;
+  const coreHeight = isFullscreenTarget ? BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT : BUBBLE_NONFULL_SAFE_CORE_HEIGHT;
+  const nameMatch = nameCandidates
+    .map(item => ({ ...item, coreWidth, coreHeight }))
+    .find(item => item.pattern.test(text));
+  return nameMatch || null;
+}
+
+function isBubbleFullscreenTemplateForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
+  return Boolean(getFullscreenSafeCoreTemplateMetaForAdapt(context, targetWidth, targetHeight));
 }
 
 function getBubbleFullscreenSafeCoreForAdapt(context = {}, targetWidth = 0, targetHeight = 0) {
-  if (!isBubbleFullscreenTemplateForAdapt(context, targetWidth, targetHeight)) return null;
+  const templateMeta = getFullscreenSafeCoreTemplateMetaForAdapt(context, targetWidth, targetHeight);
+  if (!templateMeta) return null;
   const width = toPositiveInt(targetWidth || context.targetWidth || context.width);
   const height = toPositiveInt(targetHeight || context.targetHeight || context.height);
+  const coreWidth = toPositiveInt(templateMeta.coreWidth) || BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH;
+  const coreHeight = toPositiveInt(templateMeta.coreHeight) || BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT;
   return {
-    mode: "bubble_fullscreen_safe_core",
-    width: BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH,
-    height: BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT,
+    mode: templateMeta.mode,
+    label: templateMeta.label,
+    width: coreWidth,
+    height: coreHeight,
     targetWidth: width,
     targetHeight: height,
-    offsetX: Math.round((width - BUBBLE_FULLSCREEN_SAFE_CORE_WIDTH) / 2),
-    offsetY: Math.round((height - BUBBLE_FULLSCREEN_SAFE_CORE_HEIGHT) / 2)
+    offsetX: Math.round((width - coreWidth) / 2),
+    offsetY: Math.round((height - coreHeight) / 2)
   };
 }
 
@@ -6959,7 +7023,7 @@ async function suggestCroppingForAdapt(imageUrl, targetWidth, targetHeight, cont
 async function extractProtectedForegroundForBubble(imageUrl, protectedMaskUrl, sourceWidth, sourceHeight) {
   const imageStatic = await ensureStaticImageUrlForResize(imageUrl);
   if (!imageStatic?.startsWith("/static/") || !protectedMaskUrl?.startsWith("/static/")) {
-    throw new Error("气泡全屏原始前景提取需要本地图片和保护蒙版");
+    throw new Error("开屏安全核心原始前景提取需要本地图片和保护蒙版");
   }
   const maskBuffer = await sharp(staticUrlToLocalPath(protectedMaskUrl))
     .rotate()
@@ -6987,7 +7051,7 @@ async function composeBubbleCoreDifferenceOnBackground(backgroundUrl, coreUrl, c
   const coreStatic = await ensureStaticImageUrlForResize(coreUrl);
   const cleanStatic = await ensureStaticImageUrlForResize(cleanCoreBackgroundUrl);
   if (!backgroundStatic?.startsWith("/static/") || !coreStatic?.startsWith("/static/") || !cleanStatic?.startsWith("/static/") || !protectedMaskUrl?.startsWith("/static/")) {
-    throw new Error("气泡全屏核心前景差异合成参数不完整");
+    throw new Error("开屏安全核心前景差异合成参数不完整");
   }
   const width = safeCore.width;
   const height = safeCore.height;
@@ -7014,7 +7078,7 @@ async function composeBubbleCoreDifferenceOnBackground(backgroundUrl, coreUrl, c
   }
   const foregroundRatio = foregroundPixels / Math.max(1, width * height);
   if (foregroundRatio < 0.015 || foregroundRatio > 0.78) {
-    throw new Error(`气泡全屏前景差异蒙版异常：${(foregroundRatio * 100).toFixed(1)}%`);
+    throw new Error(`开屏安全核心前景差异蒙版异常：${(foregroundRatio * 100).toFixed(1)}%`);
   }
   const foregroundBuffer = await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer();
   const backgroundBuffer = await sharp(staticUrlToLocalPath(backgroundStatic))
@@ -7035,7 +7099,7 @@ async function composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl
   const expandedStatic = await ensureStaticImageUrlForResize(expandedCanvasUrl);
   const coreStatic = await ensureStaticImageUrlForResize(coreUrl);
   if (!expandedStatic?.startsWith("/static/") || !coreStatic?.startsWith("/static/")) {
-    throw new Error("气泡全屏边缘融合需要本地核心图和扩展图");
+    throw new Error("开屏安全核心边缘融合需要本地核心图和扩展图");
   }
 
   const targetWidth = toPositiveInt(safeCore.targetWidth);
@@ -7045,7 +7109,7 @@ async function composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl
   const offsetX = Math.max(0, Math.round(Number(safeCore.offsetX || 0)));
   const offsetY = Math.max(0, Math.round(Number(safeCore.offsetY || 0)));
   if (!targetWidth || !targetHeight || !coreWidth || !coreHeight) {
-    throw new Error("气泡全屏边缘融合缺少有效尺寸");
+    throw new Error("开屏安全核心边缘融合缺少有效尺寸");
   }
 
   const featherPx = clampNumber(toPositiveInt(options.featherPx) || 72, 24, Math.floor(Math.min(coreWidth, coreHeight) / 5));
@@ -7159,7 +7223,7 @@ async function composeBubbleForegroundIntoSafeZone(backgroundUrl, imageUrl, anal
       }
     }
   }
-  if (!layerItems.length) throw new Error("气泡全屏没有可合成的原始前景图层");
+  if (!layerItems.length) throw new Error("开屏安全核心没有可合成的原始前景图层");
   return composeMultiLayerRelayoutForAdapt(backgroundUrl, layerItems, safeCore.targetWidth, safeCore.targetHeight);
 }
 async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, context, prompt, analysis, masks) {
@@ -7208,6 +7272,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
   let workingUrl = imageUrl;
 
   if (bubbleSafeCore && !context.bubbleSafeCoreAdapt?.running) {
+    const safeCoreLabel = bubbleSafeCore.label || "开屏模板";
     plan.safeCoreAdapt = { ...bubbleSafeCore, mode: "core_layers_then_background_expand", status: "running" };
     const coreContext = {
       ...context,
@@ -7219,7 +7284,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       ...plan,
       strategy: "outpaint",
       orientationChange: "same-direction",
-      layoutIntent: "bubble_core_1080x1650",
+      layoutIntent: `${bubbleSafeCore.mode}_${bubbleSafeCore.width}x${bubbleSafeCore.height}`,
       infoSafeArea: null
     };
     const corePrompt = [
@@ -7238,9 +7303,9 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
     );
     const coreAnalysisContext = { ...coreContext, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height };
     const coreAnalysis = await analyzeAdImageForAdapt(coreUrl, coreAnalysisContext);
-    if (analysis.text?.hasText && !coreAnalysis.text?.hasText) throw new Error("气泡全屏核心适配后未识别到原文案，已停止生成");
-    if (analysis.logo?.hasTarget && !coreAnalysis.logo?.hasTarget) throw new Error("气泡全屏核心适配后未识别到原 Logo，已停止生成");
-    if (analysis.subject?.exists && !coreAnalysis.subject?.exists) throw new Error("气泡全屏核心适配后未识别到原主体，已停止生成");
+    if (analysis.text?.hasText && !coreAnalysis.text?.hasText) throw new Error(`${safeCoreLabel}核心适配后未识别到原文案，已停止生成`);
+    if (analysis.logo?.hasTarget && !coreAnalysis.logo?.hasTarget) throw new Error(`${safeCoreLabel}核心适配后未识别到原 Logo，已停止生成`);
+    if (analysis.subject?.exists && !coreAnalysis.subject?.exists) throw new Error(`${safeCoreLabel}核心适配后未识别到原主体，已停止生成`);
     const exactBackgroundExpandPixels = {
       left: bubbleSafeCore.offsetX,
       right: targetWidth - bubbleSafeCore.width - bubbleSafeCore.offsetX,
@@ -7258,12 +7323,13 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       },
       `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`
     );
-    if (!expandedCanvasUrl) throw new Error("气泡全屏精确扩图未返回结果图片");
+    if (!expandedCanvasUrl) throw new Error(`${safeCoreLabel}精确扩图未返回结果图片`);
     const blendedCanvas = await composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl, bubbleSafeCore, {
       featherPx: 96
     });
     const finalCanvasUrl = blendedCanvas?.url || expandedCanvasUrl;
-    console.log("[AdaptImage] bubble edge blend done", JSON.stringify({
+    console.log("[AdaptImage] splash safe-core edge blend done", JSON.stringify({
+      template: safeCoreLabel,
       finalCanvasUrl,
       featherPx: blendedCanvas?.featherPx,
       offsetX: blendedCanvas?.offsetX,
@@ -7278,7 +7344,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       { ...context, sourceWidth: bubbleSafeCore.width, sourceHeight: bubbleSafeCore.height }
     );
     if (!criticalValidation.ok) {
-      throw new Error(`气泡全屏最终内容检查失败：${criticalValidation.issues.join("；")}`);
+      throw new Error(`${safeCoreLabel}最终内容检查失败：${criticalValidation.issues.join("；")}`);
     }
     context.bubbleSafeCoreAdapt = {
       ...bubbleSafeCore,
@@ -8465,6 +8531,11 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         plan.steps = ["detect", "center_original", "background_extension", "protected_crop", "qa"];
         plan.layoutIntent = "immersive_focal_center_expand";
         plan.reasons.push("沉浸式焦点视窗按竖版开屏逻辑处理：保留原图核心内容居中，只做背景延展，避免误走普通焦点视窗左右排版拆层");
+      } else if (isStandardFocalWindowTemplateForAdapt(meituContext) && getFullscreenSafeCoreTemplateMetaForAdapt(meituContext, width, height) && plan.strategy !== "direct") {
+        plan.strategy = "outpaint";
+        plan.steps = ["detect", "safe_core_adapt", "background_extension", "protected_crop", "qa"];
+        plan.layoutIntent = "focal_window_safe_core_1030x400";
+        plan.reasons.push("标准焦点视窗模板使用安全核心适配：先生成 1030 x 400 核心画面，再只向外延展背景");
       } else if (isStandardFocalWindowTemplateForAdapt(meituContext) && plan.orientationChange === "cross-direction" && plan.strategy !== "direct" && allowRelayout) {
         plan.strategy = "relayout";
         plan.steps = ["detect", "merge_masks", "split_text_logo_layers", "left-right_relayout", "background_extension", "qa"];
