@@ -76,6 +76,12 @@ const getRequestErrorMessage = (error: unknown) => {
   return '美图 AI 适配失败';
 };
 
+const AI_ADAPT_FAILURE_ALERT = [
+  '适配未完成',
+  '',
+  '本次 AI 适配响应超时，你可以重新生成，或联系人工协助处理。'
+].join('\n');
+
 const AuthGateScreen: React.FC<{
   loading?: boolean;
   configured?: boolean;
@@ -999,7 +1005,7 @@ const App: React.FC = () => {
             }).catch(error => {
               console.error('Failed to report generation failure', error);
             });
-            alert(`美图 AI 适配失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
+            alert(AI_ADAPT_FAILURE_ALERT);
             setProcessedAssets(results);
             setIsProcessing(false);
             setGenerationProgress(null);
@@ -1025,7 +1031,7 @@ const App: React.FC = () => {
             }).catch(error => {
               console.error('Failed to report generation failure', error);
             });
-            alert(`美图 AI 视频扩展失败，已停止生成：\n\n${raw.file.name} -> ${template.app}${template.name}\n${message}`);
+            alert(AI_ADAPT_FAILURE_ALERT);
             setProcessedAssets(results);
             setIsProcessing(false);
             setGenerationProgress(null);

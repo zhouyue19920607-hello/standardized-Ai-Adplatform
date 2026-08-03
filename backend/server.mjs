@@ -7293,8 +7293,11 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       "排版方式：左侧放原图已有文案、slogan、Logo、品牌标识和按钮文案，整体在左侧信息区水平居中、垂直居中，不能裁切、遮挡、压扁或变形。",
       "右侧放原图已有主体物、产品或人物，保持原比例、质感、包装文字和品牌标识完整清晰，不能拉伸、变形、重绘或复制。",
       "只允许移动、缩放和排列原图已有元素；禁止新增任何文字、Logo、商品、人物、图标、按钮、贴纸、装饰元素、水印或无关内容。",
+      "不要在空白区域补写任何标题、说明、广告按钮、品牌字样、伪文字、假 Logo 或包装信息。",
+      "如果无法确认某个元素是否来自原图，宁可保留干净背景，也不要生成或补全它。",
       "背景只根据原图已有背景自然补齐，保持光影、材质、颜色、纹理、景深和透视一致，不要出现分层、拼接、模糊框或重复纹理。",
-      "核心画面生成后，后续会锁定该 1030x400 内容不再改变，只向外扩展背景。"
+      "核心画面必须像同一张原图的重新排版结果，而不是重新设计的新广告。",
+      `核心画面生成后，后续会锁定该 ${bubbleSafeCore.width}x${bubbleSafeCore.height}px 内容不再改变，只向外扩展背景。`
     ].join(" ");
     const defaultSafeCorePrompt = `Adapt all original content into one complete ${bubbleSafeCore.width}x${bubbleSafeCore.height} composition. Preserve every subject, product, package, readable text, slogan, logo, brand mark, award and icon. Keep their hierarchy and relative layout. Do not add, duplicate, rewrite or remove content.`;
     const corePrompt = [
@@ -7322,6 +7325,16 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       top: bubbleSafeCore.offsetY,
       bottom: targetHeight - bubbleSafeCore.height - bubbleSafeCore.offsetY
     };
+    const exactOuterExpandPrompt = useFocalLeftRightCore
+      ? [
+          `将 ${bubbleSafeCore.width}x${bubbleSafeCore.height}px 的焦点视窗核心画面锁定为不可修改区域，扩展成 ${targetWidth}x${targetHeight}px。`,
+          `必须保持核心画面内所有主体、文字、Logo、商品、人物、按钮、图标、品牌标识的位置、大小、形状、颜色、清晰度和样式完全不变。`,
+          "只允许在核心画面外侧补背景；外扩背景只能延续原有背景的光影、颜色、纹理、材质、透视和景深。",
+          "外扩背景禁止生成任何新增文字、Logo、商品、人物、按钮、图标、贴纸、标签、水印、品牌标识、包装信息或无关装饰内容。",
+          "不要补写、不要复制、不要重绘、不要改写任何文字或 Logo；如果边缘信息不足，宁可用干净连续背景延展，也不要生成新内容。",
+          "核心画面边缘和外扩背景必须自然无缝衔接，不能出现分层断层、拼接线、模糊框、重复纹理、残影或明显 AI 痕迹。"
+        ].join(" ")
+      : `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`;
     const expandedCanvasUrl = await expandImageByExactPixelsForAdapt(
       coreUrl,
       exactBackgroundExpandPixels,
@@ -7331,7 +7344,7 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         sourceHeight: bubbleSafeCore.height,
         bubbleSafeCoreAdapt: { stage: "exact_outer_expand" }
       },
-      `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`
+      exactOuterExpandPrompt
     );
     if (!expandedCanvasUrl) throw new Error(`${safeCoreLabel}精确扩图未返回结果图片`);
     const blendedCanvas = await composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl, bubbleSafeCore, {
