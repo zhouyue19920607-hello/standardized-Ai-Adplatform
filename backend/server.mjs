@@ -1563,8 +1563,10 @@ const AIGC_BACKGROUND_ONLY_EXPAND_PROMPT = [
 const AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT = [
   "Strictly preserve the original subject, product, person, copywriting, button, logo and brand marks.",
   "Only extend or repair the existing background around the original content.",
+  "Every visible text, logo, brand mark, button, package mark, product and icon in the output must already exist in the input image.",
   "Do not add any unrelated people, products, objects, props, decorations, icons, buttons, packaging, logos, brand marks, labels, slogans, captions, typography or text.",
   "Do not add new marketing copy, fake letters, fake words, fake UI, fake stickers, fake labels, signs, badges, watermarks or call-to-action buttons.",
+  "If the model is unsure whether a detail exists in the source image, leave that area as clean continuous background instead of inventing content.",
   "Do not change, redraw, crop, cover, stretch or deform the original key content.",
   "Do not reinterpret the poster, redesign the scene, invent a new composition, or create additional foreground elements.",
   "The new area must follow the original background, lighting, color, material, perspective and depth of field.",
@@ -4506,6 +4508,57 @@ function textRecall(beforeTexts = [], afterTexts = []) {
   return matched / before.length;
 }
 
+function normalizeTextForAdaptGuard(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function uniqueTextsForAdaptGuard(texts = []) {
+  const seen = new Set();
+  const items = [];
+  for (const rawText of texts || []) {
+    const raw = String(rawText || "").trim();
+    const normalized = normalizeTextForAdaptGuard(raw);
+    if (normalized.length < 2 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    items.push({ raw, normalized });
+  }
+  return items;
+}
+
+function detectUnexpectedTextForAdaptGuard(beforeTexts = [], afterTexts = []) {
+  const before = uniqueTextsForAdaptGuard(beforeTexts);
+  const after = uniqueTextsForAdaptGuard(afterTexts);
+  const generatedTexts = [];
+  for (const item of after) {
+    const matched = before.some(original => (
+      original.normalized.includes(item.normalized) ||
+      item.normalized.includes(original.normalized)
+    ));
+    if (!matched) generatedTexts.push(item.raw);
+  }
+  return {
+    passed: generatedTexts.length === 0,
+    generatedTexts,
+    originalTextCount: before.length,
+    outputTextCount: after.length
+  };
+}
+
+function detectUnexpectedLogoForAdaptGuard(beforeLogo, afterLogo) {
+  const originalCount = Math.max(beforeLogo?.boxes?.length || 0, beforeLogo?.hasTarget ? 1 : 0);
+  const outputCount = Math.max(afterLogo?.boxes?.length || 0, afterLogo?.hasTarget ? 1 : 0);
+  const extraCount = originalCount === 0 ? outputCount : Math.max(0, outputCount - originalCount - 1);
+  return {
+    passed: extraCount <= 0,
+    originalCount,
+    outputCount,
+    extraCount
+  };
+}
+
 async function maskedAverageHash(imageUrl, maskUrl, width = 16, height = 16) {
   if (!imageUrl?.startsWith("/static/") || !maskUrl?.startsWith("/static/")) return null;
   const imagePath = staticUrlToLocalPath(imageUrl);
@@ -7293,13 +7346,15 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       "排版方式：左侧放原图已有文案、slogan、Logo、品牌标识和按钮文案，整体在左侧信息区水平居中、垂直居中，不能裁切、遮挡、压扁或变形。",
       "右侧放原图已有主体物、产品或人物，保持原比例、质感、包装文字和品牌标识完整清晰，不能拉伸、变形、重绘或复制。",
       "只允许移动、缩放和排列原图已有元素；禁止新增任何文字、Logo、商品、人物、图标、按钮、贴纸、装饰元素、水印或无关内容。",
+      "关键元素保护：所有文字、Logo、按钮、商品、品牌识别和包装信息都必须来自原图原始内容，只能搬运原有元素，不能让模型想象、重写或生成替代版本。",
       "不要在空白区域补写任何标题、说明、广告按钮、品牌字样、伪文字、假 Logo 或包装信息。",
+      "禁止出现任何原图没有的可读文字、不可读伪文字、按钮轮廓、标签、角标、Logo 轮廓、商品轮廓或营销装饰。",
       "如果无法确认某个元素是否来自原图，宁可保留干净背景，也不要生成或补全它。",
       "背景只根据原图已有背景自然补齐，保持光影、材质、颜色、纹理、景深和透视一致，不要出现分层、拼接、模糊框或重复纹理。",
       "核心画面必须像同一张原图的重新排版结果，而不是重新设计的新广告。",
       `核心画面生成后，后续会锁定该 ${bubbleSafeCore.width}x${bubbleSafeCore.height}px 内容不再改变，只向外扩展背景。`
     ].join(" ");
-    const defaultSafeCorePrompt = `Adapt all original content into one complete ${bubbleSafeCore.width}x${bubbleSafeCore.height} composition. Preserve every subject, product, package, readable text, slogan, logo, brand mark, award and icon. Keep their hierarchy and relative layout. Do not add, duplicate, rewrite or remove content.`;
+    const defaultSafeCorePrompt = `Adapt all original content into one complete ${bubbleSafeCore.width}x${bubbleSafeCore.height} composition. Preserve every subject, product, package, readable text, slogan, logo, brand mark, award and icon. Keep their hierarchy and relative layout. Do not add, duplicate, rewrite or remove content. If the canvas has empty space, keep it as clean continuous background; never invent new text, button shapes, logos, product silhouettes or decorative labels.`;
     const corePrompt = [
       AIGC_CONSERVATIVE_ADAPT_EXPAND_PROMPT,
       useFocalLeftRightCore ? focalLeftRightCorePrompt : defaultSafeCorePrompt
@@ -7331,10 +7386,11 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
           `必须保持核心画面内所有主体、文字、Logo、商品、人物、按钮、图标、品牌标识的位置、大小、形状、颜色、清晰度和样式完全不变。`,
           "只允许在核心画面外侧补背景；外扩背景只能延续原有背景的光影、颜色、纹理、材质、透视和景深。",
           "外扩背景禁止生成任何新增文字、Logo、商品、人物、按钮、图标、贴纸、标签、水印、品牌标识、包装信息或无关装饰内容。",
+          "外扩区域只允许出现背景纹理和自然光影，不能出现任何可读或不可读文字形状、按钮轮廓、标签、角标、Logo 轮廓、商品轮廓或营销装饰。",
           "不要补写、不要复制、不要重绘、不要改写任何文字或 Logo；如果边缘信息不足，宁可用干净连续背景延展，也不要生成新内容。",
           "核心画面边缘和外扩背景必须自然无缝衔接，不能出现分层断层、拼接线、模糊框、重复纹理、残影或明显 AI 痕迹。"
         ].join(" ")
-      : `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`;
+      : `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。外扩区域只允许背景纹理和自然光影，不能出现可读或不可读文字形状、按钮轮廓、标签、角标、Logo轮廓、商品轮廓或营销装饰。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`;
     const expandedCanvasUrl = await expandImageByExactPixelsForAdapt(
       coreUrl,
       exactBackgroundExpandPixels,
@@ -7621,18 +7677,45 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   }
 
   let textRecallScore = 1;
-  if ((analysis.text?.texts || []).length > 0) {
-    try {
-      const afterText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+  let generatedTextGuard = {
+    passed: true,
+    generatedTexts: [],
+    originalTextCount: uniqueTextsForAdaptGuard(analysis.text?.texts || []).length,
+    outputTextCount: null
+  };
+  try {
+    const afterText = await detectTextForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+    if ((analysis.text?.texts || []).length > 0) {
       textRecallScore = textRecall(analysis.text.texts, afterText.texts || []);
       if (textRecallScore < 0.8) warnings.push(`OCR text recall ${(textRecallScore * 100).toFixed(1)}% below 80%`);
-    } catch (err) {
-      textRecallScore = 0;
-      warnings.push(`result OCR check unavailable: ${err.message}`);
     }
+    generatedTextGuard = detectUnexpectedTextForAdaptGuard(analysis.text?.texts || [], afterText.texts || []);
+    if (!generatedTextGuard.passed) {
+      warnings.push(`unexpected generated text detected: ${generatedTextGuard.generatedTexts.slice(0, 5).join(", ")}`);
+    }
+  } catch (err) {
+    if ((analysis.text?.texts || []).length > 0) {
+      textRecallScore = 0;
+    }
+    warnings.push(`result OCR check unavailable: ${err.message}`);
   }
 
   let logoSimilarity = null;
+  let generatedLogoGuard = {
+    passed: true,
+    originalCount: Math.max(analysis.logo?.boxes?.length || 0, analysis.logo?.hasTarget ? 1 : 0),
+    outputCount: null,
+    extraCount: 0
+  };
+  try {
+    const afterLogo = await detectLogoForAdapt(resultUrl, { ...context, sourceWidth: targetWidth, sourceHeight: targetHeight });
+    generatedLogoGuard = detectUnexpectedLogoForAdaptGuard(analysis.logo, afterLogo);
+    if (!generatedLogoGuard.passed) {
+      warnings.push(`unexpected extra logo detected: output=${generatedLogoGuard.outputCount}, original=${generatedLogoGuard.originalCount}`);
+    }
+  } catch (err) {
+    warnings.push(`result logo guard unavailable: ${err.message}`);
+  }
   if (analysis.logo?.maskUrl && !deterministicSplashSafeAreaAdjustment) {
     try {
       const originalStaticUrl = await ensureStaticImageUrlForResize(originalImageUrl);
@@ -7653,12 +7736,14 @@ runAdaptQa = async function runAdaptQaV2(resultUrl, analysis, plan, targetWidth,
   const logoPreserved = logoSimilarity === null ? Boolean(analysis.logo?.hasTarget ?? true) : logoSimilarity >= 0.72;
 
   return {
-    passed: dimensionPassed && safeAreaPassed && subjectPreserved && textPreserved && logoPreserved,
+    passed: dimensionPassed && safeAreaPassed && subjectPreserved && textPreserved && logoPreserved && generatedTextGuard.passed && generatedLogoGuard.passed,
     dimensionPassed,
     subjectPreserved,
     subjectIou,
     textPreserved,
     logoPreserved,
+    generatedTextGuard,
+    generatedLogoGuard,
     safeAreaPassed,
     splashInfoSafeArea,
     textRecall: textRecallScore,
@@ -8473,6 +8558,8 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
         "Adapt this exact original poster to the target ad size.",
         "Preserve the original product, subject, readable text, slogan, logo and brand marks as much as possible.",
         "Do not add unrelated objects, new text, fake letters, fake logos, labels, stickers, UI buttons or marketing copy.",
+        "Strictly compare with the input image: every text, logo, brand mark, button, product and icon in the output must already exist in the input image.",
+        "Empty areas should stay as clean extended background; do not invent readable or unreadable typography, button shapes, logo-like shapes, product silhouettes or decorative labels.",
         "Extend or arrange the existing poster content only for the target ad format.",
         settings.tongyiExpandPrompt || "",
         prompt || ""
@@ -8576,6 +8663,20 @@ app.post("/api/aigc/adapt-image", async (req, res) => {
       if (meituContext.fallbackWarnings?.length) {
         qa.warnings = [...(qa.warnings || []), ...meituContext.fallbackWarnings];
         qa.passed = false;
+      }
+      const generatedContentFailures = [];
+      if (qa?.generatedTextGuard?.passed === false) {
+        const texts = (qa.generatedTextGuard.generatedTexts || []).slice(0, 5).join("、");
+        generatedContentFailures.push(texts ? `疑似新增文案：${texts}` : "疑似新增文案");
+      }
+      if (qa?.generatedLogoGuard?.passed === false) {
+        generatedContentFailures.push(`疑似新增 Logo：${qa.generatedLogoGuard.extraCount || 1} 个`);
+      }
+      if (generatedContentFailures.length) {
+        const generatedErr = new Error(`检测到 AI 生成了原图不存在的内容，已停止输出错误成品：${generatedContentFailures.join("；")}`);
+        generatedErr.stage = "qa-generated-content-guard";
+        generatedErr.qa = qa;
+        throw generatedErr;
       }
       console.log("[AdaptImage] Meitu route done", JSON.stringify({
         strategy: plan.strategy,
