@@ -7030,6 +7030,71 @@ async function composeBubbleCoreDifferenceOnBackground(backgroundUrl, coreUrl, c
     .toFile(path.join(STORAGE_DIR, filename));
   return { url: `/static/${filename}`, foregroundRatio };
 }
+
+async function composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl, safeCore, options = {}) {
+  const expandedStatic = await ensureStaticImageUrlForResize(expandedCanvasUrl);
+  const coreStatic = await ensureStaticImageUrlForResize(coreUrl);
+  if (!expandedStatic?.startsWith("/static/") || !coreStatic?.startsWith("/static/")) {
+    throw new Error("气泡全屏边缘融合需要本地核心图和扩展图");
+  }
+
+  const targetWidth = toPositiveInt(safeCore.targetWidth);
+  const targetHeight = toPositiveInt(safeCore.targetHeight);
+  const coreWidth = toPositiveInt(safeCore.width);
+  const coreHeight = toPositiveInt(safeCore.height);
+  const offsetX = Math.max(0, Math.round(Number(safeCore.offsetX || 0)));
+  const offsetY = Math.max(0, Math.round(Number(safeCore.offsetY || 0)));
+  if (!targetWidth || !targetHeight || !coreWidth || !coreHeight) {
+    throw new Error("气泡全屏边缘融合缺少有效尺寸");
+  }
+
+  const featherPx = clampNumber(toPositiveInt(options.featherPx) || 72, 24, Math.floor(Math.min(coreWidth, coreHeight) / 5));
+  const coreRaw = await sharp(staticUrlToLocalPath(coreStatic))
+    .rotate()
+    .resize({ width: coreWidth, height: coreHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+  const coreRgba = Buffer.alloc(coreWidth * coreHeight * 4);
+  for (let y = 0; y < coreHeight; y += 1) {
+    for (let x = 0; x < coreWidth; x += 1) {
+      const pixelIndex = y * coreWidth + x;
+      const rgbOffset = pixelIndex * 3;
+      const rgbaOffset = pixelIndex * 4;
+      const edgeDistance = Math.min(x, y, coreWidth - 1 - x, coreHeight - 1 - y);
+      const t = clampNumber(edgeDistance / featherPx, 0, 1);
+      const smoothAlpha = t * t * (3 - 2 * t);
+      coreRgba[rgbaOffset] = coreRaw[rgbOffset];
+      coreRgba[rgbaOffset + 1] = coreRaw[rgbOffset + 1];
+      coreRgba[rgbaOffset + 2] = coreRaw[rgbOffset + 2];
+      coreRgba[rgbaOffset + 3] = Math.round(255 * smoothAlpha);
+    }
+  }
+
+  const coreWithFeather = await sharp(coreRgba, {
+    raw: { width: coreWidth, height: coreHeight, channels: 4 }
+  }).png().toBuffer();
+  const expandedBuffer = await sharp(staticUrlToLocalPath(expandedStatic))
+    .rotate()
+    .resize({ width: targetWidth, height: targetHeight, fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+
+  await ensureDir(STORAGE_DIR);
+  const filename = `aigc_bubble_edge_blend_${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${targetWidth}x${targetHeight}.jpg`;
+  await sharp(expandedBuffer)
+    .composite([{ input: coreWithFeather, left: offsetX, top: offsetY, blend: "over" }])
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toFile(path.join(STORAGE_DIR, filename));
+
+  return {
+    url: `/static/${filename}`,
+    featherPx,
+    offsetX,
+    offsetY
+  };
+}
+
 async function composeBubbleForegroundIntoSafeZone(backgroundUrl, imageUrl, analysis, masks, safeCore, context) {
   const sourceWidth = context.sourceWidth;
   const sourceHeight = context.sourceHeight;
@@ -7191,12 +7256,22 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
         sourceHeight: bubbleSafeCore.height,
         bubbleSafeCoreAdapt: { stage: "exact_outer_expand" }
       },
-      `Preserve every pixel inside the original ${bubbleSafeCore.width}x${bubbleSafeCore.height} input unchanged. Generate only the newly added outer pixels to reach ${targetWidth}x${targetHeight}. Continue the same background color, texture, lighting, depth and perspective. Do not move, resize, redraw, duplicate or alter any text, logo, subject, product, package, award or icon inside the input core. Add no new content.`
+      `将图片尺寸${bubbleSafeCore.width}x${bubbleSafeCore.height}px的画面作为核心，扩展成${targetWidth}x${targetHeight}px。保持${bubbleSafeCore.width}x${bubbleSafeCore.height}px内的主体、文字、Logo、产品、人物、品牌标识的位置、大小和样式都不变。扩展区域只根据原图背景进行自然延展，不要添加新的文字、Logo、商品、人物或装饰内容。核心画面边缘和外扩背景必须无缝衔接，不要出现拼接边界、分层断层、模糊框、重复纹理或明显 AI 生成痕迹。`
     );
     if (!expandedCanvasUrl) throw new Error("气泡全屏精确扩图未返回结果图片");
+    const blendedCanvas = await composeBubbleCoreWithEdgeBlendForAdapt(expandedCanvasUrl, coreUrl, bubbleSafeCore, {
+      featherPx: 72
+    });
+    const finalCanvasUrl = blendedCanvas?.url || expandedCanvasUrl;
+    console.log("[AdaptImage] bubble edge blend done", JSON.stringify({
+      finalCanvasUrl,
+      featherPx: blendedCanvas?.featherPx,
+      offsetX: blendedCanvas?.offsetX,
+      offsetY: blendedCanvas?.offsetY
+    }));
 
     const criticalValidation = await validateCriticalContentForAdapt(
-      expandedCanvasUrl,
+      finalCanvasUrl,
       coreAnalysis,
       targetWidth,
       targetHeight,
@@ -7212,11 +7287,13 @@ async function executeAdaptPlan(imageUrl, targetWidth, targetHeight, plan, conte
       stage: "done",
       coreUrl,
       expandedCanvasUrl,
+      blendedCanvasUrl: finalCanvasUrl,
+      edgeBlendFeatherPx: blendedCanvas?.featherPx,
       exactBackgroundExpandPixels,
-      resultUrl: expandedCanvasUrl
+      resultUrl: finalCanvasUrl
     };
-    plan.safeCoreAdapt = { ...plan.safeCoreAdapt, status: "done", resultUrl: expandedCanvasUrl };
-    return expandedCanvasUrl;
+    plan.safeCoreAdapt = { ...plan.safeCoreAdapt, status: "done", resultUrl: finalCanvasUrl };
+    return finalCanvasUrl;
   }
   if (plan.orientationChange === "same-direction" && plan.infoSafeArea?.applies && !plan.infoSafeArea.passed) {
     try {
